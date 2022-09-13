@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 dotfiles=".bashrc .gitattributes.global .gitconfig .gitignore.global .tmux.conf .vimrc"
 cd $(dirname "${BASH_SOURCE[0]}")
 if [[ "$*" == '--help' ]]; then
@@ -12,3 +13,5 @@ for f in $dotfiles; do
     cp $f ~/$f
   fi
 done
+mkdir -p ~/.config/tmux
+cp .config/tmux/tmux-onedark-theme.tmux ~/.config/tmux/tmux-onedark-theme.tmux
