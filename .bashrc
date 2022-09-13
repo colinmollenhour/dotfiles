@@ -822,5 +822,5 @@ function __kontena_ps1 {
   [[ -f ~/.kontena_client.json ]] && [[ -f ./.kontena-ps1 ]] && awk '/"current_server"/{master=$2} /"name"/{active = $2 == master} /"grid"/ && active{grid=$2} END{gsub(/[",]/,"",master);gsub(/[",]/,"",grid);printf("%s/%s", master, grid);}' < ~/.kontena_client.json
 }
 
-export PNPM_HOME="/home/colin/.local/share/pnpm"
+export PNPM_HOME="$HOME/.local/share/pnpm"
 export PATH="$PNPM_HOME:$PATH"

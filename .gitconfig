@@ -44,4 +44,4 @@
 	process = git-lfs filter-process
 	required = true
 [http]
-	cookiefile = /home/colin/.gitcookies
+	cookiefile = ~/.gitcookies
