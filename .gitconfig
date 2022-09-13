@@ -1,0 +1,47 @@
+[user]
+	name = Colin Mollenhour
+	email = colin@mollenhour.com
+
+[github]
+	name = colinmollenhour
+
+[alias]
+	# Shortcuts
+	s = status
+	co = checkout
+	br = branch
+
+	# Advanced Shortcuts
+	lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset' --abbrev-commit --date=relative
+	staged = diff --cached
+	unstage = reset HEAD
+	head = log -n1
+	upstream-branch-name = !"git rev-parse --abbrev-ref --symbolic-full-name @{u}"
+        preview-pull = !"git fetch && git diff ...`git upstream-branch-name`"
+	du = !"git diff `git upstream-branch-name`..."
+	files = "!f() { git diff --name-status \"$1^\" \"$1\"; }; f"
+	backport-commit = !"git checkout \"$1\" && git pull --ff-only && git cherry-pick ${2:-master} && git push -o ci.skip && git checkout master && echo \"Backport successful.\""
+
+[color]
+	ui = auto
+
+[merge]
+	tool = diffmerge
+[mergetool "diffmerge"]
+	cmd = diffmerge.sh \"$PWD/$LOCAL\" \"$PWD/$BASE\" \"$PWD/$REMOTE\" \"$PWD/$MERGED\"
+	trustExitCode = false
+	keepBackup = false
+[push]
+	default = tracking
+[core]
+	excludesfile = ~/.gitignore.global
+#        attributesFile = ~/.gitattributes.global
+[diff]
+	tool = meld
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+[http]
+	cookiefile = /home/colin/.gitcookies

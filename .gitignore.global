@@ -1,0 +1,6 @@
+.basedir
+*.swp
+.idea
+imc
+.phpstorm.meta.php
+.gitoff

@@ -1,0 +1,174 @@
+[directory]
+truncation_length = 3
+truncation_symbol = "…/"
+repo_root_style = "bold blue"
+
+[git_branch]
+truncation_length = 50
+
+[git_commit]
+disabled = false
+
+[git_metrics]
+disabled = false
+
+[git_status]
+ignore_submodules = true
+format = "[$all_status$ahead_behind]($style)"
+ahead = "⇡ $count "
+behind = "⇣ $count "
+deleted = "$count "
+diverged = " ⇡${ahead_count}⇣${behind_count} "
+stashed = "📦$count "
+modified = "[פֿ$count ](yellow)"
+staged = '[$count ](green)'
+renamed = "$count "
+untracked = "🤷$count "
+style = "white dimmed"
+
+[git_state]
+format = '\([$state( $progress_current/$progress_total)]($style)\) '
+style = "bright-black"
+
+#[custom.bash]
+#command = "echo 🚀"
+#when = '[ "$STARSHIP_SHELL" == "bash" ]'
+
+[bun]
+disabled = true
+format = "via [$symbol]($style)"
+
+[buf]
+disabled = true
+format = "via [$symbol]($style)"
+
+[c]
+disabled = true
+
+[cmake]
+disabled = true
+format = "via [$symbol]($style)"
+
+[cobol]
+disabled = true
+format = "via [$symbol]($style)"
+
+[crystal]
+disabled = true
+format = "via [$symbol]($style)"
+
+[daml]
+disabled = true
+format = "via [$symbol]($style)"
+
+[dart]
+disabled = true
+format = "via [$symbol]($style)"
+
+[deno]
+disabled = true
+format = "via [$symbol]($style)"
+
+[dotnet]
+disabled = true
+format = "[$symbol(🎯 $tfm )]($style)"
+
+[elixir]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[elm]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[erlang]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[golang]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[helm]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[julia]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[kotlin]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[lua]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[nim]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[nodejs]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[ocaml]
+format = 'via [$symbol(\($switch_indicator$switch_name\) )]($style)'
+disabled = true
+
+[perl]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[php]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[pulumi]
+disabled = true
+format = 'via [$symbol$stack]($style)'
+
+[purescript]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[python]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[raku]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[red]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[rlang]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[ruby]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[rust]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[swift]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[vagrant]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[vlang]
+disabled = true
+format = 'via [$symbol]($style)'
+
+[zig]
+disabled = true
+format = 'via [$symbol]($style)'
