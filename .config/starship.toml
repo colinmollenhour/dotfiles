@@ -1,5 +1,6 @@
 [directory]
-truncation_length = 3
+truncate_to_repo = false
+truncation_length = 5
 truncation_symbol = "…/"
 repo_root_style = "bold blue"
 
@@ -33,6 +34,13 @@ style = "bright-black"
 #[custom.bash]
 #command = "echo 🚀"
 #when = '[ "$STARSHIP_SHELL" == "bash" ]'
+
+[custom.kontena]
+description = "Show the current Kontena Classic master/grid"
+when = "test -f ~/.kontena_client.json && test -f .kontena-ps1"
+symbol = " "
+style = "bold yellow"
+command = "awk '/\"current_server\"/{master=$2} /\"name\"/{active = $2 == master} /\"grid\"/ && active{grid=$2} END{gsub(/[\",]/,\"\",master);gsub(/[\",]/,\"\",grid);printf(\"%s/%s\", master, grid);}' < ~/.kontena_client.json"
 
 [bun]
 disabled = true
