@@ -44,7 +44,7 @@ For example, `install.sh .gitconfig` will install **only** `.gitconfig`.
 
 ## Help
 
-Run the `colin-help` command for a list of aliases, commands, tips and tricks.
+Run the `colin-help` command for a list of aliases, commands, tips and tricks or see [here](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc#L2) for the same info online.
 
 ## VSCode
 
