@@ -1,35 +1,36 @@
 #!/bin/bash
-# ##########################
-# Colin's bashrc file v1.4.1
-# ##########################
+# ##################################################################
+# Colin's bashrc file ($INSTALL_REPO_HEAD)
+# Installed on $INSTALL_DATE
+# https://github.com/colinmollenhour/dotfiles
+# ##################################################################
 #
 # Shortcut Aliases and Bash Tricks
-#   d               docker
-#   de              docker exec
-#   dip             docker inspect ... (shows IP of container)
-#   dc              docker-compose
-#   dm              docker-machine
-#   dstats          docker stats
-#   g               git
-#   k               kontena
-#   l               ls -l
-#   ll              ls -la
-#   mm              modman
-#   cd -            cd to last directory
-#   lcd             cd && ls
-#   .. [n]          cd ../[n]
-#   nsps            netstat -plunt | sort
-#   psg <string>    ps aux | grep [s]tring
-#   sf <cmd:-vim>   select file in pwd for cmd
-#   gsf <cmd:-vim>  select file from grep match for cmd
-#   lvim            open last-edited file in vim
-#   <(cmd)          treat output of command as file (can use multiple times)
+#   .. [n]               cd ../[n]
+#   cd -                 cd to last directory
+#   d                    docker
+#   de                   docker exec
+#   dip                  docker inspect ... (shows IP of container)
+#   dc                   docker-compose
+#   dm                   docker-machine
+#   dstats               docker stats
+#   g                    git (see Git Shortcuts section for more)
+#   k                    kontena
+#   l                    ls -l
+#   lcd                  cd && ls
+#   ll                   ls -la
+#   lvim                 open last-edited file in vim
+#   mm                   modman
+#   psg <string>         ps aux | grep [s]tring
+#   sf <cmd:-vim>        select file in pwd for cmd
+#   gsf <cmd:-vim>       select file from grep match for cmd
+#   <(cmd)               treat output of command as file (can use multiple times)
 #
-# Scripts/Functions
-#   composer             alias runs composer via docker unless composer is present in path
+# Scripts/Functions/Wrappers
+#   composer             run composer via docker unless composer is present in path
 #   docker-rmi-dangling  remove 'dangling' docker images
 #   docker-rmv-dangling  remove 'dangling' docker volumes
-#   dush                 du -sh (sorted)
+#   dush                 like du -sh but sorted by size
 #   findcrlf             find files containing CRLF
 #   git-clean-merged     clean merged branches from remote
 #   git-clean-nomerged   clean not-merged branches from remote
@@ -37,36 +38,42 @@
 #   git-ignore-symlinks  add all untracked symlinks to the .gitignore file in pwd
 #   git-off|git-on       enable or disable git prompt for current directory
 #   hdd-write-test       do a simple write test in the current directory
-#   install-docker       Install Docker using https://get.docker.com/
-#   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
-#   install-lsd          Install lsd (netx-gen ls command) (https://github.com/Peltoche/lsd)
-#   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
-#   install-rvm          Install Ruby Version Manager - https://rvm.io
-#   install-starship     Install Starship prompt (https://starship.rs/)
 #   ip-summary           show number of connections per ip
 #   ipinfo               helper for `curl https://ipinfo.io/$1`
 #   kontena-vpn-start    connect to a kontena vpn
 #   mysql-extract-table  pipe mysqldump through this to extract a single table
 #   mysql-strip-definer  pipe mysqldump through this to strip the DEFINER clauses
-#   rdns <ip>            print reverse dns
-#   readthenburn         upload content to readthenburn
+#   nsps                 netstat -plunt | sort
+#   rdns <ip>            print reverse dns of an ip
+#   readthenburn <file>  upload content to readthenburn (use - to read stdin)
 #   reencrypt-ssh-key    re-encrypt the ssh private key with PKCS#8
 #   rfromdos             run fromdos recursively on current directory
 #   rnotabs              replace tabs with four spaces on files in current directory
 #   ssh-proxy <1-4> <port> start a ShipStream SSH proxy tunnel to <port>
 #   tsv2csv              convert TSV (e.g. from mysql batch mode) to CSV
 #   unfubar-upstart      unfubar upstart when it is tracking a PID that doesn't exist
-#   update-bashrc        update this bashrc file
+#   update-dotfiles      update the dotfiles from Colin's repo
 #   whatismyip           get your IP
+#
+# Quick Installers
+#   install-docker       Install Docker using https://get.docker.com/
+#   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
+#   install-lsd          Install lsd (netx-gen ls command) (https://github.com/Peltoche/lsd)
+#   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
+#   install-recommended  Install some recommended packages (Ubuntu)
+#   install-rvm          Install Ruby Version Manager - https://rvm.io
+#   install-starship     Install Starship prompt (https://starship.rs/)
 #
 # Special files
 #   ~/.bashrc.before     add your own .bashrc customizations without modifying this file
 #   ~/.bashrc.after      add your own .bashrc customizations without modifying this file
 #   ~/.bash_aliases      add your own .bashrc customizations without modifying this file
-#   ~/.ssh/.auto-agent   enable auto-start of SSH Agent
+#   <git-root>/.gitoff   disable git-enhanced prompt for a specific repo
+#   .kontena-ps1         enable the Kontena prompt info
 #   ~/.no-color          disable colored prompt
 #   ~/.nogitprompt       disable git-enhanced prompt
-#   <git-root>/.gitoff   disable git-enhanced prompt for a specific repo
+#   ~/.ssh/.auto-agent   enable auto-start of SSH Agent
+#   ~/winhome/AppData/npiperelay.exe  symlink `~/winhome` to Windows home directory for WSL
 #
 # Command Line/Readline
 #   Crtl+xe         edit current command in editor
@@ -88,6 +95,19 @@
 #   ^foo^FOO        run last command replacing foo with FOO
 #   !:gs/foo/FOO    run last command replacing all instances of foo with FOO
 #
+# Git Shortcuts (with autocompletion)
+#   s                 status
+#   co                checkout
+#   br                branch
+#   lg                pretty graph log
+#   staged            diff --cached
+#   unstage           reset HEAD
+#   head              log -n1
+#   upstream-branch-name   print the remote tracking branch name
+#   preview-pull      preview the changes that would occur by a pull
+#   du                diff the current head with the upstream branch
+#   files             list the files changed by a commit-ish
+#   backport-commit   checkout a branch ($1), fast-forward, cherry-pick commit from master (or $2), push and checkout master
 # END
 
 # run "colin-help" to get help
@@ -158,6 +178,11 @@ export HISTIGNORE="&:l[sl]:[bf]g:exit:history:git status"
 # don't put duplicate lines in the history, force ignoredups and ignorespace
 export HISTCONTROL=ignoreboth
 
+# set most as pager if no other pager set and most is installed
+if [[ -z $PAGER ]] && command -v most >/dev/null; then
+  export PAGER='most'
+fi
+
 # append to the history file, don't overwrite it
 shopt -s histappend
 
@@ -180,6 +205,7 @@ alias nsps='netstat -plunt | sort'
 alias g='git';
 alias install-docker="curl -sSL https://get.docker.com/ | sudo sh && curl -s https://api.github.com/repos/docker/compose/releases/latest   | grep browser_download_url   | grep docker-compose-\$(uname -s)-\$(uname -p) | cut -d \"\\\"\" -f 4 | head -n 1 | sudo wget -q -O /usr/local/bin/docker-compose -i -   && sudo chmod +x /usr/local/bin/docker-compose   && sudo curl -sSL https://raw.githubusercontent.com/docker/compose/master/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose"
 alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
+alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq lsd openssl pwgen whois xxd'
 alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
 alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
@@ -275,10 +301,10 @@ function unfubar-upstart {
   echo "Init will reap PID=$!"
 )
 }
-function update-bashrc {
-  curl -sSL -o ~/.bashrc https://www.dropbox.com/s/69gjif3oritksqw/bashrc.txt
-  echo "Install script:"
-  echo "curl -sSL https://www.dropbox.com/s/zfjuxzrwi3wsr9f/install.sh | sh"
+function update-dotfiles {
+  echo 'Update by navigating to the repository working directory and run:'
+  echo '  git pull && ./install.sh'
+  echo 'See: https://github.com/colinmollenhour/dotfiles'
 }
 function kontena-vpn-start {
   set -e

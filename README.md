@@ -7,14 +7,15 @@ Nothing too fancy, just my dotfiles.
 These dot files apply to or make use of the following tools:
 
 - Bash
+- tmux
 - Git
 - Docker
 - Kontena
 - Composer
 - MySQL
 - SSH
-- [Starship](https://starship.rs/) (optional)
 - [LSD](https://github.com/Peltoche/lsd)
+- [Starship](https://starship.rs/) (optional)
 
 Easily install the following binaries (commands prefixed with "install-"):
 
@@ -25,14 +26,18 @@ Easily install the following binaries (commands prefixed with "install-"):
 - RVM
 - Starship
 
-Use the following flag files to enable/disable features:
+## Installation
 
-- `*/.kontena-ps1`
-- `~/.ssh/.auto-agent`
-- `$HOME/winhome/AppData/npiperelay.exe` (symlink `~/winhome` to Windows home directory for WSL)
-- `~/.no-color`
-- `~/.nogitprompt`
-- `~/.gitoff`
+Clone this repo and run the `install.sh` script.
+
+**NOTE:** The `.gitconfig` file has my username and email address so you will want to edit this
+file before installation if you are not me.
+
+**WARNING:** This will copy the files to your home directory, replacing any existing files.
+
+Pass any file names you do not want replaced as arguments to the `install.sh` script. For example,
+`install.sh .gitconfig` will install all files EXCEPT `.gitconfig`.
+
 
 ## Help
 

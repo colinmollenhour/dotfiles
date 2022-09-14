@@ -1,3 +1,6 @@
+# Colin's .gitconfig ($INSTALL_REPO_HEAD)
+# Installed on $INSTALL_DATE
+# https://github.com/colinmollenhour/dotfiles
 [user]
 	name = Colin Mollenhour
 	email = colin@mollenhour.com

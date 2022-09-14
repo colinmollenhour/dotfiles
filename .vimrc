@@ -1,3 +1,7 @@
+"# Colin's .vimrc ($INSTALL_REPO_HEAD)
+"# Installed on $INSTALL_DATE
+"# https://github.com/colinmollenhour/dotfiles
+
 set nocompatible
 set backspace=indent,eol,start
 set background=dark
