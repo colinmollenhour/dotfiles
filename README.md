@@ -16,6 +16,7 @@ These dot files apply to or make use of the following tools:
 - SSH
 - [LSD](https://github.com/Peltoche/lsd)
 - [Starship](https://starship.rs/) (optional)
+- and a lot more...
 
 Easily install the following binaries (commands prefixed with "install-"):
 
@@ -25,6 +26,7 @@ Easily install the following binaries (commands prefixed with "install-"):
 - PNPM
 - RVM
 - Starship
+- Various recommended tools for Ubuntu
 
 ## Installation
 
@@ -35,9 +37,10 @@ file before installation if you are not me.
 
 **WARNING:** This will copy the files to your home directory, replacing any existing files.
 
-Pass any file names you do not want replaced as arguments to the `install.sh` script. For example,
-`install.sh .gitconfig` will install all files EXCEPT `.gitconfig`.
+Run with `--help` to see a list of files that will be replaced. If you do not want to install all files
+pass the file names of the files you **do** want installed as arguments to the `install.sh` script.
 
+For example, `install.sh .gitconfig` will install **only** `.gitconfig`.
 
 ## Help
 
