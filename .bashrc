@@ -77,14 +77,16 @@
 #
 # Command Line/Readline
 #   Crtl+xe         edit current command in editor
+#   Crtl+xu         undo edits to current command
 #   Alt+f/b/d       jump forward/jump backward/delete one word
 #   Ctrl+u          cut line to readline buffer
 #   Ctrl+w          cut word to readline buffer
 #   Ctrl+y          paste from readline buffer
 #   Ctrl+l          clear screen and redraw current line          
 #   Alt+#           comment current line
-#   Meta+space      mark position
+#   Esc space       mark position
 #   Ctrl+xx         return to marked position
+#   Ctrl+x (/)/e    macro: start/end/execute recording
 #   
 # History
 #   Ctrl+r          reverse search history (repeatable, abort with Ctrl+g)
