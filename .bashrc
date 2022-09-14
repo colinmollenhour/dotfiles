@@ -193,7 +193,7 @@ alias l='ls -l'
 alias ll='ls -al'
 alias vi='vim -p'
 alias mm='modman'; command -v _modman >/dev/null && complete -F _modman mm
-alias colin-help="awk 'BEGIN{f=1}/END/{f=0}f' ~/.bashrc | tail -n +2 | sed 's/^#//'"
+alias colin-help="awk 'BEGIN{f=1}/END/{f=0}f' ~/.bashrc | tail -n +2 | sed 's/^#//' | ${PAGER:-less}"
 alias rdns='dig +short -x'
 alias lvim="vim -c \"normal '0\""
 alias rfromdos='find . -type f -not \( -name "*.png" -o -name "*.gif" -o -name "*.jpg" -o -name "*.ico" -o -name "*gz" -o -name "*.swf" -o -path "./.*" \) -print0 | xargs -0 -r fromdos'
