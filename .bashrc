@@ -26,8 +26,11 @@
 #   gsf <cmd:-vim>       select file from grep match for cmd
 #   <(cmd)               treat output of command as file (can use multiple times)
 #
-# Scripts/Functions/Wrappers
+# Wrappers
+#   vd                   run visidata via docker image unless visidata is present in path
 #   composer             run composer via docker unless composer is present in path
+#
+# Scripts/Functions
 #   docker-rmi-dangling  remove 'dangling' docker images
 #   docker-rmv-dangling  remove 'dangling' docker volumes
 #   dush                 like du -sh but sorted by size
@@ -57,12 +60,13 @@
 #
 # Quick Installers
 #   install-docker       Install Docker using https://get.docker.com/
+#   install-fzf          Install command-line fuzzy finder - https://github.com/junegunn/fzf
 #   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
-#   install-lsd          Install lsd (netx-gen ls command) (https://github.com/Peltoche/lsd)
+#   install-lsd          Install lsd (netx-gen ls command) - https://github.com/Peltoche/lsd
 #   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
 #   install-recommended  Install some recommended packages (Ubuntu)
 #   install-rvm          Install Ruby Version Manager - https://rvm.io
-#   install-starship     Install Starship prompt (https://starship.rs/)
+#   install-starship     Install Starship prompt - https://starship.rs/
 #
 # Special files
 #   ~/.bashrc.before     add your own .bashrc customizations without modifying this file
@@ -110,6 +114,9 @@
 #   du                diff the current head with the upstream branch
 #   files             list the files changed by a commit-ish
 #   backport-commit   checkout a branch ($1), fast-forward, cherry-pick commit from master (or $2), push and checkout master
+#
+# Fuzzy Finder (fzf)
+#   **<TAB>           inline replace with selected paths
 # END
 
 # run "colin-help" to get help
@@ -185,6 +192,9 @@ if [[ -z $PAGER ]] && command -v most >/dev/null; then
   export PAGER='most'
 fi
 
+# Setup fzf if present (https://github.com/junegunn/fzf)
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash
+
 # append to the history file, don't overwrite it
 shopt -s histappend
 
@@ -206,6 +216,7 @@ alias nsps='netstat -plunt | sort'
 
 alias g='git';
 alias install-docker="curl -sSL https://get.docker.com/ | sudo sh && curl -s https://api.github.com/repos/docker/compose/releases/latest   | grep browser_download_url   | grep docker-compose-\$(uname -s)-\$(uname -p) | cut -d \"\\\"\" -f 4 | head -n 1 | sudo wget -q -O /usr/local/bin/docker-compose -i -   && sudo chmod +x /usr/local/bin/docker-compose   && sudo curl -sSL https://raw.githubusercontent.com/docker/compose/master/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose"
+alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)'
 alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
 alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq lsd openssl pwgen whois xxd'
 alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
@@ -679,6 +690,7 @@ _complete_alias () {
 #----------------------------------------------------------------
 #----------------------------------------------------------------
 
+# Setup docker and composer aliases
 if ! command -v composer >/dev/null; then
   alias composer='docker run --rm -it -u $(id -u):$(id -g) -e COMPOSER_IGNORE_PLATFORM_REQS=1 -v ${COMPOSER_HOME:-$HOME/.composer}:/tmp -v $(pwd):/app composer --no-scripts'
 fi
@@ -703,6 +715,11 @@ if command -v kubectl >/dev/null; then
   alias kc='kubectl'
   source <(kubectl completion bash)
   complete -F _complete_alias kc
+fi
+
+# Run visidata via docker
+if ! command -v vd >/dev/null; then
+  alias vd='docker run --rm -it -u $(id -u):$(id -g) -v $(pwd):/work jauderho/visidata:latest'
 fi
 
 # check the window size after each command and, if necessary, update the values of LINES and COLUMNS.
