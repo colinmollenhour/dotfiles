@@ -16,14 +16,13 @@
 #   dstats               docker stats
 #   g                    git (see Git Shortcuts section for more)
 #   k                    kontena
+#   kc                   kubectl
 #   l                    ls -l
 #   lcd                  cd && ls
 #   ll                   ls -la
 #   lvim                 open last-edited file in vim
 #   mm                   modman
 #   psg <string>         ps aux | grep [s]tring
-#   sf <cmd:-vim>        select file in pwd for cmd
-#   gsf <cmd:-vim>       select file from grep match for cmd
 #   <(cmd)               treat output of command as file (can use multiple times)
 #
 # Wrappers
@@ -58,27 +57,15 @@
 #   update-dotfiles      update the dotfiles from Colin's repo
 #   whatismyip           get your IP
 #
-# Quick Installers
-#   install-docker       Install Docker using https://get.docker.com/
-#   install-fzf          Install command-line fuzzy finder - https://github.com/junegunn/fzf
-#   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
-#   install-lsd          Install lsd (netx-gen ls command) - https://github.com/Peltoche/lsd
-#   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
-#   install-recommended  Install some recommended packages (Ubuntu)
-#   install-rvm          Install Ruby Version Manager - https://rvm.io
-#   install-starship     Install Starship prompt - https://starship.rs/
-#
-# Special files
-#   ~/.bashrc.before     add your own .bashrc customizations without modifying this file
-#   ~/.bashrc.after      add your own .bashrc customizations without modifying this file
-#   ~/.bash_aliases      add your own .bashrc customizations without modifying this file
-#   <git-root>/.gitoff   disable git-enhanced prompt for a specific repo
-#   .kontena-ps1         enable the Kontena prompt info
-#   ~/.no-color          disable colored prompt
-#   ~/.nogitprompt       disable git-enhanced prompt
-#   ~/.ssh/.auto-agent   enable auto-start of SSH Agent
-#   ~/winhome/AppData/npiperelay.exe  symlink `~/winhome` to Windows home directory for WSL
-#
+# Fuzzy Finder (fzf)
+#   kill **<TAB>    kill processes using fzf 
+#   path/**<TAB>    inline replace with selected path(s) (tab to select)
+#   Ctrl+r          search history
+#   Ctrl+t          find and insert file paths from current directory
+#   Alt+c           find and change directory         
+#   F2              while finding, toggle preview on right side
+#   Ctrl+a          while finding, select all matching files
+#   
 # Command Line/Readline
 #   Crtl+xe         edit current command in editor
 #   Crtl+xu         undo edits to current command
@@ -115,8 +102,29 @@
 #   files             list the files changed by a commit-ish
 #   backport-commit   checkout a branch ($1), fast-forward, cherry-pick commit from master (or $2), push and checkout master
 #
-# Fuzzy Finder (fzf)
-#   **<TAB>           inline replace with selected paths
+# Quick Installers
+#   install-bat          Install "cat with wings" - https://github.com/sharkdp/bat
+#   install-docker       Install Docker using https://get.docker.com/
+#   install-fd           Install alternative to 'find' - https://github.com/sharkdp/fd
+#   install-fzf          Install command-line fuzzy finder - https://github.com/junegunn/fzf
+#   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
+#   install-lsd          Install lsd (netx-gen ls command) - https://github.com/Peltoche/lsd
+#   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
+#   install-recommended  Install some recommended packages (Ubuntu)
+#   install-rvm          Install Ruby Version Manager - https://rvm.io
+#   install-starship     Install Starship prompt - https://starship.rs/
+#
+# Special files
+#   ~/.bashrc.before     add your own .bashrc customizations without modifying this file
+#   ~/.bashrc.after      add your own .bashrc customizations without modifying this file
+#   ~/.bash_aliases      add your own .bashrc customizations without modifying this file
+#   <git-root>/.gitoff   disable git-enhanced prompt for a specific repo
+#   .kontena-ps1         enable the Kontena prompt info
+#   ~/.no-color          disable colored prompt
+#   ~/.nogitprompt       disable git-enhanced prompt
+#   ~/.ssh/.auto-agent   enable auto-start of SSH Agent
+#   ~/winhome/AppData/npiperelay.exe  symlink `~/winhome` to Windows home directory for WSL
+#
 # END
 
 # run "colin-help" to get help
@@ -193,7 +201,38 @@ if [[ -z $PAGER ]] && command -v most >/dev/null; then
 fi
 
 # Setup fzf if present (https://github.com/junegunn/fzf)
-[ -f ~/.fzf.bash ] && source ~/.fzf.bash
+if [[ -f ~/.fzf.bash ]]; then
+  if command -v fd >/dev/null; then
+    FD_OPTIONS="--follow --exclude .git --exclude node_modules"
+    PREVIEW="--preview='[[ \$(file --mime {}) =~ binary ]] && echo {} is a binary file || (bat --style=numbers --color=always --line-range :300 {} || head -n 300 {}) 2>/dev/null'"
+    BIND_F2='f2:toggle-preview'
+    BIND_CTRL_A='ctrl-a:select-all'
+    export FZF_DEFAULT_OPTS="--height 50% -1 --reverse --inline-info"
+    export FZF_DEFAULT_COMMAND="fd --type f --type l --strip-cwd-prefix --hidden $FD_OPTIONS"
+    export FZF_COMPLETION_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all'"
+    export FZF_CTRL_T_COMMAND="fd $FD_OPTIONS"
+    export FZF_CTRL_T_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all'"
+    export FZF_ALT_C_COMMAND="fd --type d $FD_OPTIONS"
+    export FZF_ALT_C_OPTS="--header='Foo'"
+  fi
+  source ~/.fzf.bash
+fi
+
+# Setup modman alias with completion
+if command -v _modman >/dev/null; then
+  alias mm='modman'
+  complete -F _modman mm
+fi
+
+# Run composer via docker
+if ! command -v composer >/dev/null; then
+  alias composer='docker run --rm -it -u $(id -u):$(id -g) -e COMPOSER_IGNORE_PLATFORM_REQS=1 -v ${COMPOSER_HOME:-$HOME/.composer}:/tmp -v $(pwd):/app composer --no-scripts'
+fi
+
+# Run visidata via docker
+if ! command -v vd >/dev/null; then
+  alias vd='docker run --rm -it -u $(id -u):$(id -g) -v $(pwd):/work jauderho/visidata:latest'
+fi
 
 # append to the history file, don't overwrite it
 shopt -s histappend
@@ -204,7 +243,6 @@ shopt -s histappend
 alias l='ls -l'
 alias ll='ls -al'
 alias vi='vim -p'
-alias mm='modman'; command -v _modman >/dev/null && complete -F _modman mm
 alias colin-help="awk 'BEGIN{f=1}/END/{f=0}f' ~/.bashrc | tail -n +2 | sed 's/^#//' | ${PAGER:-less}"
 alias rdns='dig +short -x'
 alias lvim="vim -c \"normal '0\""
@@ -213,16 +251,19 @@ alias rnotabs='find . -type f -not \( -name "*.png" -o -name "*.gif" -o -name "*
 if [ -f ~/.bash_aliases ]; then . ~/.bash_aliases; fi
 alias hdd-write-test='dd bs=1M count=512 if=/dev/zero of=__test conv=fdatasync; rm __test'
 alias nsps='netstat -plunt | sort'
+alias g='git'
 
-alias g='git';
+## install shortcuts
+alias install-bat='(set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)'
 alias install-docker="curl -sSL https://get.docker.com/ | sudo sh && curl -s https://api.github.com/repos/docker/compose/releases/latest   | grep browser_download_url   | grep docker-compose-\$(uname -s)-\$(uname -p) | cut -d \"\\\"\" -f 4 | head -n 1 | sudo wget -q -O /usr/local/bin/docker-compose -i -   && sudo chmod +x /usr/local/bin/docker-compose   && sudo curl -sSL https://raw.githubusercontent.com/docker/compose/master/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose"
+alias install-fd='(set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)'
 alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)'
 alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
 alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq lsd openssl pwgen whois xxd'
 alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
 alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
-alias install-lsd='wget https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb && sudo dpkg -i lsd_0.23.1_amd64.deb && rm lsd_0.23.1_amd64.deb'
+alias install-lsd='(set -e; curl -sSL -o lsd.deb https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb; sudo dpkg -i lsd.deb; rm lsd.deb)'
 
 ######################################
 # Functions for non-interactive shells
@@ -691,9 +732,6 @@ _complete_alias () {
 #----------------------------------------------------------------
 
 # Setup docker and composer aliases
-if ! command -v composer >/dev/null; then
-  alias composer='docker run --rm -it -u $(id -u):$(id -g) -e COMPOSER_IGNORE_PLATFORM_REQS=1 -v ${COMPOSER_HOME:-$HOME/.composer}:/tmp -v $(pwd):/app composer --no-scripts'
-fi
 if command -v docker >/dev/null; then
   if [[ -f /usr/share/bash-completion/completions/docker ]]; then
     . /usr/share/bash-completion/completions/docker
@@ -715,11 +753,6 @@ if command -v kubectl >/dev/null; then
   alias kc='kubectl'
   source <(kubectl completion bash)
   complete -F _complete_alias kc
-fi
-
-# Run visidata via docker
-if ! command -v vd >/dev/null; then
-  alias vd='docker run --rm -it -u $(id -u):$(id -g) -v $(pwd):/work jauderho/visidata:latest'
 fi
 
 # check the window size after each command and, if necessary, update the values of LINES and COLUMNS.
@@ -779,8 +812,6 @@ bind Space:magic-space # space expands bang
 ###################
 function lcd { builtin cd -- "$@" && { [ "$PS1" = "" ] || ls -hrt --color; }; }
 function .. { local arg=${1:-1}; local dir=""; while [ $arg -gt 0 ]; do dir="../$dir"; arg=$(($arg - 1)); done; cd $dir; }
-function sf { PS3="Enter a number: "; cmd=${1:-$EDITOR}; select f in *; do $cmd $f; done; }
-function gsf { PS3="Enter a number: "; pattern="$1"; shift; select f in $(grep -rFl "$pattern" "$@"); do $EDITOR $f; done; }
 function __git_colin_root {
   local root=$(pwd)
   while [ "$root" != "" ]; do
