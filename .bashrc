@@ -187,7 +187,9 @@ if ! command -v rvm >/dev/null; then
 fi
 
 # set PATH so it includes user's private bin if it exists
-if [[ -d "$HOME/bin" ]] && ! [[ $PATH =~ "$HOME/bin" ]] ; then PATH="$HOME/bin:$PATH"; fi
+if [[ -d "$HOME/bin" ]] && [[ ! $PATH == *$HOME/bin* ]]; then
+  PATH="$HOME/bin:$PATH"
+fi
 
 export FIGNORE=.svn:.bzr:.git
 export HISTIGNORE="&:l[sl]:[bf]g:exit:history:git status"
@@ -898,5 +900,14 @@ function __kontena_ps1 {
   [[ -f ~/.kontena_client.json ]] && [[ -f ./.kontena-ps1 ]] && awk '/"current_server"/{master=$2} /"name"/{active = $2 == master} /"grid"/ && active{grid=$2} END{gsub(/[",]/,"",master);gsub(/[",]/,"",grid);printf("%s/%s", master, grid);}' < ~/.kontena_client.json
 }
 
-export PNPM_HOME="$HOME/.local/share/pnpm"
-export PATH="$PNPM_HOME:$PATH"
+PNPM_HOME="$HOME/.local/share/pnpm"
+if [[ ! "$PATH" == *$PNPM_HOME* ]] && [[ -d $PNPM_HOME ]]; then
+  export PNPM_HOME
+  PATH="${PATH:+${PATH}:}$PNPM_HOME"
+fi
+
+# strip windows paths (put the following two lines in ~/.profile)
+#PATH=$(echo $PATH | tr ':' '\n' | grep -v '/mnt/c' | tr '\n' ':')
+#export PATH="${PATH%:}"
+
+export PATH
