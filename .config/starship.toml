@@ -20,11 +20,12 @@ ahead = "⇡ $count "
 behind = "⇣ $count "
 deleted = "$count "
 diverged = " ⇡${ahead_count}⇣${behind_count} "
-stashed = "📦$count "
+#stashed = "✍ $count "
+stashed = ""
 modified = "[פֿ$count ](yellow)"
 staged = '[$count ](green)'
 renamed = "$count "
-untracked = "🤷$count "
+untracked = "✨ $count "
 style = "white dimmed"
 
 [git_state]
