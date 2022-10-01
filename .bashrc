@@ -58,15 +58,17 @@
 #   whatismyip           get your IP
 #
 # Fuzzy Finder (fzf)
-# -- Press F2 to toggle preview, Ctrl+T to toggle selection, Hold Shift to scroll preview
-#   kill **<TAB>    kill processes using fzf 
-#   path/**<TAB>    inline replace with selected path(s) (tab to select)
-#   docker <cmd> **<TAB>  autocomplete docker commands with fzf
+#   -- Shell completion trigger is: ,<TAB>
+#   -- Preview: Press F2 to toggle, Hold shift to scroll preview with arrow keys
+#   -- Tab to select multiple, Ctrl+T to toggle selection, Ctrl+D to deselect all
+# Commands that support the completion trigger:
+#   - file-path, dir-path
+#   - various docker commands
+#   - kill, ssh, telnet, export, unset
+# Keyboard shortcuts:
 #   Ctrl+r          search history
 #   Ctrl+t          find and insert file paths from current directory
 #   Alt+c           find and change directory         
-#   F2              while finding, toggle preview on right side
-#   Ctrl+a          while finding, select all matching files
 #   Ctrl+gf         find files listed in git status
 #   Ctrl+gb         find git branches
 #   Ctrl+gt         find git tags
@@ -212,6 +214,7 @@ fi
 # Setup fzf if present (https://github.com/junegunn/fzf)
 if [[ -f ~/.fzf.bash ]]; then
   ## FZF Options
+  export FZF_COMPLETION_TRIGGER=','
   export FZF_DEFAULT_OPTS="--height 80% --min-height 40 -1 --reverse --inline-info --bind backward-eof:abort --cycle --scroll-off=3"
   PREVIEW="--preview='[[ \$(file --mime {}) =~ binary ]] && echo {} is a binary file || (bat --style=numbers --color=always --line-range :300 {} || head -n 300 {}) 2>/dev/null'"
   BIND_F2='f2:toggle-preview'
