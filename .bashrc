@@ -65,6 +65,11 @@
 #   Alt+c           find and change directory         
 #   F2              while finding, toggle preview on right side
 #   Ctrl+a          while finding, select all matching files
+#   Ctrl+gf         find files listed in git status
+#   Ctrl+gb         find git branches
+#   Ctrl+gt         find git tags
+#   Ctrl+gh         find git commit hashes
+#   Ctrl+gr         find git remotes
 #   
 # Command Line/Readline
 #   Crtl+xe         edit current command in editor
@@ -204,20 +209,49 @@ fi
 
 # Setup fzf if present (https://github.com/junegunn/fzf)
 if [[ -f ~/.fzf.bash ]]; then
+  export FZF_DEFAULT_OPTS="--height 80% --min-height 40 -1 --reverse --inline-info --bind backward-eof:abort --cycle --scroll-off=3"
+  PREVIEW="--preview='[[ \$(file --mime {}) =~ binary ]] && echo {} is a binary file || (bat --style=numbers --color=always --line-range :300 {} || head -n 300 {}) 2>/dev/null'"
+  BIND_F2='f2:toggle-preview'
+  BIND_CTRL_A='ctrl-a:select-all'
+  export FZF_COMPLETION_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview'"
+  export FZF_CTRL_T_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all'"
+  export FZF_ALT_C_OPTS=""
   if command -v fd >/dev/null; then
     FD_OPTIONS="--follow --exclude .git --exclude node_modules"
-    PREVIEW="--preview='[[ \$(file --mime {}) =~ binary ]] && echo {} is a binary file || (bat --style=numbers --color=always --line-range :300 {} || head -n 300 {}) 2>/dev/null'"
-    BIND_F2='f2:toggle-preview'
-    BIND_CTRL_A='ctrl-a:select-all'
-    export FZF_DEFAULT_OPTS="--height 50% -1 --reverse --inline-info"
     export FZF_DEFAULT_COMMAND="fd --type f --type l --strip-cwd-prefix --hidden $FD_OPTIONS"
-    export FZF_COMPLETION_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all'"
     export FZF_CTRL_T_COMMAND="fd $FD_OPTIONS"
-    export FZF_CTRL_T_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all'"
     export FZF_ALT_C_COMMAND="fd --type d $FD_OPTIONS"
-    export FZF_ALT_C_OPTS="--header='Foo'"
   fi
   source ~/.fzf.bash
+  is_in_git_repo() { git rev-parse HEAD > /dev/null 2>&1; }
+  gf() { is_in_git_repo &&
+    git -c color.status=always status --short |
+    fzf --multi --ansi --nth 2..,.. --preview 'bat --diff --style=numbers,changes --color=always {2} || git diff {2}' --preview-window=hidden --bind=$BIND_F2,$BIND_CTRL_A --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview' |
+    awk '{print $2}'
+  }
+  gb() { is_in_git_repo &&
+    git branch -a --color=never | grep -v 'remotes/[^/]*/HEAD\s' | sed 's/^..//' | sed 's#^remotes/##' |
+    fzf $FZF_DEFAULT_OPTS --multi --preview 'git log -n 20 --stat=$FZF_PREVIEW_COLUMNS --color=always {}' --preview-window=wrap --bind=$BIND_F2,$BIND_CTRL_A --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview'
+  }
+  gt() { is_in_git_repo &&
+    git tag --sort -version:refname |
+    fzf $FZF_DEFAULT_OPTS --multi
+  }
+  gh() { is_in_git_repo &&
+    git log --date=short --format="%C(green)%C(bold)%cd %C(auto)%h%d %s (%an)" --graph --color=always |
+    fzf $FZF_DEFAULT_OPTS --ansi --no-sort --multi --preview "echo {} | grep -qo '[a-f0-9]\{7,\}' && git show --stat=\$FZF_PREVIEW_COLUMNS --color=always \$(echo {} | grep -o '[a-f0-9]\{7,\}')" --bind=$BIND_F2,$BIND_CTRL_A --header='Press F2 to toggle preview, Ctrl+A to select all' |
+    grep -o '[a-f0-9]\{7,\}'
+  }
+  gr() { is_in_git_repo &&
+    git remote -v | awk '{print $1 " " $2}' | uniq |
+    fzf $FZF_DEFAULT_OPTS | awk '{print $1}'
+  }
+  bind '"\er": redraw-current-line'
+  bind '"\C-g\C-f": "$(gf)\e\C-e\er"'
+  bind '"\C-g\C-b": "$(gb)\e\C-e\er"'
+  bind '"\C-g\C-t": "$(gt)\e\C-e\er"'
+  bind '"\C-g\C-h": "$(gh)\e\C-e\er"'
+  bind '"\C-g\C-r": "$(gr)\e\C-e\er"'
 fi
 
 # Setup modman alias with completion
