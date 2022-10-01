@@ -220,18 +220,21 @@ if [[ -f ~/.fzf.bash ]]; then
   BIND_F2='f2:toggle-preview'
   BIND_CTRL_A='ctrl-d:deselect-all,ctrl-t:toggle-all'
   export FZF_COMPLETION_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A'" # --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview'"
-  export FZF_CTRL_T_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all'"
-  export FZF_ALT_C_OPTS=""
+  export FZF_CTRL_T_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A'" # --header='Press F2 to toggle preview, Ctrl+A to select all'"
+  export FZF_ALT_C_OPTS="--no-preview"
   ## Use fd instead of find if present
   if command -v fd >/dev/null; then
     FD_OPTIONS="--follow --exclude .git --exclude node_modules"
     export FZF_DEFAULT_COMMAND="fd --type f --type l --strip-cwd-prefix --hidden $FD_OPTIONS"
     export FZF_CTRL_T_COMMAND="fd $FD_OPTIONS"
     export FZF_ALT_C_COMMAND="fd --type d $FD_OPTIONS"
+    _fzf_compgen_path() { fd --type f --type l --max-depth 5 --hidden $FD_OPTIONS . "$1"; }
+    _fzf_compgen_dir() { fd --type d --max-depth 5 --hidden $FD_OPTIONS . "$1"; }
   fi
 
   ## Default fzf completion
   source ~/.fzf.bash
+  complete -F _fzf_path_completion bat
 
   ## Git commands
   is_in_git_repo() { git rev-parse HEAD > /dev/null 2>&1; }
