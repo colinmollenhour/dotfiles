@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-dotfiles=".bashrc .gitattributes.global .gitconfig .gitignore.global .tmux.conf .vimrc .config/tmux/tmux-onedark-theme.tmux .config/starship.toml"
+dotfiles=".bashrc .gitattributes.global .gitconfig .gitignore.global .tmux.conf .vimrc .config/tmux/tmux-onedark-theme.tmux .config/starship.toml .config/docker-fzf.bash"
 cd $(dirname "${BASH_SOURCE[0]}")
 if [[ "$*" == '--help' ]]; then
   echo "Usage: install.sh [files-to-install ...]"

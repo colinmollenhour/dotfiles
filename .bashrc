@@ -58,8 +58,10 @@
 #   whatismyip           get your IP
 #
 # Fuzzy Finder (fzf)
+# -- Press F2 to toggle preview, Ctrl+T to toggle selection, Hold Shift to scroll preview
 #   kill **<TAB>    kill processes using fzf 
 #   path/**<TAB>    inline replace with selected path(s) (tab to select)
+#   docker <cmd> **<TAB>  autocomplete docker commands with fzf
 #   Ctrl+r          search history
 #   Ctrl+t          find and insert file paths from current directory
 #   Alt+c           find and change directory         
@@ -209,20 +211,26 @@ fi
 
 # Setup fzf if present (https://github.com/junegunn/fzf)
 if [[ -f ~/.fzf.bash ]]; then
+  ## FZF Options
   export FZF_DEFAULT_OPTS="--height 80% --min-height 40 -1 --reverse --inline-info --bind backward-eof:abort --cycle --scroll-off=3"
   PREVIEW="--preview='[[ \$(file --mime {}) =~ binary ]] && echo {} is a binary file || (bat --style=numbers --color=always --line-range :300 {} || head -n 300 {}) 2>/dev/null'"
   BIND_F2='f2:toggle-preview'
-  BIND_CTRL_A='ctrl-a:select-all'
-  export FZF_COMPLETION_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview'"
+  BIND_CTRL_A='ctrl-d:deselect-all,ctrl-t:toggle-all'
+  export FZF_COMPLETION_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A'" # --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview'"
   export FZF_CTRL_T_OPTS="--multi $PREVIEW --bind='$BIND_F2,$BIND_CTRL_A' --header='Press F2 to toggle preview, Ctrl+A to select all'"
   export FZF_ALT_C_OPTS=""
+  ## Use fd instead of find if present
   if command -v fd >/dev/null; then
     FD_OPTIONS="--follow --exclude .git --exclude node_modules"
     export FZF_DEFAULT_COMMAND="fd --type f --type l --strip-cwd-prefix --hidden $FD_OPTIONS"
     export FZF_CTRL_T_COMMAND="fd $FD_OPTIONS"
     export FZF_ALT_C_COMMAND="fd --type d $FD_OPTIONS"
   fi
+
+  ## Default fzf completion
   source ~/.fzf.bash
+
+  ## Git commands
   is_in_git_repo() { git rev-parse HEAD > /dev/null 2>&1; }
   gf() { is_in_git_repo &&
     git -c color.status=always status --short |
@@ -252,6 +260,8 @@ if [[ -f ~/.fzf.bash ]]; then
   bind '"\C-g\C-t": "$(gt)\e\C-e\er"'
   bind '"\C-g\C-h": "$(gh)\e\C-e\er"'
   bind '"\C-g\C-r": "$(gr)\e\C-e\er"'
+
+  ## Docker commands (declared later, must be included after the other docker completion script)
 fi
 
 # Setup modman alias with completion
@@ -771,6 +781,9 @@ _complete_alias () {
 if command -v docker >/dev/null; then
   if [[ -f /usr/share/bash-completion/completions/docker ]]; then
     . /usr/share/bash-completion/completions/docker
+    if [[ ~/.fzf.bash ]] && [[ -f $(dirname ${BASH_SOURCE[0]})/.config/docker-fzf.bash ]]; then
+      source $(dirname ${BASH_SOURCE[0]})/.config/docker-fzf.bash
+    fi
   fi
   alias d='docker'
   complete -F _docker d
