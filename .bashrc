@@ -26,8 +26,11 @@
 #   <(cmd)               treat output of command as file (can use multiple times)
 #
 # Wrappers
-#   vd                   run visidata via docker image unless visidata is present in path
 #   composer             run composer via docker unless composer is present in path
+#   lt                   run localtunnel via npx (requires pnpm or npm)
+#   share-file           run remote-share-cli via npx
+#   share-dir            run share-cli via npx
+#   vd                   run visidata via docker image unless visidata is present in path
 #
 # Scripts/Functions
 #   docker-rmi-dangling  remove 'dangling' docker images
@@ -102,6 +105,7 @@
 #   co                checkout
 #   br                branch
 #   lg                pretty graph log
+#   icdiff            side-by-side diff alternative
 #   staged            diff --cached
 #   unstage           reset HEAD
 #   head              log -n1
@@ -117,6 +121,7 @@
 #   install-fd           Install alternative to 'find' - https://github.com/sharkdp/fd
 #   install-fzf          Install command-line fuzzy finder - https://github.com/junegunn/fzf
 #   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
+#   install-icdiff       Install alternative to diff - https://www.jefftk.com/icdiff
 #   install-lsd          Install lsd (netx-gen ls command) - https://github.com/Peltoche/lsd
 #   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
 #   install-recommended  Install some recommended packages (Ubuntu)
@@ -304,14 +309,18 @@ if [ -f ~/.bash_aliases ]; then . ~/.bash_aliases; fi
 alias hdd-write-test='dd bs=1M count=512 if=/dev/zero of=__test conv=fdatasync; rm __test'
 alias nsps='netstat -plunt | sort'
 alias g='git'
+alias lt='npx localtunnel'
+alias share-file='npx remote-share-cli'
+alias share-dir='npx share-cli'
 
 ## install shortcuts
 alias install-bat='(set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)'
-alias install-docker="curl -sSL https://get.docker.com/ | sudo sh && curl -s https://api.github.com/repos/docker/compose/releases/latest   | grep browser_download_url   | grep docker-compose-\$(uname -s)-\$(uname -p) | cut -d \"\\\"\" -f 4 | head -n 1 | sudo wget -q -O /usr/local/bin/docker-compose -i -   && sudo chmod +x /usr/local/bin/docker-compose   && sudo curl -sSL https://raw.githubusercontent.com/docker/compose/master/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose"
+alias install-docker="curl -sSL https://get.docker.com/ | sudo sh"
 alias install-fd='(set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)'
 alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)'
 alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
-alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq lsd openssl pwgen whois xxd'
+alias install-icdiff='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/icdiff; curl -sSL -o $HOME/bin/git-icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/git-icdiff; chmod +x $HOME/bin/{icdiff,git-icdiff};)'
+alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq lsd openssl pwgen whois xxd zip'
 alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
 alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
