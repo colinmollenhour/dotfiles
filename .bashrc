@@ -243,34 +243,34 @@ if [[ -f ~/.fzf.bash ]]; then
 
   ## Git commands
   is_in_git_repo() { git rev-parse HEAD > /dev/null 2>&1; }
-  gf() { is_in_git_repo &&
+  _fzf_git_files() { is_in_git_repo &&
     git -c color.status=always status --short |
     fzf --multi --ansi --nth 2..,.. --preview 'bat --diff --style=numbers,changes --color=always {2} || git diff {2}' --preview-window=hidden --bind=$BIND_F2,$BIND_CTRL_A --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview' |
     awk '{print $2}'
   }
-  gb() { is_in_git_repo &&
+  _fzf_git_branches() { is_in_git_repo &&
     git branch -a --color=never | grep -v 'remotes/[^/]*/HEAD\s' | sed 's/^..//' | sed 's#^remotes/##' |
     fzf $FZF_DEFAULT_OPTS --multi --preview 'git log -n 20 --stat=$FZF_PREVIEW_COLUMNS --color=always {}' --preview-window=wrap --bind=$BIND_F2,$BIND_CTRL_A --header='Press F2 to toggle preview, Ctrl+A to select all, Hold Shift to scroll preview'
   }
-  gt() { is_in_git_repo &&
+  _fzf_git_tags() { is_in_git_repo &&
     git tag --sort -version:refname |
     fzf $FZF_DEFAULT_OPTS --multi
   }
-  gh() { is_in_git_repo &&
+  _fzf_git_hashes() { is_in_git_repo &&
     git log --date=short --format="%C(green)%C(bold)%cd %C(auto)%h%d %s (%an)" --graph --color=always |
     fzf $FZF_DEFAULT_OPTS --ansi --no-sort --multi --preview "echo {} | grep -qo '[a-f0-9]\{7,\}' && git show --stat=\$FZF_PREVIEW_COLUMNS --color=always \$(echo {} | grep -o '[a-f0-9]\{7,\}')" --bind=$BIND_F2,$BIND_CTRL_A --header='Press F2 to toggle preview, Ctrl+A to select all' |
     grep -o '[a-f0-9]\{7,\}'
   }
-  gr() { is_in_git_repo &&
+  _fzf_git_remotes() { is_in_git_repo &&
     git remote -v | awk '{print $1 " " $2}' | uniq |
     fzf $FZF_DEFAULT_OPTS | awk '{print $1}'
   }
   bind '"\er": redraw-current-line'
-  bind '"\C-g\C-f": "$(gf)\e\C-e\er"'
-  bind '"\C-g\C-b": "$(gb)\e\C-e\er"'
-  bind '"\C-g\C-t": "$(gt)\e\C-e\er"'
-  bind '"\C-g\C-h": "$(gh)\e\C-e\er"'
-  bind '"\C-g\C-r": "$(gr)\e\C-e\er"'
+  bind '"\C-g\C-f": "$(_fzf_git_files)\e\C-e\er"'
+  bind '"\C-g\C-b": "$(_fzf_git_branches)\e\C-e\er"'
+  bind '"\C-g\C-t": "$(_fzf_git_tags)\e\C-e\er"'
+  bind '"\C-g\C-h": "$(_fzf_git_hashes)\e\C-e\er"'
+  bind '"\C-g\C-r": "$(_fzf_git_remotes)\e\C-e\er"'
 
   ## Docker commands (declared later, must be included after the other docker completion script)
 fi
