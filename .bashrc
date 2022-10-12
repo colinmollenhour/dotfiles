@@ -944,7 +944,7 @@ function git-clean-local {
     else
       upstream=origin/master
     fi
-    git log --shortstat -n 1 $br
+    PAGER=cat git log --shortstat -n 1 $br
     echo
     read -p "Delete $br? (y/n/l) " i
     [ "$i" = "l" ] && { git log $br -n 30; read -p "Delete $br? (y/n) " i; }
