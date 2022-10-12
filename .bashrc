@@ -35,6 +35,7 @@
 # Scripts/Functions
 #   docker-rmi-dangling  remove 'dangling' docker images
 #   docker-rmv-dangling  remove 'dangling' docker volumes
+#   docker-volume-copy   create a copy of a docker volume
 #   dush                 like du -sh but sorted by size
 #   findcrlf             find files containing CRLF
 #   git-clean-merged     clean merged branches from remote
@@ -812,6 +813,7 @@ if command -v docker >/dev/null; then
   alias docker-rmi-dangling='docker rmi $(docker images -f "dangling=true" -q)'
   alias docker-rmv-dangling='docker volume rm $(docker volume ls -qf dangling=true)'
   alias dstats='docker stats $(docker ps --format={{.Names}})'
+  docker-volume-copy() { docker volume create --name $2 && docker run --rm -it -v $1:/from -v $2:/to alpine ash -c "cd /from ; cp -av . /to"; }
 fi
 if command -v kubectl >/dev/null; then
   alias kc='kubectl'
