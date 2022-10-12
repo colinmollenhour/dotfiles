@@ -19,12 +19,11 @@
 	staged = diff --cached
 	unstage = reset HEAD
 	head = log -n1
-	upstream-branch-name = !"git rev-parse --abbrev-ref --symbolic-full-name @{u}"
-        preview-pull = !"git fetch && git diff ...`git upstream-branch-name`"
-	du = !"git diff `git upstream-branch-name`..."
-	files = "!f() { git diff --name-status \"$1^\" \"$1\"; }; f"
-	backport-commit = !"git checkout \"$1\" && git pull --ff-only && git cherry-pick ${2:-master} && git push -o ci.skip && git checkout master && echo \"Backport successful.\""
-
+	upstream-branch-name = "!git rev-parse --abbrev-ref --symbolic-full-name @{u}"
+	preview-pull = "!git fetch && git diff ...`git upstream-branch-name`"
+	du = "!git diff `git upstream-branch-name`..."
+	files = "!f() { if [ -z \"$1\" ]; then echo 'Usage: git files <commit>'; exit 1; fi; git diff --name-status \"$1^\" \"$1\"; }; f"
+	backport-commit = "!f() { set -ex; head=$(git rev-parse --abbrev-ref HEAD); stashed=0; git diff --quiet || { stashed=1; git stash push -a -m 'Backporting in progress'; }; git checkout \"$1\"; git pull --ff-only; git cherry-pick $head; git push -o ci.skip; git checkout $head; if [ $stashed -eq 1 ]; then git stash pop; fi; echo \"Backport successful.\"; }; f"
 [color]
 	ui = auto
 
