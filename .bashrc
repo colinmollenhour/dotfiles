@@ -27,6 +27,8 @@
 #
 # Wrappers
 #   composer             run composer via docker unless composer is present in path
+#   ctop                 run ctop via docker - https://ctop.sh
+#   dry                  run dry via docker - https://moncho.github.io/dry/
 #   lt                   run localtunnel via npx (requires pnpm or npm)
 #   share-file           run remote-share-cli via npx
 #   share-dir            run share-cli via npx
@@ -290,6 +292,16 @@ fi
 # Run visidata via docker
 if ! command -v vd >/dev/null; then
   alias vd='docker run --rm -it -u $(id -u):$(id -g) -v $(pwd):/work jauderho/visidata:latest'
+fi
+
+# Run ctop via docker
+if ! command -v ctop >/dev/null; then
+  alias ctop='docker run --rm -ti -v /var/run/docker.sock:/var/run/docker.sock --name ctop quay.io/vektorlab/ctop:latest'
+fi
+
+# Run dry via docker
+if ! command -v dry >/dev/null; then
+  alias dry='docker run --rm -ti -v /var/run/docker.sock:/var/run/docker.sock --name dry moncho/dry'
 fi
 
 # append to the history file, don't overwrite it
