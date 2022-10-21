@@ -2,7 +2,7 @@
 # ##################################################################
 # Colin's bashrc file ($INSTALL_REPO_HEAD)
 # Installed on $INSTALL_DATE
-# https://github.com/colinmollenhour/dotfiles
+# git clone https://github.com/colinmollenhour/dotfiles.git /opt/dotfiles && /opt/dotfiles/install.sh
 # ##################################################################
 #
 # Shortcut Aliases and Bash Tricks
