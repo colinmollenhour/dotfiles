@@ -76,5 +76,7 @@ _fzf_complete_docker() {
   _fzf_handle_dynamic_completion docker "$@"
 }
 
-export _fzf_orig_completion_docker=_docker
-complete -F _fzf_complete_docker -o default -o bashdefault docker
+if command -v _fzf_docker >/dev/null; then
+  export _fzf_orig_completion_docker=_docker
+  complete -F _fzf_complete_docker -o default -o bashdefault docker
+fi
