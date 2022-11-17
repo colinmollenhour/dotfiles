@@ -125,6 +125,7 @@
 #   install-fd           Install alternative to 'find' - https://github.com/sharkdp/fd
 #   install-fzf          Install command-line fuzzy finder - https://github.com/junegunn/fzf
 #   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
+#   install-hey          Install ab alternative - https://github.com/rakyll/hey
 #   install-icdiff       Install alternative to diff - https://www.jefftk.com/icdiff
 #   install-lsd          Install lsd (netx-gen ls command) - https://github.com/Peltoche/lsd
 #   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
@@ -334,6 +335,7 @@ alias install-docker="curl -sSL https://get.docker.com/ | sudo sh"
 alias install-fd='(set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)'
 alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)'
 alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
+alias install-hey='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/hey https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64; chmod +x $HOME/bin/hey;)'
 alias install-icdiff='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/icdiff; curl -sSL -o $HOME/bin/git-icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/git-icdiff; chmod +x $HOME/bin/{icdiff,git-icdiff};)'
 alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq lsd openssl pwgen whois xxd zip'
 alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
