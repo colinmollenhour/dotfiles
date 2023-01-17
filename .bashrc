@@ -962,8 +962,9 @@ function git-clean-local {
     fi
     PAGER=cat git log --shortstat -n 1 $br
     echo
-    read -p "Delete $br? (y/n/l) " i
-    [ "$i" = "l" ] && { git log $br -n 30; read -p "Delete $br? (y/n) " i; }
+    read -p "Delete $br? (y[es]/n[o]/l[og]/d[iff]) " i
+    [ "$i" = "d" ] && { git diff $(git merge-base --fork-point master $br)..$br; read -p "Delete $br? (y/n) " i; }
+    [ "$i" = "l" ] && { git log $(git merge-base --fork-point master $br)..$br -n 30; read -p "Delete $br? (y/n) " i; }
     [ "$i" = "y" ] && git branch -D $br
   done
 }
