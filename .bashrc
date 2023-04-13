@@ -850,6 +850,11 @@ if command -v kubectl >/dev/null; then
   complete -F _complete_alias kc
 fi
 
+# Setup aws cli completion
+if command -v aws >&/dev/null && test -f /usr/local/bin/aws_completer; then
+  complete -C '/usr/local/bin/aws_completer' aws
+fi
+
 # check the window size after each command and, if necessary, update the values of LINES and COLUMNS.
 shopt -s checkwinsize
 
