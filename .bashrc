@@ -1003,6 +1003,7 @@ PNPM_HOME="$HOME/.local/share/pnpm"
 if [[ ! "$PATH" == *$PNPM_HOME* ]] && [[ -d $PNPM_HOME ]]; then
   export PNPM_HOME
   PATH="${PATH:+${PATH}:}$PNPM_HOME"
+  PATH="${PATH/:\/mnt\/c\/Users\/*\/AppData\/Local\/pnpm//}" # Strip Windows pnpm from path
 fi
 
 # strip windows paths (put the following two lines in ~/.profile)
