@@ -133,6 +133,7 @@
 #   install-recommended  Install some recommended packages (Ubuntu)
 #   install-rvm          Install Ruby Version Manager - https://rvm.io
 #   install-starship     Install Starship prompt - https://starship.rs/
+#   install-teleport     Install Teleport binaries - https://goteleport.com/
 #
 # Special files
 #   ~/.bashrc.before     add your own .bashrc customizations without modifying this file
@@ -342,6 +343,7 @@ alias install-recommended='sudo apt install bash-completion vim git most curl wg
 alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
 alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
+alias install-teleport='curl https://goteleport.com/static/install.sh | bash -s 13.2.3'
 alias install-lsd='(set -e; curl -sSL -o lsd.deb https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb; sudo dpkg -i lsd.deb; rm lsd.deb)'
 function install-phpstorm() {
   (set -e
