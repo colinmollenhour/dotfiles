@@ -11,6 +11,7 @@
 #   d                    docker
 #   de                   docker exec
 #   dip                  docker inspect ... (shows IP of container)
+#   dps                  docker ps (custom format)
 #   dc                   docker-compose
 #   dm                   docker-machine
 #   dstats               docker stats
@@ -33,6 +34,7 @@
 #   vd                   run visidata via docker image unless visidata is present in path
 #
 # Scripts/Functions
+#   bench                run a quick performance benchmark
 #   docker-rmi-dangling  remove 'dangling' docker images
 #   docker-rmv-dangling  remove 'dangling' docker volumes
 #   dush                 like du -sh but sorted by size
@@ -312,6 +314,7 @@ alias g='git'
 alias lt='npx localtunnel'
 alias share-file='npx remote-share-cli'
 alias share-dir='npx share-cli'
+alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgutz/vpsbench/master/vpsbench)'
 
 ## install shortcuts
 alias install-bat='(set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)'
@@ -804,11 +807,12 @@ if command -v docker >/dev/null; then
   complete -F _docker d
   alias dm='docker-machine'
   complete -F _docker_machine dm
-  alias dc='docker-compose'
+  alias dc='docker compose'
   complete -F _docker_compose dc
   alias dip="docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"
   alias de='docker exec'
   complete -F _complete_alias dip de
+  alias dps='docker ps --format "table {{.Names}},{{.Status}},{{.Image}},{{.Command}}" | column -t -s ","'
   alias docker-rmi-dangling='docker rmi $(docker images -f "dangling=true" -q)'
   alias docker-rmv-dangling='docker volume rm $(docker volume ls -qf dangling=true)'
   alias dstats='docker stats $(docker ps --format={{.Names}})'
