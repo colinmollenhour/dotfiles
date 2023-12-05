@@ -11,6 +11,7 @@
 #   d                    docker
 #   de                   docker exec
 #   dip                  docker inspect ... (shows IP of container)
+#   dps                  docker ps (custom format)
 #   dc                   docker-compose
 #   dm                   docker-machine
 #   dstats               docker stats
@@ -35,6 +36,7 @@
 #   vd                   run visidata via docker image unless visidata is present in path
 #
 # Scripts/Functions
+#   bench                run a quick performance benchmark
 #   docker-rmi-dangling  remove 'dangling' docker images
 #   docker-rmv-dangling  remove 'dangling' docker volumes
 #   docker-volume-copy   create a copy of a docker volume
@@ -329,6 +331,7 @@ alias g='git'
 alias lt='npx localtunnel'
 alias share-file='npx remote-share-cli'
 alias share-dir='npx share-cli'
+alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgutz/vpsbench/master/vpsbench)'
 
 ## install shortcuts
 alias install-bat='(set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)'
@@ -339,7 +342,7 @@ alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .f
 alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
 alias install-hey='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/hey https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64; chmod +x $HOME/bin/hey;)'
 alias install-icdiff='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/icdiff; curl -sSL -o $HOME/bin/git-icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/git-icdiff; chmod +x $HOME/bin/{icdiff,git-icdiff};)'
-alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq lsd openssl pwgen whois xxd zip'
+alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq openssl pwgen whois xxd zip direnv'
 alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
 alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
@@ -836,11 +839,12 @@ if command -v docker >/dev/null; then
   complete -F _docker d
   alias dm='docker-machine'
   complete -F _docker_machine dm
-  alias dc='docker-compose'
+  alias dc='docker compose'
   complete -F _docker_compose dc
   alias dip="docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"
   alias de='docker exec'
   complete -F _complete_alias dip de
+  alias dps='docker ps --format "table {{.Names}},{{.Status}},{{.Image}},{{.Command}}" | column -t -s ","'
   alias docker-rmi-dangling='docker rmi $(docker images -f "dangling=true" -q)'
   alias docker-rmv-dangling='docker volume rm $(docker volume ls -qf dangling=true)'
   alias dstats='docker stats $(docker ps --format={{.Names}})'
