@@ -337,7 +337,7 @@ alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgut
 ## install shortcuts
 alias install-bat='(set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)'
 alias install-csvtk='curl -sSL -o - https://github.com/shenwei356/csvtk/releases/download/v0.25.0/csvtk_linux_amd64.tar.gz | sudo tar -xz --directory=/usr/local/bin'
-alias install-diff-so-fancy='sudo add-apt-repository -y ppa:aos1/diff-so-fancy && sudo apt update && sudo apt install diff-so-fancy'
+alias install-diff-so-fancy='sudo add-apt-repository -y ppa:aos1/diff-so-fancy && sudo apt update && sudo apt install diff-so-fancy && git config --global core.pager "diff-so-fancy | less --tabs=4 -RF" && git config --global interactive.diffFilter "diff-so-fancy --patch"'
 alias install-docker="curl -sSL https://get.docker.com/ | sudo sh"
 alias install-fd='(set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)'
 alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)'
