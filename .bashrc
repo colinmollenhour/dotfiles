@@ -167,7 +167,9 @@ if [[ -z $SSH_AUTH_SOCK ]] && [[ -f $npiperelay ]] && [[ -f ~/.ssh/.auto-agent ]
     echo "Starting new Windows OpenSSH Agent Service socket"
   elif [[ -S $SSH_AUTH_SOCK ]]; then
     echo "Using existing Windows OpenSSH Agent Service socket"
-  else 
+  fi
+  if ! ssh-add -l >/dev/null 2>&1; then
+    echo "Failed to connect to Windows OpenSSH Agent Service socket"
     unset SSH_AUTH_SOCK
   fi
 fi
@@ -213,6 +215,11 @@ fi
 # set PATH so it includes user's private bin if it exists
 if [[ -d "$HOME/bin" ]] && [[ ! $PATH == *$HOME/bin* ]]; then
   PATH="$HOME/bin:$PATH"
+fi
+
+# Add Pulumi if it exists
+if [[ -d "$HOME/.pulumi/bin" ]] && [[ ! $PATH == *$HOME/.pulumi/bin* ]]; then
+  PATH="$PATH:$HOME/.pulumi/bin"
 fi
 
 export FIGNORE=.svn:.bzr:.git
