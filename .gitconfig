@@ -38,6 +38,7 @@
 	default = tracking
 [core]
 	excludesfile = ~/.gitignore.global
+	pager = less -FX
 #        attributesFile = ~/.gitattributes.global
 [diff]
 	tool = meld
@@ -63,3 +64,5 @@
 	old = red bold
 	new = green bold
 	whitespace = red reverse
+[pager]
+	diff = less -FX
