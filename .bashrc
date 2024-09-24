@@ -126,6 +126,7 @@
 #   install-diff-so-fancy Install diff-so-fancy - https://github.com/so-fancy/diff-so-fancy
 #   install-docker       Install Docker using https://get.docker.com/
 #   install-fd           Install alternative to 'find' - https://github.com/sharkdp/fd
+#   install-fly          Install flyctl
 #   install-fzf          Install command-line fuzzy finder - https://github.com/junegunn/fzf
 #   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
 #   install-hey          Install ab alternative - https://github.com/rakyll/hey
@@ -134,7 +135,6 @@
 #   install-phpstorm     Install phpstorm - Must specify version - https://youtrack.jetbrains.com/articles/WI-A-53326365/Release-Notes
 #   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
 #   install-recommended  Install some recommended packages (Ubuntu)
-#   install-rvm          Install Ruby Version Manager - https://rvm.io
 #   install-starship     Install Starship prompt - https://starship.rs/
 #   install-teleport     Install Teleport binaries - https://goteleport.com/
 #
@@ -202,15 +202,6 @@ fi
 
 # Stop here if not a terminal
 [[ $- == *c* ]] && return
-
-# Automatically source 'rvm' if it is installed
-if ! command -v rvm >/dev/null; then
-  if [[ -f ~/.rvm/scripts/rvm ]]; then
-    source ~/.rvm/scripts/rvm
-  elif [[ -f /usr/local/rvm/scripts/rvm ]]; then
-    source /usr/local/rvm/scripts/rvm
-  fi
-fi
 
 # set PATH so it includes user's private bin if it exists
 if [[ -d "$HOME/bin" ]] && [[ ! $PATH == *$HOME/bin* ]]; then
@@ -347,12 +338,12 @@ alias install-csvtk='curl -sSL -o - https://github.com/shenwei356/csvtk/releases
 alias install-diff-so-fancy='sudo add-apt-repository -y ppa:aos1/diff-so-fancy && sudo apt update && sudo apt install diff-so-fancy && git config --global core.pager "diff-so-fancy | less --tabs=4 -RF" && git config --global interactive.diffFilter "diff-so-fancy --patch"'
 alias install-docker="curl -sSL https://get.docker.com/ | sudo sh"
 alias install-fd='(set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)'
+alias install-fly='curl -L https://fly.io/install.sh | sh'
 alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)'
 alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
 alias install-hey='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/hey https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64; chmod +x $HOME/bin/hey;)'
 alias install-icdiff='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/icdiff; curl -sSL -o $HOME/bin/git-icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/git-icdiff; chmod +x $HOME/bin/{icdiff,git-icdiff};)'
 alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq openssl pwgen whois xxd zip direnv ugrep'
-alias install-rvm='gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 && \curl -sSL https://get.rvm.io | bash -s stable'
 alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
 alias install-teleport='curl https://goteleport.com/static/install.sh | bash -s 13.2.3'
@@ -859,10 +850,18 @@ if command -v docker >/dev/null; then
   alias dstats='docker stats $(docker ps --format={{.Names}})'
   docker-volume-copy() { docker volume create --name $2 && docker run --rm -it -v $1:/from -v $2:/to alpine ash -c "cd /from ; cp -av . /to"; }
 fi
+
+# Setup kubectl completion
 if command -v kubectl >/dev/null; then
   alias kc='kubectl'
   source <(kubectl completion bash)
   complete -F _complete_alias kc
+fi
+
+# Setup fly completion
+if command -v flyctl >/dev/null; then
+  source <(flyctl completion bash)
+  alias fly=flyctl
 fi
 
 # Setup aws cli completion
