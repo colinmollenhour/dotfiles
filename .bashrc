@@ -137,6 +137,7 @@
 #   install-recommended  Install some recommended packages (Ubuntu)
 #   install-starship     Install Starship prompt - https://starship.rs/
 #   install-teleport     Install Teleport binaries - https://goteleport.com/
+#   upgrade-teleport     Upgrade Teleport to the latest version for ShipStream
 #
 # Special files
 #   ~/.bashrc.before     add your own .bashrc customizations without modifying this file
@@ -346,7 +347,7 @@ alias install-icdiff='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff
 alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq openssl pwgen whois xxd zip direnv ugrep'
 alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
-alias install-teleport='curl https://goteleport.com/static/install.sh | bash -s 13.2.3'
+alias install-teleport='(set -e; version=$(curl https://tele.ops.shipstream.io/webapi/automaticupgrades/channel/stable/cloud/version); curl https://cdn.teleport.dev/install-v16.4.0.sh | bash -s ${version:1} oss)'
 alias install-lsd='(set -e; curl -sSL -o lsd.deb https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb; sudo dpkg -i lsd.deb; rm lsd.deb)'
 function install-phpstorm() {
   (set -e
