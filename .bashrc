@@ -214,6 +214,12 @@ if [[ -d "$HOME/.pulumi/bin" ]] && [[ ! $PATH == *$HOME/.pulumi/bin* ]]; then
   PATH="$PATH:$HOME/.pulumi/bin"
 fi
 
+# Add node_modules/.bin so that devDependencies can be run easily
+# Add it at the end so that it does not have potential to overrwite system-installed binaries
+if [[ ! $PATH == *./node_modules/.bin* ]]; then
+  PATH="$PATH:./node_modules/.bin"
+fi
+
 export FIGNORE=.svn:.bzr:.git
 export HISTIGNORE="&:l[sl]:[bf]g:exit:history:git status"
 
