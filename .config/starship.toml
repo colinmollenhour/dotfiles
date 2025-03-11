@@ -43,6 +43,9 @@ symbol = " "
 style = "bold yellow"
 command = "awk '/\"current_server\"/{master=$2} /\"name\"/{active = $2 == master} /\"grid\"/ && active{grid=$2} END{gsub(/[\",]/,\"\",master);gsub(/[\",]/,\"\",grid);printf(\"%s/%s\", master, grid);}' < ~/.kontena_client.json"
 
+[gcloud]
+disabled = true
+
 [bun]
 disabled = true
 format = "via [$symbol]($style)"
