@@ -201,9 +201,6 @@ if [[ -z $SSH_AUTH_SOCK ]] && [[ -f ~/.ssh/.auto-agent ]]; then
   fi
 fi
 
-# Stop here if not a terminal
-[[ $- == *c* ]] && return
-
 # set PATH so it includes user's private bin if it exists
 if [[ -d "$HOME/bin" ]] && [[ ! $PATH == *$HOME/bin* ]]; then
   PATH="$HOME/bin:$PATH"
@@ -214,11 +211,31 @@ if [[ -d "$HOME/.pulumi/bin" ]] && [[ ! $PATH == *$HOME/.pulumi/bin* ]]; then
   PATH="$PATH:$HOME/.pulumi/bin"
 fi
 
+# Add node installed via pnpm
+PNPM_HOME="$HOME/.local/share/pnpm"
+if [[ ! "$PATH" == *$PNPM_HOME* ]] && [[ -d $PNPM_HOME ]]; then
+  export PNPM_HOME
+  PATH="${PATH:+${PATH}:}$PNPM_HOME"
+  PATH="${PATH/:\/mnt\/c\/Users\/*\/AppData\/Local\/pnpm//}" # Strip Windows pnpm from path
+fi
+
 # Add node_modules/.bin so that devDependencies can be run easily
 # Add it at the end so that it does not have potential to overrwite system-installed binaries
 if [[ ! $PATH == *./node_modules/.bin* ]]; then
   PATH="$PATH:./node_modules/.bin"
 fi
+
+# strip windows paths (put the following two lines in ~/.profile)
+#PATH=$(echo $PATH | tr ':' '\n' | grep -v '/mnt/c' | tr '\n' ':')
+#export PATH="${PATH%:}"
+
+export PATH
+
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# Stop here if not a terminal
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+[[ $- == *c* ]] && return
 
 export FIGNORE=.svn:.bzr:.git
 export HISTIGNORE="&:l[sl]:[bf]g:exit:history:git status"
@@ -1020,15 +1037,3 @@ function __kontena_ps1 {
   [[ -f ~/.kontena_client.json ]] && [[ -f ./.kontena-ps1 ]] && awk '/"current_server"/{master=$2} /"name"/{active = $2 == master} /"grid"/ && active{grid=$2} END{gsub(/[",]/,"",master);gsub(/[",]/,"",grid);printf("%s/%s", master, grid);}' < ~/.kontena_client.json
 }
 
-PNPM_HOME="$HOME/.local/share/pnpm"
-if [[ ! "$PATH" == *$PNPM_HOME* ]] && [[ -d $PNPM_HOME ]]; then
-  export PNPM_HOME
-  PATH="${PATH:+${PATH}:}$PNPM_HOME"
-  PATH="${PATH/:\/mnt\/c\/Users\/*\/AppData\/Local\/pnpm//}" # Strip Windows pnpm from path
-fi
-
-# strip windows paths (put the following two lines in ~/.profile)
-#PATH=$(echo $PATH | tr ':' '\n' | grep -v '/mnt/c' | tr '\n' ':')
-#export PATH="${PATH%:}"
-
-export PATH
