@@ -118,7 +118,7 @@
 #   preview-pull      preview the changes that would occur by a pull
 #   du                diff the current head with the upstream branch
 #   files             list the files changed by a commit-ish
-#   backport-commit   checkout a branch ($1), fast-forward, cherry-pick commit from master (or $2), push and checkout master
+#   backport-commit   checkout a branch ($1), fast-forward, cherry-pick commit from HEAD (or $2), push and go back to HEAD
 #
 # Quick Installers
 #   install-bat          Install "cat with wings" - https://github.com/sharkdp/bat
