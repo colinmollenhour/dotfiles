@@ -29,6 +29,7 @@
 # Wrappers
 #   composer             run composer via docker unless composer is present in path
 #   ctop                 run ctop via docker - https://ctop.sh
+#   dive                 run dive via docker - https://github.com/wagoodman/dive
 #   dry                  run dry via docker - https://moncho.github.io/dry/
 #   lt                   run localtunnel via npx (requires pnpm or npm)
 #   share-file           run remote-share-cli via npx
@@ -308,7 +309,7 @@ if [[ -f ~/.fzf.bash ]]; then
 fi
 
 # Setup modman alias with completion
-if command -v _modman >/dev/null; then
+if command -v modman >/dev/null; then
   alias mm='modman'
   complete -F _modman mm
 fi
@@ -331,6 +332,10 @@ fi
 # Run dry via docker
 if ! command -v dry >/dev/null; then
   alias dry='docker run --rm -ti -v /var/run/docker.sock:/var/run/docker.sock --name dry moncho/dry'
+fi
+
+if ! command -v dive >/dev/null; then
+  alias dive='docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock --name div docker.io/wagoodman/dive:latest'
 fi
 
 # append to the history file, don't overwrite it
