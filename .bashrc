@@ -316,7 +316,7 @@ fi
 
 # Run composer via docker
 if ! command -v composer >/dev/null; then
-  alias composer='docker run --rm -it -u $(id -u):$(id -g) -e COMPOSER_IGNORE_PLATFORM_REQS=1 -v ${COMPOSER_HOME:-$HOME/.composer}:/tmp -v $(pwd):/app composer --no-scripts'
+  alias composer='docker run --rm -it -u $(id -u):$(id -g) -e COMPOSER_IGNORE_PLATFORM_REQ=ext-* -v ${COMPOSER_HOME:-$HOME/.composer}:/tmp -v $(pwd):/app composer --no-scripts'
 fi
 
 # Run visidata via docker
