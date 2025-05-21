@@ -133,7 +133,6 @@
 #   install-hey          Install ab alternative - https://github.com/rakyll/hey
 #   install-icdiff       Install alternative to diff - https://www.jefftk.com/icdiff
 #   install-lsd          Install lsd (netx-gen ls command) - https://github.com/Peltoche/lsd
-#   install-phpstorm     Install phpstorm - Must specify version - https://youtrack.jetbrains.com/articles/WI-A-53326365/Release-Notes
 #   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
 #   install-recommended  Install some recommended packages (Ubuntu)
 #   install-starship     Install Starship prompt - https://starship.rs/
@@ -377,18 +376,6 @@ alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
 alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
 alias install-teleport='(set -e; version=$(curl https://tele.ops.shipstream.io/webapi/automaticupgrades/channel/stable/cloud/version); curl https://cdn.teleport.dev/install-v16.4.0.sh | bash -s ${version:1} oss)'
 alias install-lsd='(set -e; curl -sSL -o lsd.deb https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb; sudo dpkg -i lsd.deb; rm lsd.deb)'
-function install-phpstorm() {
-  (set -e
-  VERSION="${1:?"Usage: install-phpstorm <version>"}"
-  mkdir -p ~/.jetbrains ~/bin
-  echo "Installing PhpStorm $VERSION to ~/.jetbrains"
-  curl -sSL -o - "https://download.jetbrains.com/webide/PhpStorm-$VERSION.tar.gz" | tar -xz --directory=$HOME/.jetbrains
-  DIR=$(ls -t ~/.jetbrains | head -n 1)
-  rm -f ~/bin/phpstorm.sh
-  ln -s -t ~/bin ~/.jetbrains/$DIR/bin/phpstorm.sh
-  echo "Added symlink at ~/bin/phpstorm.sh to ~/.jetbrains/$DIR/bin/phpstorm.sh"
-  )
-}
 
 ######################################
 # Functions for non-interactive shells
@@ -885,6 +872,8 @@ if command -v kubectl >/dev/null; then
   alias kc='kubectl'
   source <(kubectl completion bash)
   complete -F _complete_alias kc
+  alias kbash="kubectl run busybox -i --tty --image=busybox --restart=Never --rm -- ash"
+  alias kexport="export KUBECONFIG=\`pwd\`/kubeconfig.yaml"
 fi
 
 # Setup fly completion
