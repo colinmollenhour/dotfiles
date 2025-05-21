@@ -36,13 +36,6 @@ style = "bright-black"
 #command = "echo 🚀"
 #when = '[ "$STARSHIP_SHELL" == "bash" ]'
 
-[custom.kontena]
-description = "Show the current Kontena Classic master/grid"
-when = "test -f ~/.kontena_client.json && test -f .kontena-ps1"
-symbol = " "
-style = "bold yellow"
-command = "awk '/\"current_server\"/{master=$2} /\"name\"/{active = $2 == master} /\"grid\"/ && active{grid=$2} END{gsub(/[\",]/,\"\",master);gsub(/[\",]/,\"\",grid);printf(\"%s/%s\", master, grid);}' < ~/.kontena_client.json"
-
 [gcloud]
 disabled = true
 
@@ -113,6 +106,10 @@ format = 'via [$symbol]($style)'
 disabled = true
 format = 'via [$symbol]($style)'
 
+[kubernetes]
+disabled = false
+detect_files = ['k8s']
+
 [lua]
 disabled = true
 format = 'via [$symbol]($style)'
@@ -138,7 +135,7 @@ disabled = true
 format = 'via [$symbol]($style)'
 
 [pulumi]
-disabled = true
+disabled = false
 format = 'via [$symbol$stack]($style)'
 
 [purescript]

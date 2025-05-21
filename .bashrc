@@ -874,6 +874,9 @@ if command -v kubectl >/dev/null; then
   complete -F _complete_alias kc
   alias kbash="kubectl run busybox -i --tty --image=busybox --restart=Never --rm -- ash"
   alias kexport="export KUBECONFIG=\`pwd\`/kubeconfig.yaml"
+  if test -n "$KREW_ROOT" -o -d $HOME/.krew; then
+    export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+  fi
 fi
 
 # Setup fly completion
