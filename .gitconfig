@@ -24,7 +24,7 @@
 	preview-pull = "!git fetch && git diff ...`git upstream-branch-name`"
 	du = "!git diff `git upstream-branch-name`..."
 	files = "!f() { if [ -z \"$1\" ]; then echo 'Usage: git files <commit>'; exit 1; fi; git diff --name-status \"$1^\" \"$1\"; }; f"
-	backport-commit = "!f() { set -ex; commit_ref=${2:-HEAD}; commit=$(git rev-parse $commit_ref); head=$(git rev-parse --abbrev-ref HEAD); stashed=0; git diff --quiet || { stashed=1; git stash push -a -m 'Backporting in progress'; }; git checkout \"$1\"; git pull --ff-only; git cherry-pick $commit; git push -o ci.skip; git checkout $head; if [ $stashed -eq 1 ]; then git stash pop; fi; echo \"Backport successful.\"; }; f"
+	backport-commit = "!f() { set -ex; commit_ref=${2:-HEAD}; commit=$(git rev-parse $commit_ref); head=$(git rev-parse --abbrev-ref HEAD); stashed=0; git diff --quiet || { stashed=1; git stash push -u -m 'Backporting in progress'; }; git checkout \"$1\"; git pull --ff-only; git cherry-pick $commit; git push -o ci.skip; git checkout $head; if [ $stashed -eq 1 ]; then git stash pop; fi; echo \"Backport successful.\"; }; f"
 [color]
 	ui = auto
 
