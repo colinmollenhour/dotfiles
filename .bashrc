@@ -122,22 +122,9 @@
 #   backport-commit   checkout a branch ($1), fast-forward, cherry-pick commit from HEAD (or $2), push and go back to HEAD
 #
 # Quick Installers
-#   install-bat          Install "cat with wings" - https://github.com/sharkdp/bat
-#   install-csvtk        Install csvtk - https://bioinf.shenwei.me/csvtk/
-#   install-diff-so-fancy Install diff-so-fancy - https://github.com/so-fancy/diff-so-fancy
-#   install-docker       Install Docker using https://get.docker.com/
-#   install-fd           Install alternative to 'find' - https://github.com/sharkdp/fd
-#   install-fly          Install flyctl
-#   install-fzf          Install command-line fuzzy finder - https://github.com/junegunn/fzf
-#   install-gvm          Install Go Version Manger - https://github.com/moovweb/gvm
-#   install-hey          Install ab alternative - https://github.com/rakyll/hey
-#   install-icdiff       Install alternative to diff - https://www.jefftk.com/icdiff
-#   install-lsd          Install lsd (netx-gen ls command) - https://github.com/Peltoche/lsd
-#   install-pnpm         Install pnpm - https://pnpm.io (Install Node.js with `pnpm env use --global lts`)
 #   install-recommended  Install some recommended packages (Ubuntu)
-#   install-starship     Install Starship prompt - https://starship.rs/
-#   install-teleport     Install Teleport binaries - https://goteleport.com/
-#   upgrade-teleport     Upgrade Teleport to the latest version for ShipStream
+#   update-packages      Update user-installed packages from various sources
+#   install-packages     Install packages using the unified package manager
 #
 # Special files
 #   ~/.bashrc.before     add your own .bashrc customizations without modifying this file
@@ -361,21 +348,9 @@ alias share-dir='npx share-cli'
 alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgutz/vpsbench/master/vpsbench)'
 
 ## install shortcuts
-alias install-bat='(set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)'
-alias install-csvtk='curl -sSL -o - https://github.com/shenwei356/csvtk/releases/download/v0.25.0/csvtk_linux_amd64.tar.gz | sudo tar -xz --directory=/usr/local/bin'
-alias install-diff-so-fancy='sudo add-apt-repository -y ppa:aos1/diff-so-fancy && sudo apt update && sudo apt install diff-so-fancy && git config --global core.pager "diff-so-fancy | less --tabs=4 -RF" && git config --global interactive.diffFilter "diff-so-fancy --patch"'
-alias install-docker="curl -sSL https://get.docker.com/ | sudo sh"
-alias install-fd='(set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)'
-alias install-fly='curl -L https://fly.io/install.sh | sh'
-alias install-fzf='(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)'
-alias install-gvm='bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)'
-alias install-hey='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/hey https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64; chmod +x $HOME/bin/hey;)'
-alias install-icdiff='(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/icdiff; curl -sSL -o $HOME/bin/git-icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/git-icdiff; chmod +x $HOME/bin/{icdiff,git-icdiff};)'
 alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq openssl pwgen whois xxd zip direnv ugrep'
-alias install-pnpm='curl -fsSL https://get.pnpm.io/install.sh | sh -'
-alias install-starship='curl -sS https://starship.rs/install.sh | sh && echo "Start a new session to use Starship. You may need to install a nerd font (nerdfonts.com)"'
-alias install-teleport='(set -e; version=$(curl https://tele.ops.shipstream.io/webapi/automaticupgrades/channel/stable/cloud/version); curl https://cdn.teleport.dev/install-v16.4.0.sh | bash -s ${version:1} oss)'
-alias install-lsd='(set -e; curl -sSL -o lsd.deb https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb; sudo dpkg -i lsd.deb; rm lsd.deb)'
+alias update-packages='/opt/dotfiles/update-packages.py'
+alias install-packages='/opt/dotfiles/update-packages.py --install'
 
 ######################################
 # Functions for non-interactive shells
