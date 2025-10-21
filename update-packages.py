@@ -29,8 +29,8 @@ class PackageUpdater:
         package_data = {
             "crush": PackageConfig(
                 command="crush",
-                install="curl -fsSL https://charm.sh/install | bash",
-                upgrade="brew upgrade crush 2>/dev/null || curl -fsSL https://charm.sh/install | bash",
+                install="brew install charmbracelet/tap/crush",
+                upgrade="brew upgrade charmbracelet/tap/crush",
                 source="brew"
             ),
             "qwen": PackageConfig(
