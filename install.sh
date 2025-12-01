@@ -17,3 +17,5 @@ for f in $installfiles; do
   echo "Installing $f"
   envsubst '$INSTALL_REPO_HEAD:$INSTALL_DATE' < $f > ~/$f
 done
+echo "Installing .claude/"
+cp -rf .claude/ ~/
