@@ -14,4 +14,5 @@ imc
 .scratch
 .code-workspace
 .track
+.tmp
 
