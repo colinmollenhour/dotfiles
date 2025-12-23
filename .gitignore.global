@@ -15,4 +15,5 @@ imc
 .code-workspace
 .track
 .tmp
+.worktrees
 
