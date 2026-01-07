@@ -85,6 +85,13 @@ Document any:
 - Future improvements flagged for later
 - Known limitations of the current approach
 
+### 12. Original Motivation
+It is easy to overload the context with implementation details and lose sight of the original motivation for the change, which can be helpful to keep the agent from steering off course and a useful reminder to the human reviewers.
+So, add this section as a high-level reminder of what we're trying to accomplish from a value proposition standpoint without repeating the requirements and other details. This section should have three subsections:
+- User Story
+- Problem Statement
+- Solution
+
 ---
 
 ## Output Format
