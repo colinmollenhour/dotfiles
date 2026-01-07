@@ -20,7 +20,7 @@ done
 echo "Installing .claude/"
 cp -rf .claude/ ~/
 echo "Installing .config/opencode/"
-mkdir -p ~/.config/opencode
-cp -rf .claude/commands ~/.config/opencode/command
-cp -rf .claude/skills ~/.config/opencode/skill
+mkdir -p ~/.config/opencode/{command,skill}
+cp -rf .claude/commands/* ~/.config/opencode/command
+cp -rf .claude/skills/* ~/.config/opencode/skill
 
