@@ -40,7 +40,7 @@ Gitlab MR status:
 
 Based on the above info and the context of this session:
 
-1. Create a new branch if on main/master using the convention {task-id}_{Pascal-case-short-description} if this session is related to a task, otherwise {feature|bug|other}/{Pascal-case-short-description}.
+1. Create a new branch if on main/master using the convention {task-id}_{Screaming-Kebab-Case-short-description} if this session is related to a task, otherwise {feature|bug|other}/{Screaming-Kebab-Case-short-description}.
 2. Add all files that you created or modified or deleted, do not add PLANS-*.md, SPECS-*.md or other files that already existed unless otherwise specified.
 3. Create a single commit with an appropriate message based on what was changed since the last commit and following the formatting conventions of the last 3 commits.
 4. Push the branch to 'origin' unless a different remote is specified in the special instructions or the branch is already tracking a different remote.
