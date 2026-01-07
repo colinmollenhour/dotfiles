@@ -9,15 +9,6 @@ description: Use when implementing or debugging UI features with Nuxt UI compone
 
 Nuxt UI v4 is actively developed with frequent changes. Training data may be outdated. Always verify component APIs before implementing.
 
-## When to Use This Skill
-
-- Implementing any Nuxt UI component (UForm, UTable, UModal, UButton, etc.)
-- Designing forms with validation
-- Creating data tables with loading/empty states
-- Building modals, slidevers, or overlays
-- Working with toasts and notifications
-- Uncertain about component props, slots, or events
-
 ## Mandatory Workflow
 
 ### Step 1: Fetch Targeted Documentation
@@ -31,17 +22,19 @@ Include: Props, Slots, Events, code examples.
 Exclude everything else. Return a concise summary."
 ```
 
-**CRITICAL**: Never fetch the full documentation. Use targeted extraction to avoid context bloat (1-3k tokens vs 50k+).
+**CRITICAL**: Never fetch the full documentation. Use targeted extraction to avoid context bloat.
 
-### Step 2: Read Project Patterns
+### Step 2: Read Relevant Guide
 
-Read the `DESIGN_GUIDE.md` file (symlinked in this directory) for:
-- Project-specific code patterns and conventions
-- Form validation with Zod
-- Table patterns with useFetch
-- Modal and slideover conventions
-- Toast notification usage
-- Common mistakes to avoid
+Read the appropriate guide for your task:
+
+| Task | Guide |
+|------|-------|
+| Form validation, inputs, selects | `FORMS.md` |
+| Data tables with filtering | `TABLES.md` |
+| Modals, slideovers, popovers | `OVERLAYS.md` |
+| Buttons, dropdowns, badges, layout | `COMPONENTS.md` |
+| Best practices, accessibility, common mistakes | `PATTERNS.md` |
 
 ### Step 3: Implement with Type Safety
 
@@ -56,17 +49,4 @@ All implementations must use:
 |-------------|-------------------|
 | "I know how UModal works" | API may have changed |
 | "This is a simple component" | Simple tasks have highest error rates |
-| "I'll check docs if it doesn't work" | Debugging takes 10x longer than verification |
-| "The prop is probably called X" | Guessing props causes subtle bugs |
 | Using `@close` instead of `v-model:open` | Event names change between versions |
-
-## Quick Reference
-
-See `DESIGN_GUIDE.md` for complete patterns on:
-- **Forms**: Zod schemas, UFormField, validation, error handling
-- **Tables**: useFetch with computed queries, loading/empty states
-- **Modals**: v-model:open, responsive fullscreen with VueUse
-- **Buttons**: Variant hierarchy (solid/outline/ghost)
-- **Dropdowns**: Nested array structure for menu items
-- **Toasts**: useToast() for all user feedback
-- **Accessibility**: ARIA labels, keyboard navigation

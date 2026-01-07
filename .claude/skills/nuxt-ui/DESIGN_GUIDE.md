@@ -1,1 +1,0 @@
-../../../DESIGN_GUIDE.md
