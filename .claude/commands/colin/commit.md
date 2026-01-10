@@ -1,6 +1,6 @@
 ---
 description: Commit, push, and open/update a Github PR or GitLab MR (unless otherwise specified)
-allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(glab mr create:*), Bash(gh pr view), Bash(glab mr view), Bash(head)
+allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(glab mr create:*), Bash(gh pr view), Bash(glab mr view), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*)
 argument-hints: Special instructions
 ---
 
@@ -26,14 +26,9 @@ Last 3 commits:
 !`git log -n 3`
 -------------------------
 
-Github PR status:
+Github PR status or GitLab MR status:
 -------------------------
-!`gh pr status`
--------------------------
-
-Gitlab MR status:
--------------------------
-!`glab mr view | head -n 10`
+!`gh pr status || glab mr view | head -n 10 || true`
 -------------------------
 
 # Your task
@@ -49,6 +44,15 @@ Based on the above info and the context of this session:
 
 You have the capability to call multiple tools in a single response so do all of the above in a single message IF AT ALL POSSIBLE.
 Do NOT send any other text or messages besides these tool calls and a short list of what you did.
+
+GitLab example command:
+```
+glab mr create --title "..." --description "..." --remove-source-branch --squash-before-merge --yes
+```
+GitHub example command:
+```
+gh pr create --title "..." --body "..."
+```
 
 # Special Instructions
 
