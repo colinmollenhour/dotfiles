@@ -23,4 +23,5 @@ echo "Installing .config/opencode/"
 mkdir -p ~/.config/opencode/{command,skill}
 cp -rf .claude/commands/* ~/.config/opencode/command
 cp -rf .claude/skills/* ~/.config/opencode/skill
+cp -rf .claude/agents/* ~/.config/opencode/agent
 
