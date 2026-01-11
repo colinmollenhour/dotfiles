@@ -10,7 +10,6 @@ These dot files apply to or make use of the following tools:
 - tmux
 - Git
 - Docker
-- Kontena
 - Composer
 - MySQL
 - SSH
@@ -21,10 +20,7 @@ These dot files apply to or make use of the following tools:
 Easily install the following binaries (commands prefixed with "install-"):
 
 - Docker
-- GVM
 - LSD
-- PNPM
-- RVM
 - Starship
 - Various recommended tools for Ubuntu
 
@@ -32,15 +28,14 @@ Easily install the following binaries (commands prefixed with "install-"):
 
 Clone this repo and run the `install.sh` script.
 
-**NOTE:** The `.gitconfig` file has my username and email address so you will want to edit this
-file before installation if you are not me.
+**WARNING:** This will copy the files to your home directory, replacing any existing files of the same name.
 
-**WARNING:** This will copy the files to your home directory, replacing any existing files.
+The `.bashrc` and `.gitconfig` files will **not** be replaced but rather updated to include the `.colin` variants.
 
 Run with `--help` to see a list of files that will be replaced. If you do not want to install all files
 pass the file names of the files you **do** want installed as arguments to the `install.sh` script.
 
-For example, `install.sh .gitconfig` will install **only** `.gitconfig`.
+For example, `install.sh .gitconfig.global` will install **only** `.gitconfig.global`.
 
 ## Help
 
