@@ -27,6 +27,12 @@ class PackageUpdater:
         """Load package configuration from embedded data."""
         # Package configuration with command, install command, upgrade command, and source type
         package_data = {
+            "lazygit": PackageConfig(
+                command="lazygit",
+                install="brew install lazygit",
+                upgrade="brew upgrade lazygit",
+                source="brew"
+            ),
             "crush": PackageConfig(
                 command="crush",
                 install="brew install charmbracelet/tap/crush",

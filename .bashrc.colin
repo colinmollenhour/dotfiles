@@ -342,6 +342,7 @@ if [ -f ~/.bash_aliases ]; then . ~/.bash_aliases; fi
 alias hdd-write-test='dd bs=1M count=512 if=/dev/zero of=__test conv=fdatasync; rm __test'
 alias nsps='netstat -plunt | sort'
 alias g='git'
+alias lg='lazygit'
 alias lt='npx localtunnel'
 alias share-file='npx remote-share-cli'
 alias share-dir='npx share-cli'
