@@ -28,14 +28,27 @@ Easily install the following binaries (commands prefixed with "install-"):
 
 Clone this repo and run the `install.sh` script.
 
-**WARNING:** This will copy the files to your home directory, replacing any existing files of the same name.
+```bash
+# Interactive mode (choose what to install)
+./install.sh
+
+# Install only Claude Code configurations
+./install.sh --claude
+
+# Install everything
+./install.sh --all
+
+# See all options
+./install.sh --help
+```
+
+**Common Options:**
+- `--claude` - Install only `.claude` and `.config/opencode` directories
+- `--dotfiles` - Install dotfiles (bashrc, gitconfig, vimrc, tmux, etc.)
+- `--all` - Install everything
+- `--interactive` - Interactive mode (default)
 
 The `.bashrc` and `.gitconfig` files will **not** be replaced but rather updated to include the `.colin` variants.
-
-Run with `--help` to see a list of files that will be replaced. If you do not want to install all files
-pass the file names of the files you **do** want installed as arguments to the `install.sh` script.
-
-For example, `install.sh .gitconfig.global` will install **only** `.gitconfig.global`.
 
 ## Help
 
