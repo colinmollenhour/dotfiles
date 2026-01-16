@@ -98,7 +98,9 @@ install_claude() {
   cp -rf .claude/commands/* ~/.config/opencode/command/
   cp -rf .claude/skills/* ~/.config/opencode/skill/
   cp -rf .claude/agents/* ~/.config/opencode/agent/
-  echo "Installed .claude/ and .config/opencode/"
+  mkdir -p ~/.gemini/antigravity/skills
+  cp -rf .claude/skills/* ~/.gemini/antigravity/skills/
+  echo "Installed agents and skills to .claude/, .config/opencode/ and .gemini/antigravity/"
 }
 
 # Interactive mode
