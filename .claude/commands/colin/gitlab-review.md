@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab api:*), Bash(git branch:*), Bash(jq:*)
 description: Code review a GitLab merge request and post inline comments
-argument-hint: "[MR number or URL] [optional: agent names] [optional: --re-review] [optional: --no-post]"
+argument-hint: "[MR number or URL] [optional: agent names] [optional: --re-review] [optional: --no-post] [optional: --summary]"
 ---
 
 # GitLab Code Review
@@ -25,22 +25,22 @@ Throughout this document, `<MR>` refers to the resolved MR IID.
 
 ## Available Review Agents
 
-Use the **exact agent names** when launching subagents:
+Use the **exact agent names** when launching subagents. The **Display Name** is used in `--summary` output and posted comments for readability.
 
-| Approximate Name | Exact Agent Name | Model | Temp |
-|------------------|------------------|-------|------|
-| opus, opus 4.6 | `colin-review-opus46` | Claude Opus 4.6 | default |
-| sonnet, sonnet 4.5 high | `colin-review-sonnet45-high` | Claude Sonnet 4.5 | 0.8 |
-| gpt high, gpt 5.2 high, codex high | `colin-review-gpt52-codex-high` | GPT 5.2 Codex | 0.8 |
-| gpt low, gpt 5.2 low, codex low | `colin-review-gpt52-codex-low` | GPT 5.2 Codex | 0.1 |
-| gemini, gemini 3, gemini pro | `colin-review-gemini3-pro` | Gemini 3 Pro | 0.4 |
-| kimi, kimi k2.5 | `colin-review-kimi-k25` | Kimi K2.5 | default |
-| pickle, big pickle | `colin-review-big-pickle` | Big Pickle | 0.4 |
+| Approximate Name | Exact Agent Name | Display Name | Model | Temp |
+|------------------|------------------|--------------|-------|------|
+| opus, opus 4.6 | `colin-review-opus46` | Opus 4.6 | Claude Opus 4.6 | default |
+| sonnet, sonnet 4.5 high | `colin-review-sonnet45-high` | Sonnet 4.5 | Claude Sonnet 4.5 | 0.8 |
+| gpt high, gpt 5.2 high, codex high | `colin-review-gpt52-codex-high` | GPT 5.2 (high) | GPT 5.2 Codex | 0.8 |
+| gpt low, gpt 5.2 low, codex low | `colin-review-gpt52-codex-low` | GPT 5.2 (low) | GPT 5.2 Codex | 0.1 |
+| gemini, gemini 3, gemini pro | `colin-review-gemini3-pro` | Gemini 3 Pro | Gemini 3 Pro | 0.4 |
+| kimi, kimi k2.5 | `colin-review-kimi-k25` | Kimi K2.5 | Kimi K2.5 | default |
+| pickle, big pickle | `colin-review-big-pickle` | Big Pickle | Big Pickle | 0.4 |
 
 **Default agents (if none specified):**
 1. `colin-review-opus46`
-2. `colin-review-sonnet45-high`
-3. `colin-review-gpt52-codex-high`
+2. `colin-review-gpt52-codex-high`
+3. `colin-review-kimi-k25`
 
 ## Process
 
@@ -191,7 +191,7 @@ Launch agents in parallel to:
 
 Launch the specified review agents in parallel (or the 3 default agents if none specified). Use the **exact agent names** from the table above.
 
-Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-review-opus46`) — this attribution is preserved through validation and included in the posted comment.
+Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-review-opus46`) — this attribution is preserved through validation and included in the posted comment. When `--summary` is active, the per-agent issue counts from this step feed into the "Found" metric in Step 4.5.
 
 **Review Categories:**
 - CLAUDE.md compliance (only consider CLAUDE.md files that share a file path with the file or parents)
@@ -216,6 +216,90 @@ For each issue found, launch a validation agent to confirm the issue is real wit
 
 When deduplicating issues found by multiple agents, **merge the agent attribution** — track all agents that independently identified the same issue. Issues found by multiple models are higher signal.
 
+When `--summary` is active, preserve the full validation results: for each agent, record which of its issues were validated and which were rejected. This data feeds into the "Validated", "False Positives", and "Unique Finds" metrics in Step 4.5.
+
+### Step 4.5: Model Comparison Summary (`--summary`)
+
+**Skip this step entirely if `--summary` is not specified.**
+
+After validation completes in Step 4, compile per-agent performance metrics using the data already collected in Steps 3–4. Use **display names** (from the agent table) instead of exact agent names in all summary output.
+
+#### Metrics collected per agent
+
+For each agent, compute:
+
+| Metric | Definition |
+|--------|------------|
+| **Found** | Total issues flagged by this agent in Step 3 |
+| **Validated** | Issues from this agent that survived validation in Step 4 |
+| **False Positives** | Found minus Validated |
+| **Unique Finds** | Validated issues flagged by *only* this agent (no other agent found it) |
+| **Shared Finds** | Validated issues also found by at least one other agent |
+
+#### Scoring methods
+
+Compute all three scores for each agent:
+
+1. **Unique Value** — Rank by unique validated finds (descending), then by false positive rate (ascending) as tiebreaker. Answers: *which model adds distinct value?*
+2. **Accuracy** — `validated / found` as a percentage. Agents that found 0 issues show `—` instead of a percentage. Answers: *which model is least noisy?*
+3. **Composite Score** — `(+2 × unique finds) + (+1 × shared finds) + (−2 × false positives)`. Answers: *overall weighted ranking*.
+
+**Best model** = highest composite score. **Worst model** = lowest composite score. Ties broken by accuracy rate, then unique finds.
+
+#### Summary comment format
+
+Build the following comment body. This is posted as a regular `glab mr note` (not an inline comment).
+
+When at least one issue was flagged by any agent:
+
+```markdown
+> **AI Code Review — Model Summary**
+
+| Model | Found | Validated | False Pos | Unique | Accuracy | Composite |
+|-------|-------|-----------|-----------|--------|----------|-----------|
+| Opus 4.6 | 5 | 4 | 1 | 2 | 80% | +7 |
+| GPT 5.2 (high) | 3 | 3 | 0 | 1 | 100% | +5 |
+| Kimi K2.5 | 4 | 1 | 3 | 0 | 25% | −4 |
+
+**Best model:** Opus 4.6 — 2 unique finds, 80% accuracy, +7 composite
+**Worst model:** Kimi K2.5 — 0 unique finds, 25% accuracy, −4 composite
+```
+
+When zero issues were found by all agents:
+
+```markdown
+> **AI Code Review — Model Summary**
+
+All <N> models found no issues. No differentiation for this review.
+
+| Model | Found | Validated | False Pos | Unique | Accuracy | Composite |
+|-------|-------|-----------|-----------|--------|----------|-----------|
+| Opus 4.6 | 0 | 0 | 0 | 0 | — | 0 |
+| GPT 5.2 (high) | 0 | 0 | 0 | 0 | — | 0 |
+| Kimi K2.5 | 0 | 0 | 0 | 0 | — | 0 |
+```
+
+When all agents have the same composite score (and at least one issue was found):
+
+```markdown
+**Best model:** Tie — all models scored equally
+**Worst model:** Tie — all models scored equally
+```
+
+#### `--no-post` interaction
+
+When both `--summary` and `--no-post` are active, display the full summary table to the user after the issue previews, under a heading:
+
+```
+---
+Model Comparison Summary (would be posted as MR comment):
+
+<summary comment body>
+---
+```
+
+The summary is included when the user says "post" — post it alongside the inline comments. If the user says "cancel", discard it along with everything else.
+
 ### Step 5: Post Comments
 
 #### `--no-post` mode (dry run)
@@ -236,6 +320,8 @@ Flagged by: <agent-name(s)>
 
 If no issues were found, show the summary comment that would be posted.
 
+If `--summary` is also active, display the model comparison summary after the issue previews (see [Step 4.5 `--no-post` interaction](#step-45-model-comparison-summary---summary)).
+
 After displaying all comments, **stop and wait for user instructions**. The user may:
 - Say **"post"** or **"post the notes"** → post all displayed comments as-is
 - Say **"drop issue 3"** or **"skip the one about X"** → remove specific issues from the list, then post the rest when told
@@ -254,6 +340,16 @@ No issues found. Checked for bugs and CLAUDE.md compliance."
 ```
 
 **If issues were found**, post inline diff comments using the GitLab Discussions REST API via `glab api`.
+
+#### Posting `--summary` comment
+
+If `--summary` is active, post the model comparison summary (prepared in Step 4.5) as an additional `glab mr note` **after** all inline comments have been posted (or after the "no issues found" note). This ensures the summary appears as the last comment in the MR timeline.
+
+```bash
+glab mr note <MR> -m "<summary comment body from Step 4.5>"
+```
+
+This is a regular (non-inline) comment. Post it regardless of whether issues were found — the zero-issue format from Step 4.5 is used when no issues were flagged.
 
 #### Posting inline diff comments
 
