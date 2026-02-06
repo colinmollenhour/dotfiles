@@ -179,9 +179,9 @@ If the remaining diff is very large (over 10,000 lines), warn the user but proce
 ### Step 2: Gather Context
 
 Launch agents in parallel to:
-1. Return a list of file paths for all relevant CLAUDE.md files including:
-   - The root CLAUDE.md file, if it exists
-   - Any CLAUDE.md files in directories containing files modified by the MR (use the **filtered** file list from Step 1.5)
+1. Return a list of file paths for all relevant AGENTS.md files including:
+   - The root AGENTS.md file, if it exists
+   - Any AGENTS.md files in directories containing files modified by the MR (use the **filtered** file list from Step 1.5)
 2. View the merge request and return a summary of the changes:
    - `glab mr view <MR>` for title, description, metadata
    - The filtered diffs from Step 1.5 (already fetched — do not re-fetch)
@@ -199,7 +199,7 @@ Scan the MR title, description, and any linked issues/tasks for URLs matching th
 | `*.sentry.io/issues/<issue_id>` | `mcp__Sentry__get_issue_details` | Issue details and stacktrace. Summarize the error, affected code paths, and frequency. |
 
 **How to use the fetched context:**
-- Pass the summaries to the review agents in Step 3 alongside the diff and CLAUDE.md files
+- Pass the summaries to the review agents in Step 3 alongside the diff and AGENTS.md files
 - This gives reviewers the "why" behind the changes — they can check whether the code actually addresses the reported issue, satisfies the acceptance criteria, or fixes the bug
 - Do **not** post the external context summaries as comments — they are internal context for the review agents only
 
@@ -210,17 +210,17 @@ Launch the specified review agents in parallel (or the 3 default agents if none 
 Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-review-opus46`) — this attribution is preserved through validation and included in the posted comment. When `--summary` is active, the per-agent issue counts from this step feed into the "Found" metric in Step 4.5.
 
 **Review Categories:**
-- CLAUDE.md compliance (only consider CLAUDE.md files that share a file path with the file or parents)
+- AGENTS.md compliance (only consider AGENTS.md files that share a file path with the file or parents)
 - Bug detection (focus only on the diff, flag only significant bugs)
 - Security issues, incorrect logic within the changed code
 
 **CRITICAL: Only flag HIGH SIGNAL issues:**
 - Objective bugs that will cause incorrect behavior at runtime
-- Clear, unambiguous CLAUDE.md violations where you can quote the exact rule being broken
+- Clear, unambiguous AGENTS.md violations where you can quote the exact rule being broken
 
 **Do NOT flag:**
 - Subjective concerns or "suggestions"
-- Style preferences not explicitly required by CLAUDE.md
+- Style preferences not explicitly required by AGENTS.md
 - Potential issues that "might" be problems
 - Anything requiring interpretation or judgment calls
 
@@ -352,7 +352,7 @@ When the user says to post, post exactly what was shown (with any edits/removals
 ```
 glab mr note <MR> -m "> **AI Code Review** · Models: <comma-separated list of agents used>
 
-No issues found. Checked for bugs and CLAUDE.md compliance."
+No issues found. Checked for bugs and AGENTS.md compliance."
 ```
 
 **If issues were found**, post inline diff comments using the GitLab Discussions REST API via `glab api`.
@@ -586,7 +586,7 @@ Requirements:
 - The `glab api` command supports `:fullpath` as a placeholder for the current repo's URL-encoded path
 - **Dependencies:** `glab`, `jq`, `git`
 - Create a todo list before starting
-- Cite and link each issue in inline comments (e.g., link to CLAUDE.md if referring to it)
+- Cite and link each issue in inline comments (e.g., link to AGENTS.md if referring to it)
 
 ### Excluded file patterns
 
