@@ -48,6 +48,22 @@ Launch agents in parallel to:
    - The root CLAUDE.md file, if it exists
    - Any CLAUDE.md files in directories containing files modified by the PR
 2. View the pull request and return a summary of the changes
+3. **External context** (see [Fetching External Context](#fetching-external-context) below)
+
+#### Fetching External Context
+
+Scan the PR title, description, and any linked issues for URLs matching the following systems. For each URL found, if the corresponding MCP tool is available, launch a sub-agent to fetch and summarize the relevant context. If the MCP tool is not available, skip silently.
+
+| URL Pattern | MCP Tool | What to Fetch |
+|---|---|---|
+| `clickup.com/t/<task_id>` | `mcp__clickup__*` (any ClickUp MCP tool) | Task title, description, acceptance criteria, and comments. Summarize requirements relevant to the code changes. |
+| `app.intercom.com/*/conversation/<id>` | `mcp__Intercom__get_conversation` | Full conversation. Summarize the user-reported issue, expected behavior, and any relevant details. |
+| `*.sentry.io/issues/<issue_id>` | `mcp__Sentry__get_issue_details` | Issue details and stacktrace. Summarize the error, affected code paths, and frequency. |
+
+**How to use the fetched context:**
+- Pass the summaries to the review agents in Step 3 alongside the diff and CLAUDE.md files
+- This gives reviewers the "why" behind the changes — they can check whether the code actually addresses the reported issue, satisfies the acceptance criteria, or fixes the bug
+- Do **not** post the external context summaries as comments — they are internal context for the review agents only
 
 ### Step 3: Review the Changes
 

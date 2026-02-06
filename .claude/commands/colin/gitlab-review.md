@@ -186,6 +186,22 @@ Launch agents in parallel to:
    - `glab mr view <MR>` for title, description, metadata
    - The filtered diffs from Step 1.5 (already fetched — do not re-fetch)
 3. If `--re-review`: gather re-review context (see [Re-review Mode](#re-review-mode) above)
+4. **External context** (see [Fetching External Context](#fetching-external-context) below)
+
+#### Fetching External Context
+
+Scan the MR title, description, and any linked issues/tasks for URLs matching the following systems. For each URL found, if the corresponding MCP tool is available, launch a sub-agent to fetch and summarize the relevant context. If the MCP tool is not available, skip silently.
+
+| URL Pattern | MCP Tool | What to Fetch |
+|---|---|---|
+| `clickup.com/t/<task_id>` | `mcp__clickup__*` (any ClickUp MCP tool) | Task title, description, acceptance criteria, and comments. Summarize requirements relevant to the code changes. |
+| `app.intercom.com/*/conversation/<id>` | `mcp__Intercom__get_conversation` | Full conversation. Summarize the user-reported issue, expected behavior, and any relevant details. |
+| `*.sentry.io/issues/<issue_id>` | `mcp__Sentry__get_issue_details` | Issue details and stacktrace. Summarize the error, affected code paths, and frequency. |
+
+**How to use the fetched context:**
+- Pass the summaries to the review agents in Step 3 alongside the diff and CLAUDE.md files
+- This gives reviewers the "why" behind the changes — they can check whether the code actually addresses the reported issue, satisfies the acceptance criteria, or fixes the bug
+- Do **not** post the external context summaries as comments — they are internal context for the review agents only
 
 ### Step 3: Review the Changes
 
