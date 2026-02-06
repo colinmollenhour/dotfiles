@@ -12,19 +12,19 @@ Install Colin's dotfiles and configurations.
 
 OPTIONS:
   --help              Show this help message
-  --all               Install everything (dotfiles, bashrc, gitconfig, .claude, opencode)
+  --all               Install everything (dotfiles, bashrc, gitconfig, agents)
   --dotfiles          Install only dotfiles (bashrc.colin, gitconfig.colin, vimrc, tmux, etc.)
   --bashrc            Update ~/.bashrc to source ~/.bashrc.colin
   --gitconfig         Update ~/.gitconfig to include ~/.gitconfig.colin
-  --claude            Install only .claude and .config/opencode directories
+  --agents            Install only AI agent files (commands, skills, etc.)
   --interactive       Interactively choose what to install (default if no options given)
 
 EXAMPLES:
-  # Install only Claude Code configurations
-  ./install.sh --claude
+  # Install only AI Agents configurations
+  ./install.sh --agents
 
   # Install dotfiles and Claude configurations
-  ./install.sh --dotfiles --claude
+  ./install.sh --dotfiles --agents
 
   # Install everything
   ./install.sh --all
@@ -91,16 +91,19 @@ update_gitconfig() {
   fi
 }
 
-install_claude() {
-  echo "==> Installing .claude and .config/opencode..."
+install_agents() {
+  echo "==> Installing AI agent files..."
   cp -rf .claude/ ~/
-  mkdir -p ~/.config/opencode/{command,skill,agent}
-  cp -rf .claude/commands/* ~/.config/opencode/command/
-  cp -rf .claude/skills/* ~/.config/opencode/skill/
-  cp -rf .claude/agents/* ~/.config/opencode/agent/
+  if [[ -d ~/.config/opencode/command/colin ]]; then
+    rm -rf ~/.config/opencode/{command,skill,agent}
+  fi
+  mkdir -p ~/.opencode/{commands,agents} ~/.agents/skills
+  cp -rf .claude/commands/* ~/.opencode/commands/
+  cp -rf .claude/skills/* ~/.agents/skills/
+  cp -rf .claude/agents/* ~/.opencode/agents/
   mkdir -p ~/.gemini/antigravity/skills
   cp -rf .claude/skills/* ~/.gemini/antigravity/skills/
-  echo "Installed agents and skills to .claude/, .config/opencode/ and .gemini/antigravity/"
+  echo "Installed agents and skills to .agents/, .claude/, .opencode/ and .gemini/antigravity/"
 }
 
 # Interactive mode
@@ -171,7 +174,7 @@ while [[ $# -gt 0 ]]; do
       DO_GITCONFIG=true
       shift
       ;;
-    --claude)
+    --agents)
       DO_CLAUDE=true
       shift
       ;;
@@ -197,7 +200,7 @@ if [[ "$DO_ALL" == true ]]; then
   install_dotfiles
   update_bashrc
   update_gitconfig
-  install_claude
+  install_agents
   echo ""
   echo "All components installed successfully!"
   exit 0
@@ -217,7 +220,7 @@ if [[ "$DO_GITCONFIG" == true ]]; then
 fi
 
 if [[ "$DO_CLAUDE" == true ]]; then
-  install_claude
+  install_agents
 fi
 
 echo ""
