@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab api:*), Bash(git branch:*), Bash(jq:*)
 description: Code review a GitLab merge request and post inline comments
-argument-hint: "[MR number or URL] [optional: agent names] [optional: --re-review]"
+argument-hint: "[MR number or URL] [optional: agent names] [optional: --re-review] [optional: --no-post]"
 ---
 
 # GitLab Code Review
@@ -217,6 +217,34 @@ For each issue found, launch a validation agent to confirm the issue is real wit
 When deduplicating issues found by multiple agents, **merge the agent attribution** — track all agents that independently identified the same issue. Issues found by multiple models are higher signal.
 
 ### Step 5: Post Comments
+
+#### `--no-post` mode (dry run)
+
+If `--no-post` is specified, **do not post anything to GitLab**. Instead, display all prepared comments to the user for review:
+
+For each issue, output:
+```
+---
+Issue <N>
+File: <path>
+Line(s): <line or range>
+Flagged by: <agent-name(s)>
+
+<full comment body as it would be posted, including the AI attribution header>
+---
+```
+
+If no issues were found, show the summary comment that would be posted.
+
+After displaying all comments, **stop and wait for user instructions**. The user may:
+- Say **"post"** or **"post the notes"** → post all displayed comments as-is
+- Say **"drop issue 3"** or **"skip the one about X"** → remove specific issues from the list, then post the rest when told
+- Say **"edit issue 2 to say..."** → modify a comment body, then post when told
+- Say **"cancel"** → discard everything, post nothing
+
+When the user says to post, post exactly what was shown (with any edits/removals applied) using the same mechanics described below. Do not re-validate or re-confirm.
+
+---
 
 **If NO issues were found**, post a summary comment using `glab mr note`:
 ```
