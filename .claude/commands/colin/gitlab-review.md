@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab api:*), Bash(git branch:*), Bash(jq:*), Bash(opencode export:*), Bash(opencode session:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*)
+allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git branch:*), Bash(jq:*), Bash(opencode export:*), Bash(opencode session:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*)
 description: Code review a GitLab merge request and post inline comments
 argument-hint: "[MR number or URL] [optional: agent names] [optional: --re-review] [optional: --no-post] [optional: --summary]"
 ---
@@ -538,6 +538,18 @@ This keeps the MR timeline cleaner by combining the summary and session into a s
 #### `--no-post` interaction
 
 When `--no-post` is active, still export the session and upload the file, but hold the note for user confirmation along with everything else. Display it in the preview output and post it when the user says "post".
+
+### Step 7: Apply Review Label
+
+After all comments have been posted (or after the user confirms posting in `--no-post` mode), add the `:Reviewed-By-AI` label to the merge request:
+
+```bash
+glab mr update <MR> --label ":Reviewed-By-AI"
+```
+
+**Note:** The colon is part of the label name. This label must already exist in the GitLab project.
+
+If `--no-post` is active and the user says "cancel", do **not** apply the label.
 
 ## Code Link Format
 

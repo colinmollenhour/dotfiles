@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api:*), Bash(jq:*), mcp__github_inline_comment__create_inline_comment
+allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(jq:*), mcp__github_inline_comment__create_inline_comment
 description: Code review a GitHub pull request and post inline comments
 argument-hint: "<PR number or URL> [optional: agent names] [optional: --no-post]"
 ---
@@ -200,6 +200,18 @@ For larger fixes (6+ lines, structural changes, or multi-location changes), do N
    ```
 
 **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
+
+### Step 6: Apply Review Label
+
+After all comments have been posted (or after the user confirms posting in `--no-post` mode), add the `:Reviewed-By-AI` label to the pull request:
+
+```bash
+gh pr edit <PR> --add-label ":Reviewed-By-AI"
+```
+
+**Note:** The colon is part of the label name. This label must already exist in the GitHub repository.
+
+If `--no-post` is active and the user says "cancel", do **not** apply the label.
 
 ## Code Link Format
 
