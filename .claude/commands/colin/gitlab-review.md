@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab api:*), Bash(git branch:*), Bash(jq:*)
+allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab api:*), Bash(git branch:*), Bash(jq:*), Bash(opencode export:*), Bash(opencode session:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*)
 description: Code review a GitLab merge request and post inline comments
 argument-hint: "[MR number or URL] [optional: agent names] [optional: --re-review] [optional: --no-post] [optional: --summary]"
 ---
@@ -461,6 +461,83 @@ Where `<agent-name(s)>` is a comma-separated list of the agent names that flagge
      ```
 
 **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
+
+### Step 6: Export Session Transcript
+
+**Skip this step entirely if the agent harness is not `opencode`** (e.g., if running under Claude Code, Cursor, or another harness). To detect this, check if `opencode` is available:
+
+```bash
+which opencode 2>/dev/null
+```
+
+If the command is not found, skip this step silently.
+
+#### 6a: Identify the current session
+
+```bash
+opencode session list 2>&1 | head -5
+```
+
+The current session is the most recent one (first row). Extract its session ID.
+
+#### 6b: Export the session to a temp file
+
+```bash
+opencode export <SESSION_ID> > /tmp/mr-<MR>-review-session.json
+```
+
+#### 6c: Upload the file to the GitLab project
+
+Use the GitLab uploads API via `curl`. **Important:** Retrieve the token into a shell variable to avoid exposing it in command output or session logs.
+
+```bash
+TOKEN=$(glab config get token --host <GITLAB_HOST> 2>/dev/null | head -1)
+PROJECT_ID=$(glab api projects/:fullpath --method GET 2>/dev/null | jq '.id')
+curl --silent --request POST \
+  --header "PRIVATE-TOKEN: ${TOKEN}" \
+  "https://<GITLAB_HOST>/api/v4/projects/${PROJECT_ID}/uploads" \
+  --form "file=@/tmp/mr-<MR>-review-session.json"
+```
+
+Extract the `url` field from the JSON response — this is the markdown-compatible path to the uploaded file (e.g., `/uploads/<hash>/mr-<MR>-review-session.json`).
+
+The `<GITLAB_HOST>` should be extracted from the MR's `web_url` (resolved in the MR resolution step).
+
+#### 6d: Post a note with the session attachment
+
+Post a general MR comment that includes the session file link and an import hint:
+
+```bash
+glab mr note <MR> -m '> **AI Code Review — Session Transcript**
+>
+> Full review session: [mr-<MR>-review-session.json](<uploaded_url>)
+>
+> To replay this session locally, download the file and run:
+> ```
+> opencode import mr-<MR>-review-session.json
+> ```'
+```
+
+#### Combining with `--summary`
+
+When `--summary` is active, **do not** post the session transcript as a separate note. Instead, append the session file link and import hint to the bottom of the `--summary` comment (Step 4.5) before posting it:
+
+```markdown
+---
+
+**Session transcript:** [mr-<MR>-review-session.json](<uploaded_url>)
+
+To replay this session locally, download the file and run:
+\`\`\`
+opencode import mr-<MR>-review-session.json
+\`\`\`
+```
+
+This keeps the MR timeline cleaner by combining the summary and session into a single comment.
+
+#### `--no-post` interaction
+
+When `--no-post` is active, still export the session and upload the file, but hold the note for user confirmation along with everything else. Display it in the preview output and post it when the user says "post".
 
 ## Code Link Format
 
