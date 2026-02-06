@@ -245,44 +245,63 @@ This extracts the three SHAs from the latest version:
 
 **Step 5b: Post each inline comment as a new discussion thread**
 
-For a comment on a **single line** (new/added line):
+**IMPORTANT:** You MUST use a JSON body piped via `--input -` with `-H "Content-Type: application/json"`. The `-f` flag approach does NOT create proper nested JSON objects — GitLab silently drops the position data and creates a general comment instead of an inline diff note.
+
+For a comment on a **single line** (added line):
 
 ```bash
-glab api projects/:fullpath/merge_requests/<MR_IID>/discussions --method POST \
-  -f "body=<comment text>" \
-  -f "position[position_type]=text" \
-  -f "position[base_sha]=<base_commit_sha>" \
-  -f "position[head_sha]=<head_commit_sha>" \
-  -f "position[start_sha]=<start_commit_sha>" \
-  -f "position[old_path]=<file_path>" \
-  -f "position[new_path]=<file_path>" \
-  -f "position[new_line]=<line_number>"
+echo '<JSON>' | glab api projects/:fullpath/merge_requests/<MR_IID>/discussions \
+  --method POST --input - -H "Content-Type: application/json"
+```
+
+Where `<JSON>` is:
+```json
+{
+  "body": "<comment text>",
+  "position": {
+    "position_type": "text",
+    "base_sha": "<base_commit_sha>",
+    "head_sha": "<head_commit_sha>",
+    "start_sha": "<start_commit_sha>",
+    "old_path": "<file_path>",
+    "new_path": "<file_path>",
+    "new_line": <line_number>
+  }
+}
 ```
 
 Line positioning rules:
-- **Added line** (green in diff): set `position[new_line]` only, omit `position[old_line]`
-- **Removed line** (red in diff): set `position[old_line]` only, omit `position[new_line]`
-- **Unchanged line**: set both `position[old_line]` and `position[new_line]`
+- **Added line** (green in diff): set `new_line` only, omit `old_line`
+- **Removed line** (red in diff): set `old_line` only, omit `new_line`
+- **Unchanged context line**: set both `old_line` and `new_line`
+- **Lines must be within a diff hunk** — you cannot comment on lines outside the diff. If the target line is outside any hunk, comment on the nearest line that IS in the diff.
 
-For a **multi-line** comment, add `position[line_range]` parameters:
+For a **multi-line** comment, add `line_range` to the position:
 
-```bash
-glab api projects/:fullpath/merge_requests/<MR_IID>/discussions --method POST \
-  -f "body=<comment text>" \
-  -f "position[position_type]=text" \
-  -f "position[base_sha]=<base_commit_sha>" \
-  -f "position[head_sha]=<head_commit_sha>" \
-  -f "position[start_sha]=<start_commit_sha>" \
-  -f "position[old_path]=<file_path>" \
-  -f "position[new_path]=<file_path>" \
-  -f "position[new_line]=<end_line>" \
-  -f "position[line_range][start][type]=new" \
-  -f "position[line_range][start][new_line]=<start_line>" \
-  -f "position[line_range][end][type]=new" \
-  -f "position[line_range][end][new_line]=<end_line>"
+```json
+{
+  "body": "<comment text>",
+  "position": {
+    "position_type": "text",
+    "base_sha": "<base_commit_sha>",
+    "head_sha": "<head_commit_sha>",
+    "start_sha": "<start_commit_sha>",
+    "old_path": "<file_path>",
+    "new_path": "<file_path>",
+    "new_line": <end_line>,
+    "line_range": {
+      "start": {"type": "new", "new_line": <start_line>},
+      "end": {"type": "new", "new_line": <end_line>}
+    }
+  }
+}
 ```
 
-The `line_range` `type` field should be `new` for added lines, `old` for removed lines.
+The `line_range` `type` field should be `"new"` for added lines, `"old"` for removed lines.
+
+**Verify success:** The response should contain `"type": "DiffNote"` (not `"DiscussionNote"`). If you see `DiscussionNote`, the position was rejected — check that the line is within a diff hunk.
+
+**Escaping in heredocs:** Use `cat <<'ENDJSON'` (single-quoted delimiter) to avoid shell interpolation of `$` and backticks in the JSON body. If the comment body itself contains single quotes, escape them as `'\\''` or use a temp file.
 
 #### Comment body format
 
