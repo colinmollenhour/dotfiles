@@ -102,7 +102,7 @@ If `--re-review` is specified in the arguments, this is a follow-up review of an
 
 4. **Step 5 (Post Comments)**: When posting the "no issues found" summary, use:
    ```
-   ## Re-review
+   > **AI Code Review (Re-review)** · Models: <comma-separated list of agents used>
 
    No new issues found in the latest changes.
    ```
@@ -191,7 +191,7 @@ Launch agents in parallel to:
 
 Launch the specified review agents in parallel (or the 3 default agents if none specified). Use the **exact agent names** from the table above.
 
-Each agent should return a list of issues with description and reason flagged.
+Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-review-opus46`) — this attribution is preserved through validation and included in the posted comment.
 
 **Review Categories:**
 - CLAUDE.md compliance (only consider CLAUDE.md files that share a file path with the file or parents)
@@ -214,11 +214,13 @@ If you are not certain an issue is real, do not flag it. False positives erode t
 
 For each issue found, launch a validation agent to confirm the issue is real with high confidence. Filter out any issues that fail validation.
 
+When deduplicating issues found by multiple agents, **merge the agent attribution** — track all agents that independently identified the same issue. Issues found by multiple models are higher signal.
+
 ### Step 5: Post Comments
 
 **If NO issues were found**, post a summary comment using `glab mr note`:
 ```
-glab mr note <MR> -m "## Code Review
+glab mr note <MR> -m "> **AI Code Review** · Models: <comma-separated list of agents used>
 
 No issues found. Checked for bugs and CLAUDE.md compliance."
 ```
@@ -284,7 +286,19 @@ The `line_range` `type` field should be `new` for added lines, `old` for removed
 
 #### Comment body format
 
-- `body`: Brief description of the issue. For small fixes (up to 5 lines), include a committable suggestion using GitLab's suggestion syntax:
+Every comment must start with an AI attribution header and end with a model attribution footer:
+
+```
+> **AI Code Review** · Flagged by: <agent-name(s)>
+
+<issue description>
+
+<suggestion or fix prompt>
+```
+
+Where `<agent-name(s)>` is a comma-separated list of the agent names that flagged the issue (e.g., `colin-review-opus46, colin-review-sonnet45-high`). Issues flagged by multiple models independently are stronger signals — this is visible to the reviewer at a glance.
+
+**Issue description**: Brief description of the issue. For small fixes (up to 5 lines), include a committable suggestion using GitLab's suggestion syntax:
   ````
   ```suggestion:-0+0
   corrected code here

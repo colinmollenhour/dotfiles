@@ -53,7 +53,7 @@ Launch agents in parallel to:
 
 Launch the specified review agents in parallel (or the 3 default agents if none specified). Use the **exact agent names** from the table above.
 
-Each agent should return a list of issues with description and reason flagged.
+Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-review-opus46`) — this attribution is preserved through validation and included in the posted comment.
 
 **Review Categories:**
 - CLAUDE.md compliance (only consider CLAUDE.md files that share a file path with the file or parents)
@@ -76,11 +76,13 @@ If you are not certain an issue is real, do not flag it. False positives erode t
 
 For each issue found, launch a validation agent to confirm the issue is real with high confidence. Filter out any issues that fail validation.
 
+When deduplicating issues found by multiple agents, **merge the agent attribution** — track all agents that independently identified the same issue. Issues found by multiple models are higher signal.
+
 ### Step 5: Post Comments
 
 **If NO issues were found**, post a summary comment using `gh pr comment`:
 ```
-## Code Review
+> **AI Code Review** · Models: <comma-separated list of agents used>
 
 No issues found. Checked for bugs and CLAUDE.md compliance.
 ```
@@ -88,7 +90,17 @@ No issues found. Checked for bugs and CLAUDE.md compliance.
 **If issues were found**, post inline comments for each issue using `mcp__github_inline_comment__create_inline_comment`:
 - `path`: the file path
 - `line` (and `startLine` for ranges): select the buggy lines
-- `body`: Brief description of the issue. For small fixes (up to 5 lines), include a committable suggestion:
+- `body`: Every comment must start with an AI attribution header:
+
+  ```
+  > **AI Code Review** · Flagged by: <agent-name(s)>
+
+  <issue description>
+  ```
+
+  Where `<agent-name(s)>` is a comma-separated list of the agent names that flagged the issue (e.g., `colin-review-opus46, colin-review-sonnet45-high`). Issues flagged by multiple models independently are stronger signals.
+
+  For small fixes (up to 5 lines), include a committable suggestion:
   ```suggestion
   corrected code here
   ```
