@@ -14,6 +14,7 @@ Use the **exact agent names** when launching subagents:
 
 | Approximate Name | Exact Agent Name | Model | Temp |
 |------------------|------------------|-------|------|
+| opus 4.6 | `colin-review-opus46` | Claude Opus 4.6 | default |
 | opus low, opus 4.5 low | `colin-review-opus45-low` | Claude Opus 4.5 | 0.1 |
 | opus high, opus 4.5 high | `colin-review-opus45-high` | Claude Opus 4.5 | 0.8 |
 | sonnet high, sonnet 4.5 high | `colin-review-sonnet45-high` | Claude Sonnet 4.5 | 0.8 |
