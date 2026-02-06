@@ -1,8 +1,7 @@
 ---
-description: Code review agent - Claude Opus 4.5 (low temperature)
+description: Code review agent - Kimi K2.5
 mode: subagent
-model: anthropic/claude-opus-4-5
-temperature: 0.1
+model: opencode/kimi-k2.5
 tools:
   write: false
   edit: false

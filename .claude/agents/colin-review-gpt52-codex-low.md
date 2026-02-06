@@ -1,8 +1,8 @@
 ---
-description: Code review agent - Claude Opus 4.5 (high temperature)
+description: Code review agent - GPT 5.2 Codex (low temperature)
 mode: subagent
-model: anthropic/claude-opus-4-5
-temperature: 0.8
+model: openrouter/openai/gpt-5.2-codex
+temperature: 0.1
 tools:
   write: false
   edit: false

@@ -1,7 +1,7 @@
 ---
-description: Code review agent - GPT 5.1 Codex (high temperature)
+description: Code review agent - GPT 5.2 Codex (high temperature)
 mode: subagent
-model: github-copilot/gpt-5.1-codex
+model: openrouter/openai/gpt-5.2-codex
 temperature: 0.8
 tools:
   write: false

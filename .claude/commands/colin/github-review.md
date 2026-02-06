@@ -14,19 +14,18 @@ Use the **exact agent names** when launching subagents:
 
 | Approximate Name | Exact Agent Name | Model | Temp |
 |------------------|------------------|-------|------|
-| opus 4.6 | `colin-review-opus46` | Claude Opus 4.6 | default |
-| opus low, opus 4.5 low | `colin-review-opus45-low` | Claude Opus 4.5 | 0.1 |
-| opus high, opus 4.5 high | `colin-review-opus45-high` | Claude Opus 4.5 | 0.8 |
-| sonnet high, sonnet 4.5 high | `colin-review-sonnet45-high` | Claude Sonnet 4.5 | 0.8 |
-| gpt high, gpt 5.1 high, codex high | `colin-review-gpt51-codex-high` | GPT 5.1 Codex | 0.8 |
-| gpt low, gpt 5.1 low, codex low | `colin-review-gpt51-codex-low` | GPT 5.1 Codex | 0.1 |
+| opus, opus 4.6 | `colin-review-opus46` | Claude Opus 4.6 | default |
+| sonnet, sonnet 4.5 high | `colin-review-sonnet45-high` | Claude Sonnet 4.5 | 0.8 |
+| gpt high, gpt 5.2 high, codex high | `colin-review-gpt52-codex-high` | GPT 5.2 Codex | 0.8 |
+| gpt low, gpt 5.2 low, codex low | `colin-review-gpt52-codex-low` | GPT 5.2 Codex | 0.1 |
 | gemini, gemini 3, gemini pro | `colin-review-gemini3-pro` | Gemini 3 Pro | 0.4 |
+| kimi, kimi k2.5 | `colin-review-kimi-k25` | Kimi K2.5 | default |
 | pickle, big pickle | `colin-review-big-pickle` | Big Pickle | 0.4 |
 
 **Default agents (if none specified):**
-1. `colin-review-opus45-low`
+1. `colin-review-opus46`
 2. `colin-review-sonnet45-high`
-3. `colin-review-gpt51-codex-high`
+3. `colin-review-gpt52-codex-high`
 
 ## Process
 
