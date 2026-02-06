@@ -13,7 +13,7 @@ Provide a code review for the given merge request and post comments directly to 
 The MR number is **optional**. If not provided, resolve it from the current git branch:
 
 ```bash
-glab mr list --source-branch="$(git branch --show-current)" --state=opened --output json \
+glab mr list --source-branch="$(git branch --show-current)" --output json \
   | jq '.[0] | {iid, title, state, draft, web_url}'
 ```
 
