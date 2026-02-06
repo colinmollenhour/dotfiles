@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), mcp__github_inline_comment__create_inline_comment
+allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api:*), Bash(jq:*), mcp__github_inline_comment__create_inline_comment
 description: Code review a GitHub pull request and post inline comments
 argument-hint: "<PR number or URL> [optional: agent names] [optional: --no-post]"
 ---
@@ -115,33 +115,89 @@ When the user says to post, post exactly what was shown (with any edits/removals
 No issues found. Checked for bugs and CLAUDE.md compliance.
 ```
 
-**If issues were found**, post inline comments for each issue using `mcp__github_inline_comment__create_inline_comment`:
+**If issues were found**, post inline comments for each issue.
+
+#### Choosing the inline comment tool
+
+Check if the GitHub MCP tool is available. Use whichever method is available:
+
+- **Option A (MCP)**: If `mcp__github_inline_comment__create_inline_comment` is available, use it.
+- **Option B (gh api)**: Otherwise, use `gh api` to call the GitHub REST API directly.
+
+If both are available, prefer the MCP tool (simpler interface).
+
+#### Option A: MCP tool
+
+Post using `mcp__github_inline_comment__create_inline_comment`:
 - `path`: the file path
 - `line` (and `startLine` for ranges): select the buggy lines
-- `body`: Every comment must start with an AI attribution header:
+- `body`: the comment body (see [Comment body format](#comment-body-format) below)
 
-  ```
-  > **AI Code Review** · Flagged by: <agent-name(s)>
+#### Option B: gh api
 
-  <issue description>
-  ```
+Get the PR's head commit SHA:
 
-  Where `<agent-name(s)>` is a comma-separated list of the agent names that flagged the issue (e.g., `colin-review-opus46, colin-review-sonnet45-high`). Issues flagged by multiple models independently are stronger signals.
+```bash
+gh pr view <PR> --json headRefOid --jq '.headRefOid'
+```
 
-  For small fixes (up to 5 lines), include a committable suggestion:
-  ```suggestion
-  corrected code here
-  ```
+Post a **single-line** comment:
 
-  **Suggestions must be COMPLETE.** If a fix requires additional changes elsewhere (e.g., renaming a variable requires updating all usages), do NOT use a suggestion block.
+```bash
+gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments \
+  --method POST \
+  -f "body=<comment text>" \
+  -f "commit_id=<head_commit_sha>" \
+  -f "path=<file_path>" \
+  -F "line=<line_number>" \
+  -f "side=RIGHT"
+```
 
-  For larger fixes (6+ lines, structural changes, or multi-location changes), do NOT use suggestion blocks. Instead:
-  1. Describe what the issue is
-  2. Explain the suggested fix at a high level
-  3. Include a copyable prompt:
-     ```
-     Fix [file:line]: [brief description of issue and suggested fix]
-     ```
+Post a **multi-line** comment:
+
+```bash
+gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments \
+  --method POST \
+  -f "body=<comment text>" \
+  -f "commit_id=<head_commit_sha>" \
+  -f "path=<file_path>" \
+  -F "start_line=<start_line>" \
+  -f "start_side=RIGHT" \
+  -F "line=<end_line>" \
+  -f "side=RIGHT"
+```
+
+Line positioning rules:
+- **Added/unchanged lines**: `side` = `RIGHT`
+- **Removed lines**: `side` = `LEFT`
+- Use `-F` (not `-f`) for integer fields like `line` and `start_line`
+
+#### Comment body format
+
+Every comment must start with an AI attribution header:
+
+```
+> **AI Code Review** · Flagged by: <agent-name(s)>
+
+<issue description>
+```
+
+Where `<agent-name(s)>` is a comma-separated list of the agent names that flagged the issue (e.g., `colin-review-opus46, colin-review-sonnet45-high`). Issues flagged by multiple models independently are stronger signals.
+
+For small fixes (up to 5 lines), include a committable suggestion:
+```suggestion
+corrected code here
+```
+
+**Suggestions must be COMPLETE.** If a fix requires additional changes elsewhere (e.g., renaming a variable requires updating all usages), do NOT use a suggestion block.
+
+For larger fixes (6+ lines, structural changes, or multi-location changes), do NOT use suggestion blocks. Instead:
+1. Describe what the issue is
+2. Explain the suggested fix at a high level
+3. Include a copyable prompt:
+   ```
+   Fix [file:line]: [brief description of issue and suggested fix]
+   ```
 
 **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
 
@@ -158,6 +214,9 @@ Requirements:
 
 ## Notes
 
-- Use `gh` CLI to interact with GitHub
+- Use `gh` CLI to interact with GitHub (`gh pr view`, `gh pr diff`, `gh pr comment`)
+- For inline diff comments: use the GitHub MCP tool if available, otherwise fall back to `gh api`
+- Pipe `gh api` and `gh pr view --json` through `jq` to select only relevant fields
+- **Dependencies:** `gh`, `jq` (jq only needed when using `gh api` fallback)
 - Create a todo list before starting
 - Cite and link each issue in inline comments (e.g., link to CLAUDE.md if referring to it)
