@@ -36,6 +36,15 @@ style = "bright-black"
 #command = "echo 🚀"
 #when = '[ "$STARSHIP_SHELL" == "bash" ]'
 
+[custom.distrobox]
+description = "Displays name of the activated distrobox container"
+symbol = "📦 "
+when = "[[ ! -z \"${CONTAINER_ID}\" ]]"
+command = "echo ${CONTAINER_ID}"
+format = "[ $symbol $output ]($style)"
+disabled = false
+style = "bold green"
+
 [gcloud]
 disabled = true
 
