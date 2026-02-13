@@ -1,3 +1,7 @@
+[container]
+format = '[$symbol \[$name\]]($style) '
+style = "green"
+
 [directory]
 truncate_to_repo = false
 truncation_length = 5
@@ -35,15 +39,6 @@ style = "bright-black"
 #[custom.bash]
 #command = "echo 🚀"
 #when = '[ "$STARSHIP_SHELL" == "bash" ]'
-
-[custom.distrobox]
-description = "Displays name of the activated distrobox container"
-symbol = "📦 "
-when = "[[ ! -z \"${CONTAINER_ID}\" ]]"
-command = "echo ${CONTAINER_ID}"
-format = "[ $symbol $output ]($style)"
-disabled = false
-style = "bold green"
 
 [gcloud]
 disabled = true
