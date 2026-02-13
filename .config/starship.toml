@@ -1,5 +1,6 @@
 [container]
-format = '[$symbol \[$name\]]($style) '
+symbol = "📦"
+format = '[$symbol]($style) '
 style = "green"
 
 [directory]
