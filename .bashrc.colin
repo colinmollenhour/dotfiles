@@ -2,7 +2,7 @@
 # ##################################################################
 # Colin's bashrc file ($INSTALL_REPO_HEAD)
 # Installed on $INSTALL_DATE
-# git clone https://github.com/colinmollenhour/dotfiles.git /opt/dotfiles && /opt/dotfiles/install.sh
+# git clone https://github.com/colinmollenhour/dotfiles.git ~/.local/colin-dotfiles && ~/.local/colin-dotfiles/install.sh
 # ##################################################################
 #
 # Shortcut Aliases and Bash Tricks
@@ -350,8 +350,8 @@ alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgut
 
 ## install shortcuts
 alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq openssl pwgen whois xxd zip direnv ugrep'
-alias update-packages='/opt/dotfiles/update-packages.py'
-alias install-packages='/opt/dotfiles/update-packages.py --install'
+alias update-packages='~/.local/colin-dotfiles/update-packages.py'
+alias install-packages='~/.local/colin-dotfiles/update-packages.py --install'
 
 ######################################
 # Functions for non-interactive shells
@@ -444,8 +444,13 @@ function unfubar-upstart {
 )
 }
 function update-dotfiles {
-  echo 'Update by navigating to the repository working directory and run:'
-  echo '  git pull && ./install.sh'
+  if [ -d ~/.local/colin-dotfiles ]; then
+    cd ~/.local/colin-dotfiles && git pull && ./install.sh --all
+  elif [ -d /opt/dotfiles ]; then
+    mv /opt/dotfiles ~/.local/colin-dotfiles && cd ~/.local/colin-dotfiles && git pull && ./install.sh --all
+  else
+    echo "Could not file the dotfiles repo?"
+  fi
   echo 'See: https://github.com/colinmollenhour/dotfiles'
 }
 function kontena-vpn-start {

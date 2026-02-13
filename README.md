@@ -62,6 +62,6 @@ Install these in a container with `settings.json`:
 {
   "dotfiles.repository": "colinmollenhour/dotfiles",
   "dotfiles.targetPath": "~/.dotfiles",
-  "dotfiles.installCommand": "~/.dotfiles/install.sh"
+  "dotfiles.installCommand": "~/.dotfiles/install.sh --all"
 }
 ```
