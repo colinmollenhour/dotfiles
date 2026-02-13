@@ -65,8 +65,8 @@ class PackageUpdater:
             ),
             "opencode": PackageConfig(
                 command="opencode",
-                install="brew install opencode",
-                upgrade="brew upgrade opencode",
+                install="brew install anomalyco/tap/opencode",
+                upgrade="brew upgrade anomalyco/tap/opencode",
                 source="brew"
             ),
             "starship": PackageConfig(
