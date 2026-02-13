@@ -133,7 +133,7 @@ interactive_install() {
   read -p "Install .claude and .config/opencode directories? [y/N] " -n 1 -r
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
-    install_claude
+    install_agents
   fi
 
   echo ""
