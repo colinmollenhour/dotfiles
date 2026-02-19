@@ -30,17 +30,18 @@ Use the **exact agent names** when launching subagents. The **Display Name** is 
 | Approximate Name | Exact Agent Name | Display Name | Model | Temp |
 |------------------|------------------|--------------|-------|------|
 | opus, opus 4.6 | `colin-review-opus46` | Opus 4.6 | Claude Opus 4.6 | default |
-| sonnet, sonnet 4.5 high | `colin-review-sonnet45-high` | Sonnet 4.5 | Claude Sonnet 4.5 | 0.8 |
+| sonnet, sonnet 4.6 high | `colin-review-sonnet46-high` | Sonnet 4.6 | Claude Sonnet 4.6 | 0.8 |
 | gpt high, gpt 5.2 high, codex high | `colin-review-gpt52-codex-high` | GPT 5.2 (high) | GPT 5.2 Codex | 0.8 |
 | gpt low, gpt 5.2 low, codex low | `colin-review-gpt52-codex-low` | GPT 5.2 (low) | GPT 5.2 Codex | 0.1 |
 | gemini, gemini 3, gemini pro | `colin-review-gemini3-pro` | Gemini 3 Pro | Gemini 3 Pro | 0.4 |
 | kimi, kimi k2.5 | `colin-review-kimi-k25` | Kimi K2.5 | Kimi K2.5 | default |
 | pickle, big pickle | `colin-review-big-pickle` | Big Pickle | Big Pickle | 0.4 |
+| glm, glm 5 | `colin-review-glm5` | GLM 5 | GLM 5 | default |
 
 **Default agents (if none specified):**
 1. `colin-review-opus46`
 2. `colin-review-gpt52-codex-high`
-3. `colin-review-kimi-k25`
+3. `colin-review-glm5`
 
 ## Process
 

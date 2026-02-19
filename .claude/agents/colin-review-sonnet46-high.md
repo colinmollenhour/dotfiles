@@ -1,7 +1,7 @@
 ---
-description: Code review agent - Claude Sonnet 4.5 (high temperature)
+description: Code review agent - Claude Sonnet 4.6 (high temperature)
 mode: subagent
-model: anthropic/claude-sonnet-4-5
+model: anthropic/claude-sonnet-4-6
 temperature: 0.8
 tools:
   write: false
