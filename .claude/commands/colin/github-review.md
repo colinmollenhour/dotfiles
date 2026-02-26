@@ -12,20 +12,21 @@ Provide a code review for the given pull request and post comments directly to G
 
 Use the **exact agent names** when launching subagents:
 
-| Approximate Name | Exact Agent Name | Model | Temp |
-|------------------|------------------|-------|------|
-| opus, opus 4.6 | `colin-review-opus46` | Claude Opus 4.6 | default |
-| sonnet, sonnet 4.5 high | `colin-review-sonnet45-high` | Claude Sonnet 4.5 | 0.8 |
-| gpt high, gpt 5.2 high, codex high | `colin-review-gpt52-codex-high` | GPT 5.2 Codex | 0.8 |
-| gpt low, gpt 5.2 low, codex low | `colin-review-gpt52-codex-low` | GPT 5.2 Codex | 0.1 |
-| gemini, gemini 3, gemini pro | `colin-review-gemini3-pro` | Gemini 3 Pro | 0.4 |
-| kimi, kimi k2.5 | `colin-review-kimi-k25` | Kimi K2.5 | default |
-| pickle, big pickle | `colin-review-big-pickle` | Big Pickle | 0.4 |
+| Approximate Name    | Exact Agent Name             | Display Name   |
+|---------------------|------------------------------|----------------|
+| opus, opus 4.6      | `colin-review-opus`          | Opus 4.6       |
+| sonnet, sonnet 4.6  | `colin-review-sonnet`        | Sonnet 4.6     |
+| gpt, gpt 5.3, codex | `colin-review-gpt-codex`     | GPT 5.3 Codex  |
+| gemini, gemini pro  | `colin-review-gemini-pro`    | Gemini 3.1 Pro |
+| kimi, kimi k2.5     | `colin-review-kimi`          | Kimi K2.5      |
+| pickle, big pickle  | `colin-review-big-pickle`    | Big Pickle     |
+| glm, glm 5          | `colin-review-glm`           | GLM 5          |
+| minimax             | `colin-review-minimax`       | MiniMax M2.5   |
 
 **Default agents (if none specified):**
-1. `colin-review-opus46`
-2. `colin-review-sonnet45-high`
-3. `colin-review-gpt52-codex-high`
+1. `colin-review-opus`
+2. `colin-review-gpt-codex`
+3. `colin-review-glm`
 
 ## Process
 

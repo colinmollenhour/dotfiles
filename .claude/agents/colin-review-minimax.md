@@ -1,8 +1,7 @@
 ---
-description: Code review agent - GPT 5.2 Codex (high temperature)
+description: Code review agent - MiniMax M2.5
 mode: subagent
-model: openrouter/openai/gpt-5.2-codex
-temperature: 0.8
+model: opencode/minimax-m2.5-free
 tools:
   write: false
   edit: false

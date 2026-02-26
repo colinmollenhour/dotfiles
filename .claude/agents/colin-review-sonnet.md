@@ -1,8 +1,7 @@
 ---
-description: Code review agent - Gemini 3 Pro
+description: Code review agent - Claude Sonnet 4.6
 mode: subagent
-model: github-copilot/gemini-3-pro-preview
-temperature: 0.4
+model: anthropic/claude-sonnet-4-6
 tools:
   write: false
   edit: false

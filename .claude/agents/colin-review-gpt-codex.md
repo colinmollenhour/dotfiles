@@ -1,8 +1,7 @@
 ---
-description: Code review agent - GPT 5.2 Codex (low temperature)
+description: Code review agent - GPT 5.3 Codex
 mode: subagent
-model: openrouter/openai/gpt-5.2-codex
-temperature: 0.1
+model: opencode/gpt-5.3-codex
 tools:
   write: false
   edit: false
