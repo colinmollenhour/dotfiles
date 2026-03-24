@@ -349,7 +349,7 @@ alias share-dir='npx share-cli'
 alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgutz/vpsbench/master/vpsbench)'
 
 ## install shortcuts
-alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq openssl pwgen whois xxd zip direnv ugrep'
+alias install-recommended='sudo apt install bash-completion vim git most curl wget httpie net-tools gzip unzip jq openssl pwgen whois xxd zip direnv ugrep gettext-base nano'
 alias update-packages='~/.local/colin-dotfiles/update-packages.py'
 alias install-packages='~/.local/colin-dotfiles/update-packages.py --install'
 
