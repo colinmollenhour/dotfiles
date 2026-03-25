@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(opencode export:*), Bash(opencode session:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*), mcp__github_inline_comment__create_inline_comment
+allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*), mcp__github_inline_comment__create_inline_comment
 description: Code review for GitHub PRs, GitLab MRs, or any git diff
 argument-hint: "[PR/MR number, URL, or git description] [agents] [--re-review] [--no-post] [--summary]"
 ---
@@ -515,75 +515,7 @@ corrected code here
 
 **IMPORTANT: Only post ONE comment per unique issue.**
 
-### Step 6: Export Session Transcript
-
-**Skip if not running under `opencode`.** Check:
-```bash
-which opencode 2>/dev/null
-```
-
-#### 6a: Identify the current session
-
-```bash
-opencode session list 2>&1 | head -5
-```
-
-Extract the session ID from the most recent (first row).
-
-#### 6b: Export the session
-
-```bash
-opencode export <SESSION_ID> > /tmp/review-session.json
-```
-
-#### 6c: Upload the file
-
-**GitHub:**
-```bash
-gh release upload <release> /tmp/review-session.json
-# Or create a gist:
-gh gist create /tmp/review-session.json
-```
-
-**GitLab:**
-```bash
-TOKEN=$(glab config get token --host <GITLAB_HOST> 2>/dev/null | head -1)
-PROJECT_ID=$(glab api projects/:fullpath --method GET 2>/dev/null | jq '.id')
-curl --silent --request POST \
-  --header "PRIVATE-TOKEN: ${TOKEN}" \
-  "https://<GITLAB_HOST>/api/v4/projects/${PROJECT_ID}/uploads" \
-  --form "file=@/tmp/review-session.json"
-```
-
-#### 6d: Post note with attachment
-
-**GitHub:**
-```bash
-gh pr comment <PR> --body "> **AI Code Review — Session Transcript**
->
-> Full review session: [review-session.json](<url>)
->
-> To replay: \`opencode import review-session.json\`"
-```
-
-**GitLab:**
-```bash
-glab mr note <MR> -m "> **AI Code Review — Session Transcript**
->
-> Full review session: [review-session.json](<url>)
->
-> To replay: \`opencode import review-session.json\`"
-```
-
-#### Combining with `--summary`
-
-When `--summary` is active, append the session link to the bottom of the summary comment instead of posting separately.
-
-#### `--no-post` interaction
-
-Still export and upload, but hold the note for user confirmation.
-
-### Step 7: Apply Review Label
+### Step 6: Apply Review Label
 
 **Skip this step for Git diff mode.**
 
