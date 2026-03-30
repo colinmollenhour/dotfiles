@@ -51,16 +51,18 @@ Use the **exact agent names** when launching subagents. The **Display Name** is 
 |---------------------|------------------------------|----------------|
 | opus, opus 4.6      | `colin-review-opus`          | Opus 4.6       |
 | sonnet, sonnet 4.6  | `colin-review-sonnet`        | Sonnet 4.6     |
-| gpt, gpt 5.3, codex | `colin-review-gpt-codex`     | GPT 5.3 Codex  |
+| gpt, gpt 5.4        | `colin-review-gpt`           | GPT 5.4        |
+| gpt-codex, codex    | `colin-review-gpt-codex`     | GPT 5.3 Codex  |
 | gemini, gemini pro  | `colin-review-gemini-pro`    | Gemini 3.1 Pro |
 | kimi, kimi k2.5     | `colin-review-kimi`          | Kimi K2.5      |
 | pickle, big pickle  | `colin-review-big-pickle`    | Big Pickle     |
 | glm, glm 5          | `colin-review-glm`           | GLM 5          |
 | minimax             | `colin-review-minimax`       | MiniMax M2.5   |
+| mimo                | `colin-review-mimo`          | MiMo V2 Pro    |
 
 **Default agents (if none specified):**
 1. `colin-review-opus`
-2. `colin-review-gpt-codex`
+2. `colin-review-gpt`
 3. `colin-review-glm`
 
 ## Re-review Mode
