@@ -1,15 +1,28 @@
 ---
-name: create-clickup-task
-description: Create ClickUp tasks with proper formatting, task types, custom fields, and assignment. Use when the user wants to create a task, bug, feature, or ticket in ClickUp, or when they mention Sprint planning or task tracking.
+name: clickup-tasks
+description: Create and update ClickUp tasks with proper formatting, task types, custom fields, and assignment. Use when the user wants to create a task, bug, feature, or ticket in ClickUp, or when they mention Sprint planning or task tracking.
 ---
 
-# Create ClickUp Task
+# ClickUp Tasks (Create & Update)
 
-This skill creates well-structured ClickUp tasks using the ClickUp MCP tools.
+This skill creates and updates ClickUp tasks. It supports two backends:
 
-## Instructions
+1. **ClickUp MCP** (preferred) - use MCP tools like `ClickUp_create_task`, `ClickUp_update_task`
+2. **`cup` CLI** (fallback) - use `cup create`, `cup update`, `cup field` when MCP is unavailable
 
-### Step 1: Gather task information
+## Backend Detection
+
+Before proceeding, check which backend is available:
+
+1. Try `cup auth --json` - if it returns authenticated user, CLI is available
+2. Check if ClickUp MCP tools are available (e.g., `ClickUp_create_task`)
+
+**If neither is available, halt and alert the user:**
+> ClickUp integration is not available. Neither the ClickUp MCP server nor the `cup` CLI is configured and working. Please set up one of the following:
+> - ClickUp MCP server in your opencode config
+> - `cup` CLI: run `cup init` to configure your API token
+
+## Step 1: Gather task information
 
 Ask clarifying questions if any required information is missing:
 
@@ -23,7 +36,7 @@ Ask clarifying questions if any required information is missing:
 8. **Value Stream** - Bug, Internal Enhancement, External Enhancement, Differentiator, Must Have, etc.
 9. **Requested By/Affects Clients** - RSF, Falcon, PGW, LVLup, Buho, PTAC, All Clients, etc.
 
-### Step 2: Determine Task Type
+## Step 2: Determine Task Type
 
 ClickUp has a "Task Type" feature (shown as `custom_item_id` in the API). This is separate from the "Value Stream" custom field.
 
@@ -45,7 +58,7 @@ ClickUp has a "Task Type" feature (shown as `custom_item_id` in the API). This i
 - Refactoring
 - General work items
 
-### Step 3: Format the task
+## Step 3: Format the task
 
 #### Task Name
 Prefix with an appropriate emoji based on type:
@@ -56,42 +69,45 @@ Prefix with an appropriate emoji based on type:
 - Refactor: `Refactor...`
 
 #### Description Format
-Use this markdown template for the description:
+Use this markdown template for the description. **No blank lines between elements** - ClickUp renders extra whitespace as visible gaps:
 
 ```markdown
 **As a** [role],
 **I want** [capability],
 **So that** [benefit].
-
 # Problem Statement
-
 [Describe the problem, include evidence, examples, or references]
-
 # Solution
-
 [Describe the proposed solution and implementation approach]
-
 # Files to Modify
-
 | File | Change |
 |------|--------|
 | `path/to/file.php` | Description of change |
-
 # Acceptance Criteria
-
 1. [Criterion 1]
 2. [Criterion 2]
 3. [Criterion 3]
 ```
 
-### Step 4: Find the list and assignee
+#### Syntax
 
+ClickUp renders extra white space as visible gaps. **Never use blank lines between elements.** The only exception is a blank line before a list or table if the preceding line ends with regular text (not a heading or code block).
+
+## Step 4: Find the list and assignee
+
+### Using MCP:
 1. **Find the Sprint list**: Use `ClickUp_get_task` with `taskName` like "Sprint NNN" to find the list ID
 2. **Find the assignee**: Use `ClickUp_find_member_by_name` to get the user ID
 
-### Step 5: Create the task
+### Using cup CLI:
+1. **Find the Sprint list**: Use `cup sprints` to list sprints, then `cup task <sprintTaskId>` to get the list ID
+2. **Find the assignee**: Use `cup members` to list workspace members and find user ID
 
-Use `ClickUp_create_task` with:
+## Step 5: Create or update the task
+
+### Using MCP:
+
+**Create:** Use `ClickUp_create_task` with:
 - `name`: Task name (emoji optional - Bug type provides its own icon)
 - `listId`: The sprint list ID (preferred over listName)
 - `priority`: 1-4 (1=urgent, 4=low)
@@ -100,9 +116,36 @@ Use `ClickUp_create_task` with:
 - `markdown_description`: Full formatted description
 - `custom_item_id`: Task type ID - use `1001` for Bug type, omit or use `0` for regular Task
 
+**Update:** Use `ClickUp_update_task` with the task ID and fields to update.
+
 **Note:** If the `custom_item_id` parameter is not supported by the MCP tool, inform the user that they will need to manually change the Task Type to "Bug" in ClickUp after creation, or the MCP server needs to be updated to support this parameter.
 
-### Step 6: Set custom fields
+### Using cup CLI:
+
+**Create:**
+```bash
+cup create \
+  -n "Task Name" \
+  -l <listId> \
+  -d "Formatted description in markdown" \
+  -s "Ready to Start" \
+  --priority normal \
+  --assignee 2685610 \
+  --custom-item-id 1001  # only for Bug type
+```
+
+**Update:**
+```bash
+cup update <taskId> \
+  -n "New Name" \
+  -d "New description" \
+  -s "In Progress" \
+  --priority high
+```
+
+## Step 6: Set custom fields
+
+### Using MCP:
 
 Use `ClickUp_update_task` to set custom fields:
 
@@ -140,9 +183,21 @@ custom_fields: [
 ]
 ```
 
-### Step 7: Report the result
+### Using cup CLI:
 
-After creating the task, provide a summary:
+```bash
+# Set Value Stream to Bug
+cup field <taskId> --set "Value Stream" Bug
+
+# Set Requested By to RSF
+cup field <taskId> --set "Requested By/Affects Clients" RSF
+```
+
+The `cup field --set` command resolves field and option names case-insensitively. If the name doesn't match, it will list available options.
+
+## Step 7: Report the result
+
+After creating or updating the task, provide a summary:
 
 ```
 **ClickUp Task Created:**
@@ -168,7 +223,7 @@ After creating the task, provide a summary:
 |------|---------|
 | Colin | 2685610 |
 
-Use `ClickUp_find_member_by_name` to find other team members by name or email.
+Use `ClickUp_find_member_by_name` (MCP) or `cup members` (CLI) to find other team members by name or email.
 
 ## Tips
 
@@ -179,3 +234,4 @@ Use `ClickUp_find_member_by_name` to find other team members by name or email.
 - Custom field values for dropdowns use the option ID, not the display name
 - Custom field values for labels (like "Requested By") take an array of option IDs
 - Task Type (Bug vs Task) is different from Value Stream - both should be set appropriately
+- When using `cup` CLI, descriptions support markdown natively
