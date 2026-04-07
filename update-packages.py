@@ -87,12 +87,6 @@ class PackageUpdater:
                 upgrade="curl -sSL -o - https://github.com/shenwei356/csvtk/releases/download/v0.25.0/csvtk_linux_amd64.tar.gz | sudo tar -xz --directory=/usr/local/bin",
                 source="shell"
             ),
-            "diff-so-fancy": PackageConfig(
-                command="diff-so-fancy",
-                install="sudo add-apt-repository -y ppa:aos1/diff-so-fancy && sudo apt update && sudo apt install diff-so-fancy && git config --global core.pager \"diff-so-fancy | less --tabs=4 -RF\" && git config --global interactive.diffFilter \"diff-so-fancy --patch\"",
-                upgrade="apt upgrade diff-so-fancy 2>/dev/null || sudo add-apt-repository -y ppa:aos1/diff-so-fancy && sudo apt update && sudo apt install diff-so-fancy",
-                source="apt"
-            ),
             "docker": PackageConfig(
                 command="docker",
                 install="curl -sSL https://get.docker.com/ | sudo sh",
@@ -116,6 +110,12 @@ class PackageUpdater:
                 install="(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)",
                 upgrade="brew upgrade fzf 2>/dev/null || (cd ~/.fzf && git pull && ./install)",
                 source="shell"
+            ),
+            "git-delta": PackageConfig(
+                command="delta",
+                install="brew install git-delta",
+                upgrade="brew upgrade git-delta",
+                source="brew"
             ),
             "gvm": PackageConfig(
                 command="gvm",

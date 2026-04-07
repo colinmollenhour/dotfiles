@@ -1,5 +1,5 @@
-# Colin's .gitconfig ($INSTALL_REPO_HEAD)
-# Installed on $INSTALL_DATE
+# Colin's .gitconfig (856c11c9e85aaf40f3aede622f9957d6e7423417)
+# Installed on Tue Mar 24 16:45:45 UTC 2026
 # https://github.com/colinmollenhour/dotfiles
 [alias]
 	# Shortcuts
@@ -7,6 +7,7 @@
 	co = checkout
 	br = branch
 	cp = cherry-pick
+        wt = worktree
 
 	# Advanced Shortcuts
 	lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset' --abbrev-commit --date=relative
@@ -18,44 +19,20 @@
 	du = "!git diff `git upstream-branch-name`..."
 	files = "!f() { if [ -z \"$1\" ]; then echo 'Usage: git files <commit>'; exit 1; fi; git diff --name-status \"$1^\" \"$1\"; }; f"
 	backport-commit = "!f() { set -ex; commit_ref=${2:-HEAD}; commit=$(git rev-parse $commit_ref); head=$(git rev-parse --abbrev-ref HEAD); stashed=0; git diff --quiet || { stashed=1; git stash push -u -m 'Backporting in progress'; }; git checkout \"$1\"; git pull --ff-only; git cherry-pick $commit; git push -o ci.skip; git checkout $head; if [ $stashed -eq 1 ]; then git stash pop; fi; echo \"Backport successful.\"; }; f"
+
 [color]
 	ui = auto
 
-[merge]
-	tool = diffmerge
-[mergetool "diffmerge"]
-	cmd = diffmerge.sh \"$PWD/$LOCAL\" \"$PWD/$BASE\" \"$PWD/$REMOTE\" \"$PWD/$MERGED\"
-	trustExitCode = false
-	keepBackup = false
+[delta]
+    navigate = true  # use n and N to move between diff sections
+    dark = true      # or light = true, or omit for auto-detection
+
 [push]
 	default = tracking
+
 [core]
 	excludesfile = ~/.gitignore.global
-	pager = diff-so-fancy | less --tabs=4 -RF
-#        attributesFile = ~/.gitattributes.global
-[diff]
-	tool = meld
-[filter "lfs"]
-	clean = git-lfs clean -- %f
-	smudge = git-lfs smudge -- %f
-	process = git-lfs filter-process
-	required = true
-[http]
-	cookiefile = ~/.gitcookies
+        pager = delta
+
 [interactive]
-	diffFilter = diff-so-fancy --patch
-[color "diff-highlight"]
-	oldNormal = red bold
-	oldHighlight = red bold 52
-	newNormal = green bold
-	newHighlight = green bold 22
-[color "diff"]
-	meta = 11
-	frag = magenta bold
-	func = 146 bold
-	commit = yellow bold
-	old = red bold
-	new = green bold
-	whitespace = red reverse
-[pager]
-	diff = less -FX
+        diffFilter = delta --color-only
