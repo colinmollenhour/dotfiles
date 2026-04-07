@@ -27,6 +27,12 @@ class PackageUpdater:
         """Load package configuration from embedded data."""
         # Package configuration with command, install command, upgrade command, and source type
         package_data = {
+            "brew": PackageConfig(
+                command="brew",
+                install='/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+                upgrade="brew update",
+                source="shell"
+            ),
             "lazygit": PackageConfig(
                 command="lazygit",
                 install="brew install lazygit",
@@ -71,21 +77,21 @@ class PackageUpdater:
             ),
             "starship": PackageConfig(
                 command="starship",
-                install="curl -sS https://starship.rs/install.sh | sh",
-                upgrade="brew upgrade starship 2>/dev/null || curl -sS https://starship.rs/install.sh | sh",
-                source="shell"
+                install="brew install starship",
+                upgrade="brew upgrade starship",
+                source="brew"
             ),
             "bat": PackageConfig(
                 command="bat",
-                install="(set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)",
-                upgrade="brew upgrade bat 2>/dev/null || (set -e; cd /tmp; curl -sSL -o bat.deb https://github.com/sharkdp/bat/releases/download/v0.22.1/bat-musl_0.22.1_amd64.deb; sudo dpkg -i bat.deb; rm bat.deb)",
-                source="shell"
+                install="brew install bat",
+                upgrade="brew upgrade bat",
+                source="brew"
             ),
             "csvtk": PackageConfig(
                 command="csvtk",
-                install="curl -sSL -o - https://github.com/shenwei356/csvtk/releases/download/v0.25.0/csvtk_linux_amd64.tar.gz | sudo tar -xz --directory=/usr/local/bin",
-                upgrade="curl -sSL -o - https://github.com/shenwei356/csvtk/releases/download/v0.25.0/csvtk_linux_amd64.tar.gz | sudo tar -xz --directory=/usr/local/bin",
-                source="shell"
+                install="brew install csvtk",
+                upgrade="brew upgrade csvtk",
+                source="brew"
             ),
             "docker": PackageConfig(
                 command="docker",
@@ -95,21 +101,21 @@ class PackageUpdater:
             ),
             "fd": PackageConfig(
                 command="fd",
-                install="(set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)",
-                upgrade="brew upgrade fd 2>/dev/null || (set -e; cd /tmp; curl -sSL -o fd.deb https://github.com/sharkdp/fd/releases/download/v8.4.0/fd-musl_8.4.0_amd64.deb; sudo dpkg -i fd.deb; rm fd.deb)",
-                source="shell"
+                install="brew install fd",
+                upgrade="brew upgrade fd",
+                source="brew"
             ),
             "fly": PackageConfig(
                 command="flyctl",
-                install="curl -L https://fly.io/install.sh | sh",
-                upgrade="brew upgrade flyctl 2>/dev/null || curl -L https://fly.io/install.sh | sh",
-                source="shell"
+                install="brew install flyctl",
+                upgrade="brew upgrade flyctl",
+                source="brew"
             ),
             "fzf": PackageConfig(
                 command="fzf",
-                install="(set -e; cd; git clone https://github.com/junegunn/fzf.git .fzf; cd .fzf; ./install)",
-                upgrade="brew upgrade fzf 2>/dev/null || (cd ~/.fzf && git pull && ./install)",
-                source="shell"
+                install="brew install fzf",
+                upgrade="brew upgrade fzf",
+                source="brew"
             ),
             "git-delta": PackageConfig(
                 command="delta",
@@ -125,27 +131,27 @@ class PackageUpdater:
             ),
             "hey": PackageConfig(
                 command="hey",
-                install="(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/hey https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64; chmod +x $HOME/bin/hey)",
-                upgrade="(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/hey https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64; chmod +x $HOME/bin/hey)",
-                source="shell"
+                install="brew install hey",
+                upgrade="brew upgrade hey",
+                source="brew"
             ),
             "icdiff": PackageConfig(
                 command="icdiff",
-                install="(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/icdiff; curl -sSL -o $HOME/bin/git-icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/git-icdiff; chmod +x $HOME/bin/{icdiff,git-icdiff})",
-                upgrade="(set -e; mkdir -p $HOME/bin; curl -sSL -o $HOME/bin/icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/icdiff; curl -sSL -o $HOME/bin/git-icdiff https://raw.githubusercontent.com/jeffkaufman/icdiff/master/git-icdiff; chmod +x $HOME/bin/{icdiff,git-icdiff})",
-                source="shell"
+                install="brew install icdiff",
+                upgrade="brew upgrade icdiff",
+                source="brew"
             ),
             "pnpm": PackageConfig(
                 command="pnpm",
-                install="curl -fsSL https://get.pnpm.io/install.sh | sh -",
-                upgrade="pnpm self-update",
-                source="shell"
+                install="brew install pnpm",
+                upgrade="brew upgrade pnpm",
+                source="brew"
             ),
             "lsd": PackageConfig(
                 command="lsd",
-                install="(set -e; curl -sSL -o lsd.deb https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb; sudo dpkg -i lsd.deb; rm lsd.deb)",
-                upgrade="brew upgrade lsd 2>/dev/null || (set -e; curl -sSL -o lsd.deb https://github.com/Peltoche/lsd/releases/download/0.23.1/lsd_0.23.1_amd64.deb; sudo dpkg -i lsd.deb; rm lsd.deb)",
-                source="shell"
+                install="brew install lsd",
+                upgrade="brew upgrade lsd",
+                source="brew"
             ),
             "exa": PackageConfig(
                 command="exa",
@@ -155,27 +161,21 @@ class PackageUpdater:
             ),
             "ripgrep": PackageConfig(
                 command="rg",
-                install="apt install ripgrep 2>/dev/null || brew install ripgrep",
-                upgrade="apt upgrade ripgrep 2>/dev/null || brew upgrade ripgrep",
-                source="apt"
-            ),
-            "fzf-alt": PackageConfig(
-                command="fzf",
-                install="apt install fzf 2>/dev/null || brew install fzf",
-                upgrade="apt upgrade fzf 2>/dev/null || brew upgrade fzf",
-                source="apt"
+                install="brew install ripgrep",
+                upgrade="brew upgrade ripgrep",
+                source="brew"
             ),
             "tmux": PackageConfig(
                 command="tmux",
-                install="apt install tmux 2>/dev/null || brew install tmux",
-                upgrade="apt upgrade tmux 2>/dev/null || brew upgrade tmux",
-                source="apt"
+                install="brew install tmux",
+                upgrade="brew upgrade tmux",
+                source="brew"
             ),
             "neovim": PackageConfig(
                 command="nvim",
-                install="apt install neovim 2>/dev/null || brew install neovim",
-                upgrade="apt upgrade neovim 2>/dev/null || brew upgrade neovim",
-                source="apt"
+                install="brew install neovim",
+                upgrade="brew upgrade neovim",
+                source="brew"
             ),
             "teleport": PackageConfig(
                 command="tsh",
