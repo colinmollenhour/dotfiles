@@ -93,6 +93,10 @@ update_gitconfig() {
 
 install_agents() {
   echo "==> Installing AI agent files..."
+  if [[ -f ~/.claude/settings.json ]] && [[ "$(cat ~/.claude/settings.json)" != "{}" ]]; then
+    cp ~/.claude/settings.json ~/.claude/settings.json.bak
+    echo "Backed up ~/.claude/settings.json to ~/.claude/settings.json.bak"
+  fi
   cp -rf .claude/ ~/
   if [[ -d ~/.config/opencode/command/colin ]]; then
     rm -rf ~/.config/opencode/{command,skill,agent}
