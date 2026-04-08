@@ -1,7 +1,7 @@
 ---
 description: Code review agent - GPT 5.3 Codex
 mode: subagent
-model: opencode/gpt-5.3-codex
+model: openai/gpt-5.3-codex
 tools:
   write: false
   edit: false

@@ -1,7 +1,7 @@
 ---
 description: Code review agent - GPT 5.4
 mode: subagent
-model: opencode/gpt-5.4
+model: openai/gpt-5.4
 tools:
   write: false
   edit: false
