@@ -16,6 +16,9 @@ imc
 .track
 .tmp
 .worktrees
+.claude/settings.local.json
+.claude/worktrees
+.codex
 
 # bv (beads viewer) local config and caches
 .bv/
