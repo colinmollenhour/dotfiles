@@ -1,7 +1,7 @@
 ---
 description: Code review agent - MiMo V2 Pro
 mode: subagent
-model: opencode/mimo-v2-pro-free
+model: openrouter/xiaomi/mimo-v2-pro
 tools:
   write: false
   edit: false
