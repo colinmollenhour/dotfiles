@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*), mcp__github_inline_comment__create_inline_comment
 description: Code review for GitHub PRs, GitLab MRs, or any git diff
-argument-hint: "[PR/MR number, URL, or git description] [agents] [--re-review] [--no-post] [--summary]"
+argument-hint: "[PR/MR number, URL, or git description] [agents] [--re-review] [--no-post] [--no-summary]"
 ---
 
 # Code Review
@@ -14,7 +14,7 @@ Provide a code review for a GitHub pull request, GitLab merge request, or arbitr
 1. Check the git remote origin URL: `git remote get-url origin`
 2. If it contains `github.com` → GitHub PR mode, resolve PR from current branch
 3. If it contains `gitlab` or matches a GitLab host → GitLab MR mode, resolve MR from current branch
-4. Otherwise → Error, cannot determine platform
+4. Otherwise → Error, cannot determine platform, stop and ask what should be reviewed and where to post the results
 
 **If an argument is provided, detect the type:**
 
@@ -43,27 +43,15 @@ glab mr list --source-branch="$(git branch --show-current)" --output json \
   | jq '.[0] | {iid, title, state, draft, web_url}'
 ```
 
-## Available Review Agents
+## Review Agents
 
-Use the **exact agent names** when launching subagents. The **Display Name** is used in `--summary` output and posted comments for readability.
+Use the **Many Brain One Task (MBOT)** skill to run the review with multiple models. Load the skill first, then follow its instructions.
 
-| Approximate Name    | Exact Agent Name             | Display Name   |
-|---------------------|------------------------------|----------------|
-| opus, opus 4.6      | `colin-review-opus`          | Opus 4.6       |
-| sonnet, sonnet 4.6  | `colin-review-sonnet`        | Sonnet 4.6     |
-| gpt, gpt 5.4        | `colin-review-gpt`           | GPT 5.4        |
-| gpt-codex, codex    | `colin-review-gpt-codex`     | GPT 5.3 Codex  |
-| gemini, gemini pro  | `colin-review-gemini-pro`    | Gemini 3.1 Pro |
-| kimi, kimi k2.5     | `colin-review-kimi`          | Kimi K2.5      |
-| pickle, big pickle  | `colin-review-big-pickle`    | Big Pickle     |
-| glm, glm 5          | `colin-review-glm`           | GLM 5          |
-| minimax             | `colin-review-minimax`       | MiniMax M2.5   |
-| mimo                | `colin-review-mimo`          | MiMo V2 Pro    |
+- Task type: `code-review`
+- If the user specifies model names, pass them to the MBOT skill
+- Otherwise, MBOT will use its defaults from `defaults.md` and `code-review.md`
 
-**Default agents (if none specified):**
-1. `colin-review-opus`
-2. `colin-review-gpt`
-3. `colin-review-glm`
+Each model's **Display Name** is determined by the MBOT skill agent names (e.g., `colin-mbot-opus` → "Opus"). Use display names in summary output and posted comments.
 
 ## Re-review Mode
 
@@ -227,9 +215,9 @@ Scan the title, description, and any linked issues/tasks for URLs. For each URL 
 
 ### Step 3: Review the Changes
 
-Launch the specified review agents in parallel (or the 3 default agents if none specified). Use the **exact agent names** from the table above.
+Use the **MBOT skill** to launch review agents in parallel. Pass each agent the filtered diff, AGENTS.md context, and external context gathered in Step 2.
 
-Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-review-opus`) — this attribution is preserved through validation and included in the posted comment.
+Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-mbot-opus`) — this attribution is preserved through validation and included in the posted comment.
 
 **Review Categories:**
 - AGENTS.md compliance (only consider AGENTS.md files that share a file path with the file or parents)
@@ -254,11 +242,11 @@ For each issue found, launch a validation agent to confirm the issue is real wit
 
 When deduplicating issues found by multiple agents, **merge the agent attribution** — track all agents that independently identified the same issue. Issues found by multiple models are higher signal.
 
-When `--summary` is active, preserve full validation results for each agent.
+Preserve full validation results for each agent unless `--no-summary` was specified.
 
-### Step 4.5: Model Comparison Summary (`--summary`)
+### Step 4.5: Model Comparison Summary
 
-**Skip this step entirely if `--summary` is not specified.**
+**Skip this step entirely if `--no-summary` is specified.**
 
 After validation completes, compile per-agent performance metrics using **display names**.
 
@@ -465,9 +453,9 @@ For multi-line, add `line_range`:
 
 **Verify success:** Response should contain `"type": "DiffNote"`.
 
-#### Posting `--summary` Comment
+#### Posting Summary Comment
 
-If `--summary` is active, post the model comparison summary as an additional comment **after** all inline comments:
+Unless `--no-summary` was specified, post the model comparison summary as an additional comment **after** all inline comments:
 
 **GitHub:**
 ```bash
