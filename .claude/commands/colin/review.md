@@ -6,551 +6,227 @@ argument-hint: "[PR/MR number, URL, or git description] [agents] [--re-review] [
 
 # Code Review
 
-Provide a code review for a GitHub pull request, GitLab merge request, or arbitrary git diff. Posts inline comments directly to the platform when reviewing a PR/MR.
+Review a GitHub pull request, GitLab merge request, or arbitrary git diff. Post inline comments for PR/MR reviews unless `--no-post` is active.
 
 ## Input Resolution
 
-**If no argument is provided:**
-1. Check the git remote origin URL: `git remote get-url origin`
-2. If it contains `github.com` → GitHub PR mode, resolve PR from current branch
-3. If it contains `gitlab` or matches a GitLab host → GitLab MR mode, resolve MR from current branch
-4. Otherwise → Error, cannot determine platform, stop and ask what should be reviewed and where to post the results
+If no argument is provided:
+1. Check `git remote get-url origin`
+2. If it points to GitHub, resolve the open PR for the current branch
+3. If it points to GitLab, resolve the open MR for the current branch
+4. Otherwise stop and ask what should be reviewed and where results should go
 
-**If an argument is provided, detect the type:**
+If an argument is provided, resolve it as follows:
 
-| Pattern | Mode | How to Resolve |
-|---------|------|----------------|
-| `github.com/.../pull/123` | GitHub PR | Extract PR number from URL |
-| `gitlab.*/.../merge_requests/123` | GitLab MR | Extract MR IID from URL |
-| `https://github.com/OWNER/REPO` | GitHub PR | Owner/repo from URL, resolve PR from branch |
-| Numeric only (e.g., `123`) | Platform from origin | Use number as PR/MR ID |
+| Pattern | Mode | Resolution |
+|---|---|---|
+| `github.com/.../pull/123` | GitHub PR | Extract PR number |
+| `gitlab.*/.../merge_requests/123` | GitLab MR | Extract MR IID |
+| `https://github.com/OWNER/REPO` | GitHub PR | Resolve PR from current branch |
+| Numeric only | Platform from origin | Use as PR/MR ID |
 | `last N commits` | Git diff | `git diff HEAD~N..HEAD` |
-| `whole repo` or `entire codebase` | Git diff | Analyze all tracked files |
-| `branch NAME` | Git diff | `git diff main...NAME` (or default branch) |
-| `SHA..SHA` or `SHA...SHA` | Git diff | Direct git revision range |
+| `whole repo` or `entire codebase` | Git diff | Review all tracked files |
+| `branch NAME` | Git diff | `git diff main...NAME` or default branch |
+| `SHA..SHA` or `SHA...SHA` | Git diff | Use directly |
 | Any other text | Git diff | Interpret as git rev spec |
 
-### Resolving PR/MR from Current Branch
-
-**GitHub:**
-```bash
-gh pr list --head "$(git branch --show-current)" --state open --json number,title,state,isDraft
-```
-
-**GitLab:**
-```bash
-glab mr list --source-branch="$(git branch --show-current)" --output json \
-  | jq '.[0] | {iid, title, state, draft, web_url}'
-```
+Resolve current-branch reviews with:
+- GitHub: `gh pr list --head "$(git branch --show-current)" --state open --json number,title,state,isDraft`
+- GitLab: `glab mr list --source-branch="$(git branch --show-current)" --output json | jq '.[0] | {iid, title, state, draft, web_url}'`
 
 ## Review Agents
 
-Use the **Many Brain One Task (MBOT)** skill to run the review with multiple models. Load the skill first, then follow its instructions.
+Use the **Many Brain One Task (MBOT)** skill with task type `code-review`.
 
-- Task type: `code-review`
-- If the user specifies model names, pass them to the MBOT skill
-- Otherwise, MBOT will use its defaults from `defaults.md` and `code-review.md`
-
-Each model's **Display Name** is determined by the MBOT skill agent names (e.g., `colin-mbot-opus` → "Opus"). Use display names in summary output and posted comments.
+- If the user names models, pass them through
+- Otherwise use MBOT defaults
+- Use MBOT display names in summaries and posted comments
 
 ## Re-review Mode
 
-If `--re-review` is specified, this is a follow-up review of a PR/MR that was previously reviewed. The goal is to review only the new changes and avoid re-flagging issues from the previous review.
+If `--re-review` is active, review only the new changes since the last review.
 
-**When `--re-review` is active, the following modifications apply to the process below:**
-
-1. **Step 1 (Pre-flight)**: Skip the "already commented" check — prior comments are expected.
-
-2. **Step 2 (Gather Context)**: In addition to normal context gathering, also gather re-review context:
-
-   **GitHub:**
-   ```bash
-   # Get PR timeline to find last review
-   gh pr view <PR> --comments --json comments
-   
-   # Get commits since a specific SHA
-   gh api repos/{owner}/{repo}/pulls/<PR>/commits
-   ```
-
-   **GitLab:**
-   a. **Get your previous comments** — Fetch your username and all discussions in parallel:
-   ```bash
-   glab api user | jq -r '.username'
-   
-   glab api projects/:fullpath/merge_requests/<MR_IID>/discussions | jq --arg me "<YOUR_USERNAME>" '
-     [.[] | select(.notes[0].author.username == $me) | {
-       id,
-       body: .notes[0].body,
-       created_at: .notes[0].created_at,
-       position: (.notes[0].position // null | if . then {
-         new_path, old_path, new_line, old_line
-       } else null end)
-     }]
-   '
-   ```
-   
-   b. **Determine what changed since the last review** — Use the MR versions:
-   ```bash
-   glab api projects/:fullpath/merge_requests/<MR_IID>/versions \
-     | jq '[.[] | {id, head_commit_sha, created_at}]'
-   ```
-   
-   Compare timestamps to find the version you reviewed, then get incremental diff:
-   ```bash
-   glab api "projects/:fullpath/repository/compare?from=<previous_review_HEAD>&to=<current_HEAD>" \
-     | jq '{
-       commits: [.commits[] | {short_id, title}],
-       diffs: [.diffs[] | {new_path, old_path, diff}]
-     }'
-   ```
-
-3. **Step 3 (Review)**: Provide agents with:
-   - The **incremental diff** (not the full diff) as primary focus
-   - The **full diff** as background context only
-   - The **list of prior review comments** so they know what was already flagged
-
-   Agents should:
-   - Focus on the incremental diff for new issues
-   - **NOT** re-flag any issue that overlaps with a prior comment
-   - Check whether prior issues were fixed — if not fixed, may re-flag with note
-
-4. **Step 5 (Post Comments)**: When posting "no issues found" summary:
-   ```
-   > **AI Code Review (Re-review)** · Models: <comma-separated list>
-   
-   No new issues found in the latest changes.
-   ```
+- Skip the normal "already commented" stop condition
+- Gather prior review comments and determine the incremental diff since the last reviewed SHA/version
+- Give agents the incremental diff as primary input, and the full diff as background only
+- Do not re-flag issues already covered by prior comments unless they remain unresolved and are still relevant
+- If no new issues are found, use a re-review summary comment that says no new issues were found in the latest changes
 
 ## Process
 
 ### Step 1: Pre-flight Checks
 
-**For GitHub PRs:**
-```bash
-gh pr view <PR> --json state,isDraft,title,author --jq '{state, isDraft, title, author: .author.login}'
-```
+For PR/MR reviews, fetch state, draft status, title, and author.
 
-**For GitLab MRs:**
-```bash
-glab mr view <MR> --output json | jq '{state, draft, title, author: .author.username}'
-```
-
-Stop and do not proceed if:
+Stop if:
 - The PR/MR is closed or merged
-- The PR/MR is a draft/WIP
-- The PR/MR does not need code review (e.g., automated, trivial change)
-- You have already commented on this PR/MR (**skip this check if `--re-review`**)
+- The PR/MR is draft/WIP
+- The change clearly does not need code review, such as trivial automation
+- You have already commented on it, unless `--re-review` is active
 
-Note: Still review AI-generated PRs/MRs.
+For git diff mode, skip pre-flight entirely.
 
-**For Git diff mode:** Skip pre-flight checks entirely.
+### Step 2: Triage and Filter
 
-### Step 1.5: Triage & Filter
+Fetch the file list and diff, then exclude review noise before running agents.
 
-Fetch the file list and filter out noise before reviewing.
+Exclude:
+- Generated files
+- Vendored or dependency directories: `vendor/`, `node_modules/`, `.yarn/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.venv/`, `third_party/`
+- Lock files and built artifacts: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `go.sum`, `composer.lock`, `Gemfile.lock`, `Cargo.lock`, `poetry.lock`, `*.min.js`, `*.min.css`, `*.map`
+- Any single-file diff larger than `5000` lines
 
-**GitHub:**
-```bash
-gh pr view <PR> --json files --jq '.files[] | {path: .path, additions, deletions}'
-gh pr diff <PR>
-```
+Report triage results in this format:
 
-**GitLab:**
-```bash
-glab api projects/:fullpath/merge_requests/<MR_IID>/diffs --paginate | jq '
-  [.[] | {
-    new_path,
-    old_path,
-    diff,
-    generated_file,
-    new_file,
-    deleted_file,
-    renamed_file,
-    diff_lines: (.diff | split("\n") | length)
-  }]
-'
-```
-
-**Git diff mode:**
-```bash
-git diff --stat <revision>
-git diff <revision>
-```
-
-**Apply exclusion rules.** Remove files matching any of these criteria:
-
-1. **Generated files**: `generated_file` is `true` (GitLab only)
-2. **Vendored/dependency directories**: Path starts with:
-   - `vendor/`, `node_modules/`, `.yarn/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.venv/`, `third_party/`
-3. **Lock files and artifacts**: Path matches:
-   - `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `go.sum`, `composer.lock`, `Gemfile.lock`, `Cargo.lock`, `poetry.lock`, `*.min.js`, `*.min.css`, `*.map`
-4. **Oversized file diffs**: Diff exceeds **5000** lines
-
-**Report triage results:**
-```
+```text
 Triage: <N> files, <M> excluded (<reasons>), reviewing <N-M> files (<L> diff lines)
 ```
 
-### Step 2: Gather Context
+### Step 3: Gather Context
 
-Launch agents in parallel to:
-1. Return a list of file paths for all relevant AGENTS.md files including:
-   - The root AGENTS.md file, if it exists
-   - Any AGENTS.md files in directories containing modified files (use the **filtered** file list)
-2. Get the diff/PR/MR summary and return a summary of the changes
-3. If `--re-review`: gather re-review context (see [Re-review Mode](#re-review-mode) above)
-4. **External context** (see [Fetching External Context](#fetching-external-context) below)
+Launch context gathering in parallel:
+1. Find all relevant `AGENTS.md` files:
+   - The repo-root `AGENTS.md`, if present
+   - Any `AGENTS.md` in directories containing reviewed files or their parents
+2. Summarize the diff/PR/MR
+3. If `--re-review`, gather prior comments and the incremental diff
+4. Gather external context from URLs in the title, description, or linked tasks/issues when the matching MCP is available
 
-#### Fetching External Context
+Supported external context:
+- `clickup.com/t/<task_id>` via `mcp__clickup__*`
+- `app.intercom.com/*/conversation/<id>` via `mcp__Intercom__get_conversation`
+- `*.sentry.io/issues/<issue_id>` via `mcp__Sentry__get_issue_details`
 
-Scan the title, description, and any linked issues/tasks for URLs. For each URL found, if the corresponding MCP tool is available, launch a sub-agent to fetch and summarize context. Skip silently if the tool is not available.
+Pass external summaries to review agents, but do not post them as comments.
 
-| URL Pattern | MCP Tool | What to Fetch |
-|---|---|---|
-| `clickup.com/t/<task_id>` | `mcp__clickup__*` | Task title, description, acceptance criteria, comments |
-| `app.intercom.com/*/conversation/<id>` | `mcp__Intercom__get_conversation` | Full conversation, user-reported issue |
-| `*.sentry.io/issues/<issue_id>` | `mcp__Sentry__get_issue_details` | Issue details, stacktrace, frequency |
+### Step 4: Review the Changes
 
-**Usage:** Pass summaries to review agents alongside the diff. Do NOT post external context as comments.
+Use MBOT to launch review agents in parallel. Give each agent:
+- The filtered diff
+- Relevant `AGENTS.md` context
+- Any external context
+- In re-review mode: prior comments plus incremental diff as primary context
 
-### Step 3: Review the Changes
+Each agent should return issues tagged with the agent name that found them.
 
-Use the **MBOT skill** to launch review agents in parallel. Pass each agent the filtered diff, AGENTS.md context, and external context gathered in Step 2.
+Review focus:
+- `AGENTS.md` compliance for applicable paths only
+- Runtime bugs in the changed code
+- Security issues or incorrect logic in the changed code
 
-Each agent should return a list of issues with description and reason flagged. **Tag each issue with the agent name that found it** (e.g., `colin-mbot-opus`) — this attribution is preserved through validation and included in the posted comment.
+Only flag high-signal issues:
+- Objective runtime bugs or regressions
+- Clear security issues
+- Exact `AGENTS.md` violations you can quote directly
 
-**Review Categories:**
-- AGENTS.md compliance (only consider AGENTS.md files that share a file path with the file or parents)
-- Bug detection (focus only on the diff, flag only significant bugs)
-- Security issues, incorrect logic within the changed code
+Do not flag:
+- Style preferences or subjective suggestions
+- Hypothetical issues without strong evidence
+- Anything that depends on interpretation or guesswork
 
-**CRITICAL: Only flag HIGH SIGNAL issues:**
-- Objective bugs that will cause incorrect behavior at runtime
-- Clear, unambiguous AGENTS.md violations where you can quote the exact rule being broken
+If confidence is low, do not flag the issue.
 
-**Do NOT flag:**
-- Subjective concerns or "suggestions"
-- Style preferences not explicitly required by AGENTS.md
-- Potential issues that "might" be problems
-- Anything requiring interpretation or judgment calls
+### Step 5: Validate and Deduplicate
 
-If you are not certain an issue is real, do not flag it. False positives erode trust.
+For each issue, run a validation agent and keep only issues confirmed with high confidence.
 
-### Step 4: Validate Issues
+- Merge duplicate issues across agents
+- Preserve all agent attributions on merged issues
+- Keep full per-agent validation results unless `--no-summary` is active
 
-For each issue found, launch a validation agent to confirm the issue is real with high confidence. Filter out any issues that fail validation.
+### Step 6: Model Comparison Summary
 
-When deduplicating issues found by multiple agents, **merge the agent attribution** — track all agents that independently identified the same issue. Issues found by multiple models are higher signal.
+Skip this step if `--no-summary` is active.
 
-Preserve full validation results for each agent unless `--no-summary` was specified.
+For each agent, compute:
+- **Found**: total issues flagged
+- **Validated**: issues surviving validation
+- **False Positives**: found minus validated
+- **Unique Finds**: validated issues found only by that agent
+- **Shared Finds**: validated issues also found by other agents
+- **Accuracy**: `validated / found`, or `—` when `found = 0`
+- **Composite Score**: `(2 x unique) + shared - (2 x false positives)`
 
-### Step 4.5: Model Comparison Summary
+Use display names. Report best and worst model by composite score. If no model found any issue, state that there was no differentiation in this review.
 
-**Skip this step entirely if `--no-summary` is specified.**
+### Step 7: Post or Display Results
 
-After validation completes, compile per-agent performance metrics using **display names**.
+#### Git Diff Mode
 
-#### Metrics per agent
+Always behave as if `--no-post` is active.
 
-| Metric | Definition |
-|--------|------------|
-| **Found** | Total issues flagged by this agent |
-| **Validated** | Issues that survived validation |
-| **False Positives** | Found minus Validated |
-| **Unique Finds** | Validated issues flagged by *only* this agent |
-| **Shared Finds** | Validated issues also found by at least one other agent |
+- Display each issue with file, line or range, agent attribution, and full comment body
+- Do not post anywhere
+- Do not apply labels
 
-#### Scoring methods
+#### `--no-post` Mode
 
-1. **Unique Value** — Rank by unique validated finds (descending), then by false positive rate (ascending)
-2. **Accuracy** — `validated / found` as a percentage. 0 issues shows `—`
-3. **Composite Score** — `(+2 × unique finds) + (+1 × shared finds) + (−2 × false positives)`
+Display the prepared comments and stop for user instructions.
 
-**Best model** = highest composite score. **Worst model** = lowest.
-
-#### Summary comment format
-
-When at least one issue was found:
-
-```markdown
-> **AI Code Review — Model Summary**
-
-| Model | Found | Validated | False Pos | Unique | Accuracy | Composite |
-|-------|-------|-----------|-----------|--------|----------|-----------|
-| Opus 4.6 | 5 | 4 | 1 | 2 | 80% | +7 |
-| GPT 5.3 Codex | 3 | 3 | 0 | 1 | 100% | +5 |
-
-**Best model:** Opus 4.6 — 2 unique finds, 80% accuracy, +7 composite
-**Worst model:** Kimi K2.5 — 0 unique finds, 25% accuracy, −4 composite
-```
-
-When zero issues were found:
-
-```markdown
-> **AI Code Review — Model Summary**
-
-All <N> models found no issues. No differentiation for this review.
-
-| Model | Found | Validated | False Pos | Unique | Accuracy | Composite |
-|-------|-------|-----------|-----------|--------|----------|-----------|
-| Opus 4.6 | 0 | 0 | 0 | 0 | — | 0 |
-| GPT 5.3 Codex | 0 | 0 | 0 | 0 | — | 0 |
-```
-
-### Step 5: Post/Display Comments
-
-#### Git Diff Mode (Preview Only)
-
-**Always behave as if `--no-post` is active.** Display all issues to the user without posting:
-
-```
----
-Issue <N>
-File: <path>
-Line(s): <line or range>
-Flagged by: <agent-name(s)>
-
-<full comment body>
----
-
-<Repeat for each issue>
-
----
-Review complete. <N> issues found in <M> files.
----
-```
-
-Do NOT attempt to post anywhere. Skip to Step 7 (no labels in git diff mode).
-
-#### `--no-post` Mode (Dry Run)
-
-If `--no-post` is specified for a PR/MR, **do not post anything**. Display all prepared comments:
-
-```
----
-Issue <N>
-File: <path>
-Line(s): <line or range>
-Flagged by: <agent-name(s)>
-
-<full comment body as it would be posted>
----
-```
-
-After displaying, **stop and wait for user instructions**:
-- **"post"** → post all displayed comments as-is
-- **"drop issue 3"** → remove specific issues, then post when told
-- **"edit issue 2 to say..."** → modify a comment, post when told
-- **"cancel"** → discard everything, post nothing
+Supported follow-ups:
+- `post`
+- `drop issue 3`
+- `edit issue 2 to say ...`
+- `cancel`
 
 #### No Issues Found
 
-Post a summary comment:
+Post a single summary comment:
 
-**GitHub:**
-```bash
-gh pr comment <PR> --body "> **AI Code Review** · Models: <comma-separated list>
+```text
+> **AI Code Review** · Models: <comma-separated list>
 
-No issues found. Checked for bugs and AGENTS.md compliance."
+No issues found. Checked for bugs and AGENTS.md compliance.
 ```
 
-**GitLab:**
-```bash
-glab mr note <MR> -m "> **AI Code Review** · Models: <comma-separated list>
+In re-review mode, say `No new issues found in the latest changes.` instead.
 
-No issues found. Checked for bugs and AGENTS.md compliance."
-```
+#### Issues Found
 
-#### Issues Found — Post Inline Comments
+Post one inline comment per unique issue.
 
-**GitHub:**
+GitHub:
+- Prefer `mcp__github_inline_comment__create_inline_comment`
+- Otherwise use `gh api` and the PR head SHA from `gh pr view <PR> --json headRefOid --jq '.headRefOid'`
 
-Prefer the MCP tool if available, otherwise use `gh api`.
+GitLab:
+- Use the discussions API via `glab api`
+- Get `base`, `start`, and `head` SHAs from the MR versions API before posting inline comments
+- Verify a successful inline comment by checking for `"type": "DiffNote"` in the response
 
-*Option A: MCP tool*
-Use `mcp__github_inline_comment__create_inline_comment`:
-- `path`: file path
-- `line` (and `startLine` for ranges): buggy lines
-- `body`: comment body
+Comment rules:
+- Every comment starts with:
 
-*Option B: gh api*
-
-Get the PR's head commit SHA:
-```bash
-gh pr view <PR> --json headRefOid --jq '.headRefOid'
-```
-
-Single-line comment:
-```bash
-gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments \
-  --method POST \
-  -f "body=<comment text>" \
-  -f "commit_id=<head_commit_sha>" \
-  -f "path=<file_path>" \
-  -F "line=<line_number>" \
-  -f "side=RIGHT"
-```
-
-Multi-line comment:
-```bash
-gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments \
-  --method POST \
-  -f "body=<comment text>" \
-  -f "commit_id=<head_commit_sha>" \
-  -f "path=<file_path>" \
-  -F "start_line=<start_line>" \
-  -f "start_side=RIGHT" \
-  -F "line=<end_line>" \
-  -f "side=RIGHT"
-```
-
-Line positioning rules:
-- Added/unchanged lines: `side` = `RIGHT`
-- Removed lines: `side` = `LEFT`
-- Use `-F` for integer fields
-
-**GitLab:**
-
-Use the Discussions API via `glab api` for inline comments.
-
-Get diff version SHAs:
-```bash
-glab api projects/:fullpath/merge_requests/<MR_IID>/versions \
-  | jq '.[0] | {base_commit_sha, head_commit_sha, start_commit_sha}'
-```
-
-Post inline comment:
-```bash
-echo '<JSON>' | glab api projects/:fullpath/merge_requests/<MR_IID>/discussions \
-  --method POST --input - -H "Content-Type: application/json"
-```
-
-JSON for single-line comment:
-```json
-{
-  "body": "<comment text>",
-  "position": {
-    "position_type": "text",
-    "base_sha": "<base_commit_sha>",
-    "head_sha": "<head_commit_sha>",
-    "start_sha": "<start_commit_sha>",
-    "old_path": "<file_path>",
-    "new_path": "<file_path>",
-    "new_line": <line_number>
-  }
-}
-```
-
-For multi-line, add `line_range`:
-```json
-{
-  "line_range": {
-    "start": {"type": "new", "new_line": <start_line>},
-    "end": {"type": "new", "new_line": <end_line>}
-  }
-}
-```
-
-**Verify success:** Response should contain `"type": "DiffNote"`.
-
-#### Posting Summary Comment
-
-Unless `--no-summary` was specified, post the model comparison summary as an additional comment **after** all inline comments:
-
-**GitHub:**
-```bash
-gh pr comment <PR> --body "<summary comment body>"
-```
-
-**GitLab:**
-```bash
-glab mr note <MR> -m "<summary comment body>"
-```
-
-#### Comment Body Format
-
-Every comment must start with an AI attribution header:
-
-```
+```text
 > **AI Code Review** · Flagged by: <agent-name(s)>
 
 <issue description>
 ```
 
-Where `<agent-name(s)>` is a comma-separated list of agents that flagged the issue.
+- Use exactly one comment per unique issue
+- Include links or citations when referring to source material such as `AGENTS.md`
+- For self-contained fixes of up to 5 lines, include a committable suggestion block
+- If the fix is not self-contained, describe it and include a copyable prompt instead of a suggestion block
 
-For small fixes (up to 5 lines), include a committable suggestion:
+Unless `--no-summary` is active, post the model comparison summary after all inline comments.
 
-**GitHub:**
-````markdown
-```suggestion
-corrected code here
-```
-````
+### Step 8: Apply Review Label
 
-**GitLab:**
-````markdown
-```suggestion:-0+0
-corrected code here
-```
-````
+Skip this step in git diff mode.
 
-**Suggestions must be COMPLETE.** If a fix requires additional changes elsewhere, do NOT use a suggestion block. Instead:
-1. Describe the issue
-2. Explain the suggested fix
-3. Include a copyable prompt:
-   ```
-   Fix [file:line]: [brief description of issue and suggested fix]
-   ```
+After comments are posted, or after the user confirms posting from `--no-post` mode, apply the `:Reviewed-By-AI` label.
 
-**IMPORTANT: Only post ONE comment per unique issue.**
+- GitHub: `gh pr edit <PR> --add-label ":Reviewed-By-AI"`
+- GitLab: `glab mr update <MR> --label ":Reviewed-By-AI"`
 
-### Step 6: Apply Review Label
-
-**Skip this step for Git diff mode.**
-
-After all comments have been posted (or user confirms in `--no-post` mode), add the `:Reviewed-By-AI` label:
-
-**GitHub:**
-```bash
-gh pr edit <PR> --add-label ":Reviewed-By-AI"
-```
-
-**GitLab:**
-```bash
-glab mr update <MR> --label ":Reviewed-By-AI"
-```
-
-**Note:** The colon is part of the label name. The label must already exist.
-
-If `--no-post` is active and the user says "cancel", do **not** apply the label.
-
-## Code Link Format
-
-**GitHub:** `https://github.com/OWNER/REPO/blob/FULL_SHA/path/to/file.ext#L10-L15`
-
-**GitLab:** `https://gitlab.com/OWNER/REPO/-/blob/FULL_SHA/path/to/file.ext#L10-15`
-
-Requirements:
-- Full git SHA (not abbreviated)
-- `#` sign after the file name
-- Line range format: `L[start]-L[end]` (GitHub) or `L[start]-[end]` (GitLab)
-- Provide at least 1 line of context before and after
+If the user cancels in `--no-post` mode, do not apply the label.
 
 ## Notes
 
-- Use `gh` CLI for GitHub, `glab` CLI for GitLab
-- Use `glab api` or `gh api` for operations not supported by high-level commands
-- Pipe API output through `jq` to select relevant fields — reduces token usage
-- The `glab api` command supports `:fullpath` as a placeholder for the current repo's URL-encoded path
-- **Dependencies:** `gh`, `glab`, `jq`, `git`
+- Use `gh` for GitHub and `glab` for GitLab
+- Use `gh api` or `glab api` when high-level commands are insufficient
+- Pipe API output through `jq` to reduce noise
+- `glab api` supports `:fullpath` as a placeholder for the current repo path
+- Dependencies: `gh`, `glab`, `jq`, `git`
 - Create a todo list before starting
-- Cite and link each issue in inline comments (e.g., link to AGENTS.md if referring to it)
-
-### Excluded file patterns
-
-**Directories:** `vendor/`, `node_modules/`, `.yarn/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.venv/`, `third_party/`
-
-**Files:** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `go.sum`, `composer.lock`, `Gemfile.lock`, `Cargo.lock`, `poetry.lock`, `*.min.js`, `*.min.css`, `*.map`
-
-**Thresholds:** Single file diff > 5,000 lines, `generated_file: true` (GitLab)
+- When linking to code, use canonical blob URLs with full SHAs and exact line ranges
