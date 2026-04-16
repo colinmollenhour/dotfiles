@@ -8,6 +8,8 @@ argument-hint: "[PR/MR number, URL, or git description] [agents] [--re-review] [
 
 Review a GitHub pull request, GitLab merge request, or arbitrary git diff. Post inline comments for PR/MR reviews unless `--no-post` is active.
 
+For GitHub reviews, load the `gh-cli` skill after resolving the platform. For GitLab reviews, load the `glab-cli` skill. Use those skills for PR/MR resolution, API fallbacks, inline comment posting, labels, and platform-specific link details.
+
 ## Input Resolution
 
 If no argument is provided:
@@ -30,9 +32,7 @@ If an argument is provided, resolve it as follows:
 | `SHA..SHA` or `SHA...SHA` | Git diff | Use directly |
 | Any other text | Git diff | Interpret as git rev spec |
 
-Resolve current-branch reviews with:
-- GitHub: `gh pr list --head "$(git branch --show-current)" --state open --json number,title,state,isDraft`
-- GitLab: `glab mr list --source-branch="$(git branch --show-current)" --output json | jq '.[0] | {iid, title, state, draft, web_url}'`
+Resolve current-branch reviews using the appropriate platform CLI skill.
 
 ## Review Agents
 
@@ -56,7 +56,7 @@ If `--re-review` is active, review only the new changes since the last review.
 
 ### Step 1: Pre-flight Checks
 
-For PR/MR reviews, fetch state, draft status, title, and author.
+For PR/MR reviews, fetch state, draft status, title, and author using the loaded platform CLI skill.
 
 Stop if:
 - The PR/MR is closed or merged
@@ -183,16 +183,10 @@ In re-review mode, say `No new issues found in the latest changes.` instead.
 
 #### Issues Found
 
-Post one inline comment per unique issue.
+Post one inline comment per unique issue using the loaded platform CLI skill.
 
-GitHub:
-- Prefer `mcp__github_inline_comment__create_inline_comment`
-- Otherwise use `gh api` and the PR head SHA from `gh pr view <PR> --json headRefOid --jq '.headRefOid'`
-
-GitLab:
-- Use the discussions API via `glab api`
-- Get `base`, `start`, and `head` SHAs from the MR versions API before posting inline comments
-- Verify a successful inline comment by checking for `"type": "DiffNote"` in the response
+- GitHub: prefer `mcp__github_inline_comment__create_inline_comment`; otherwise follow `gh-cli` for `gh api` inline comment posting
+- GitLab: follow `glab-cli` for discussions API posting, MR version SHAs, and `"type": "DiffNote"` verification
 
 Comment rules:
 - Every comment starts with:
@@ -216,17 +210,12 @@ Skip this step in git diff mode.
 
 After comments are posted, or after the user confirms posting from `--no-post` mode, apply the `:Reviewed-By-AI` label.
 
-- GitHub: `gh pr edit <PR> --add-label ":Reviewed-By-AI"`
-- GitLab: `glab mr update <MR> --label ":Reviewed-By-AI"`
+Use the loaded platform CLI skill for the exact label command.
 
 If the user cancels in `--no-post` mode, do not apply the label.
 
 ## Notes
 
-- Use `gh` for GitHub and `glab` for GitLab
-- Use `gh api` or `glab api` when high-level commands are insufficient
-- Pipe API output through `jq` to reduce noise
-- `glab api` supports `:fullpath` as a placeholder for the current repo path
 - Dependencies: `gh`, `glab`, `jq`, `git`
 - Create a todo list before starting
-- When linking to code, use canonical blob URLs with full SHAs and exact line ranges
+- When linking to code, use the canonical URL and line-range rules from the loaded platform CLI skill

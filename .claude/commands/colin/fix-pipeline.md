@@ -1,9 +1,11 @@
 ---
 description: Fix failing CI pipeline (GitHub Actions or GitLab CI) for the current branch
-allowed-tools: Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(gh pr checks:*), Bash(glab ci status:*), Bash(glab ci list:*), Bash(glab ci trace:*), Bash(glab ci view:*)
+allowed-tools: Bash(*), Bash(git *)
 ---
 
 Fix the failing CI pipeline for the current branch.
+
+Determine the hosting platform first, then load `gh-cli` for GitHub Actions or `glab-cli` for GitLab CI. Use those skills for the exact hosted-CLI commands. The branch-scoped status commands in the context block below are the preferred starting point and are mirrored in those skills.
 
 ## Context
 
@@ -17,28 +19,30 @@ Fix the failing CI pipeline for the current branch.
 From the inlined data above:
 
 1. **Identify platform** — determine GitHub or GitLab from the remote URLs
-2. **Note the current branch**
-3. **If all pipelines passed** → report success and exit early
-4. **If pipelines are still running** → report status and provide a watch command, exit early:
-   - GitHub: `gh run watch <run-id>`
-   - GitLab: `glab ci status --branch <branch> --live`
-5. **If a pipeline has failed** → continue to Step 2
+2. **Load the matching CLI skill** — `gh-cli` or `glab-cli`
+3. **Note the current branch**
+4. **Start with the branch-scoped CI status commands** — the inlined context above already uses the preferred commands from the loaded skill
+5. **If all pipelines passed** → report success and exit early
+6. **If pipelines are still running** → report status and provide the matching watch/live command from the loaded skill, then exit early
+7. **If a pipeline has failed** → continue to Step 2
 
 ## Step 2: Get Failure Logs
 
-- **GitHub:** `gh run view <run-id> --log-failed`
-- **GitLab:** `glab ci trace <job-id> --branch <branch>`
+Use the loaded platform CLI skill for the exact failure-log command. Prefer the failing job's log/trace over broad pipeline output.
+
+- GitHub: the preferred command is `gh run view <run-id> --log-failed`
+- GitLab: the preferred command is `glab ci trace <job-id> --branch <branch>`
 
 ## Step 3: Analyze and Fix
 
 1. Read the error logs carefully — identify the root cause
 2. Identify the exact command that failed in CI
-3. Run that same command locally to reproduce
+3. Run that same command locally to reproduce the failure
 4. Fix the underlying issue — don't just patch symptoms
 
 ## Step 4: Verify the Fix
 
-Re-run the same command that failed in CI locally to confirm the fix works.
+Re-run the exact command that failed in CI locally. Do not move on until it passes.
 
 ## Step 5: Commit the Fix
 
@@ -52,12 +56,11 @@ git commit -m "fix: <description of what was broken and how it was fixed>"
 Ask the user to review the commit before pushing. If approved:
 
 1. Push the changes
-2. Provide a watch command for the new pipeline run:
-   - GitHub: `gh run watch <run-id>`
-   - GitLab: `glab ci status --branch <branch> --live`
+2. Provide the matching watch/live command from the loaded platform CLI skill for the new pipeline run
 
 ## Notes
 
 - If multiple jobs failed, fix them one at a time
+- Prefer fixing the first real failure over chasing downstream failures caused by it
 - If the failure is flaky/intermittent, note this to the user
 - If the failure requires secrets or environment variables not available locally, inform the user

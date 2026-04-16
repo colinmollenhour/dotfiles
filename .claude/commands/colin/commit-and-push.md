@@ -1,10 +1,12 @@
 ---
 description: Commit, push, and open/update a Github PR or GitLab MR (unless otherwise specified)
-allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(glab mr create:*), Bash(gh pr view), Bash(glab mr view), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*)
+allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr comment:*), Bash(glab mr create:*), Bash(glab mr note:*), Bash(gh pr view:*), Bash(glab mr view:*), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*)
 argument-hints: Special instructions
 ---
 
 # Context
+
+After determining whether the repo is hosted on GitHub or GitLab, load `gh-cli` or `glab-cli` and use that skill for PR/MR status, creation, and comment or note behavior.
 
 Current git status:
 -------------------------
@@ -40,22 +42,16 @@ Based on the above info and the context of this session:
 3. Add all files that you created or modified or deleted, do not add PLANS-*.md, SPECS-*.md or other files that already existed unless otherwise specified.
 4. Create a single commit with an appropriate message based on what was changed since the last commit and following the formatting conventions of the last 3 commits.
 5. Push the branch to 'origin' unless a different remote is specified in the special instructions or the branch is already tracking a different remote. BE CAREFUL not to push the branch to main because it may already be tracking main!
-6. Create a pull request using `gh pr create` if the remote url indicates a github origin or `glab mr create` if the remote url indicates a gitlab origin - unless otherwise specified not to create a PR/MR in the special instructions. If the branch is already tracking an open PR/MR as indicated above, then add a comment/note to it describing the motivation/effect of the new commit.
+6. Create or update the hosted review item using the loaded platform CLI skill.
+   - GitHub: use `gh-cli` for PR status, `gh pr create`, and any follow-up PR comment
+   - GitLab: use `glab-cli` for MR status, `glab mr create`, and any follow-up MR note
+   - Unless otherwise specified, create the PR/MR if one does not already exist
+   - If the branch is already tracking an open PR/MR, add a short comment or note describing the motivation and effect of the new commit
 7. Fetch the new state of the working tree with `git status --short`
 
 You have the capability to call multiple tools in a single response so do all of the above in a single message IF AT ALL POSSIBLE.
 Do NOT send any other text or messages besides these tool calls and a short list of what you did.
 
-GitLab example command:
-```
-glab mr create --title "..." --description "..." --remove-source-branch --squash-before-merge --yes
-```
-GitHub example command:
-```
-gh pr create --title "..." --body "..."
-```
-
 # Special Instructions
 
 $ARGUMENTS
-
