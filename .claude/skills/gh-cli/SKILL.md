@@ -35,7 +35,9 @@ Prefer machine-readable output:
 Use `gh api` when a high-level command does not expose the needed operation or fields.
 
 - Prefer REST endpoints for comments, reviews, timeline data, commits, labels, and other missing mutations
+- Use `gh api` for repository security advisories, including `POST /repos/{owner}/{repo}/security-advisories`
 - Use `-f` for string fields and `-F` for integer or typed fields
+- Use `--input` with a HEREDOC for nested JSON request bodies such as advisory payloads
 - For multiline comment or PR bodies, use a HEREDOC rather than inline escaping
 - Re-fetch the resource after mutation when confirmation matters
 
@@ -59,6 +61,7 @@ Always pass explicit flags instead of relying on prompts.
 - Create or update a PR
 - Post a PR summary comment or inline review comment
 - Add labels to a PR
+- Create or update a repository security advisory
 - Inspect workflow runs and fetch failed logs
 - View or search issues
 
@@ -94,4 +97,5 @@ When posting GitHub inline review comments:
 
 - Prefer canonical GitHub URLs and full SHAs when constructing code links
 - Use `gh api repos/{owner}/{repo}/...` for repo-scoped API calls
+- Repository security advisory endpoints are documented in [reference.md](reference.md) and may require `repo` or `repository_advisories:write` scope
 - Use this skill as the shared source for GitHub CLI behavior in command files and other skills

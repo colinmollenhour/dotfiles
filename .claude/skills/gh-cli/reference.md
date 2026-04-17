@@ -33,6 +33,53 @@ EOF
 gh pr edit <PR> --add-label ":Reviewed-By-AI"
 ```
 
+## Create Repository Security Advisory
+
+Use `--input` with a HEREDOC for the advisory payload because the request body is nested JSON.
+
+```bash
+gh api repos/{owner}/{repo}/security-advisories \
+  --method POST \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
+  --input - <<'EOF'
+{
+  "summary": "A new important advisory",
+  "description": "A more in-depth description of what the problem is.",
+  "severity": "high",
+  "cve_id": null,
+  "vulnerabilities": [
+    {
+      "package": {
+        "name": "a-package",
+        "ecosystem": "npm"
+      },
+      "vulnerable_version_range": "< 1.0.0",
+      "patched_versions": "1.0.0",
+      "vulnerable_functions": [
+        "important_function"
+      ]
+    }
+  ],
+  "cwe_ids": [
+    "CWE-1101",
+    "CWE-20"
+  ],
+  "credits": [
+    {
+      "login": "monalisa",
+      "type": "reporter"
+    }
+  ]
+}
+EOF
+```
+
+Notes:
+
+- Requires repository admin or security manager access
+- Token scope must include `repo` or `repository_advisories:write`
+- GitHub docs: `https://docs.github.com/en/rest/security-advisories/repository-advisories?apiVersion=2026-03-10`
+
 ## Post PR Summary Comment
 
 ```bash
