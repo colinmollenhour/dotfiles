@@ -54,9 +54,16 @@ For OpenCode running models via OpenCode, use the "task" tool by specifying a `s
 Other harnesses may need to be invoked via a shell command:
 
 - `claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort max "PROMPT_HERE"`
-- `codex [exec|review] --model gpt-5.4 --ephemeral "PROMPT_HERE"`
+- `codex exec -c model="gpt-5.4" --ephemeral "PROMPT_HERE"`
+- `codex review -c model="gpt-5.4" --base <branch> > ./.codex-review.txt 2>&1`
 - `gemini --model gemini-3.1-flash-lite-preview --prompt "PROMPT_HERE"`
 - `opencode run --agent general --model opencode/gpt-5.4 --variant xhigh --title "MBOT: Code review for X" "PROMPT_HERE"`
+
+Codex-specific notes:
+
+- `codex review` does not support `--ephemeral`
+- `codex review` requires `--base <branch>`
+- When running `codex review` from Claude, disable sandbox because Codex writes session files during review runs
 
 When running opencode via the CLI, use `opencode models` to find the correct model name from the available models if the user did not specify the exact model name. For example, "GLM 5.1" might resolve to 'zai-coding-plan/glm-5.1' or 'openrouter/z-ai/glm-5.1' depending on which connections are available. Prefer coding plans over openrouter/ and opencode/ when available.
 
@@ -68,4 +75,3 @@ If any models or agents fail to execute, consider using backups as specified by 
 ## Step 3: Gather and summarize
 
 Collect the results and then apply the user's finalizing steps for the task if specified. Otherwise, the default finalizing task should be to summarize the findings in aggregate and also comparing models. Scrutinize the model's output, pick winners and losers and note any interesting differences.
-
