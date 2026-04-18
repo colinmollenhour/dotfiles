@@ -98,6 +98,19 @@ install_agents() {
     echo "Backed up ~/.claude/settings.json to ~/.claude/settings.json.bak"
   fi
   cp -rf .claude/ ~/
+  statusline_script="$HOME/.claude/statusline/statusline.sh"
+  if [[ -f "$statusline_script" ]]; then
+    if command -v jq >/dev/null 2>&1; then
+      tmp="$(mktemp)"
+      jq '. + {statusLine: {type: "command", command: "bash ~/.claude/statusline/statusline.sh"}}' \
+        ~/.claude/settings.json > "$tmp" && mv "$tmp" ~/.claude/settings.json
+      echo "Added statusLine to ~/.claude/settings.json (statusline.sh detected)"
+    else
+      echo "WARNING: jq not found; skipping statusLine injection into ~/.claude/settings.json"
+    fi
+  else
+    echo "Skipping statusLine in ~/.claude/settings.json (no $statusline_script)"
+  fi
   if [[ -d ~/.config/opencode/command/colin ]]; then
     rm -rf ~/.config/opencode/{command,skill,agent}
   fi
