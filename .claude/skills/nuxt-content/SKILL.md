@@ -472,6 +472,14 @@ Use MDC syntax to create rich, interactive documentation with Vue components.
 ::
 ```
 
+## Nuxt UI Prose Components
+
+When the project uses [Nuxt UI v4](https://ui.nuxt.com) (including Docus, Nuxt UI Pro docs starter, etc.), `@nuxt/content` auto-registers a set of prose components. **Read [`nuxt-ui-components.md`](./nuxt-ui-components.md)** for the full reference with examples and props.
+
+Available components: `accordion` / `accordion-item`, `badge`, `callout` (+ `note` / `tip` / `warning` / `caution` shortcuts), `card` / `card-group`, `code-collapse`, `code-group`, `code-preview`, `code-tree`, `collapsible`, `field` / `field-group`, `icon`, `kbd`, `steps`, `tabs` / `tabs-item`. (`prompt` is upcoming.)
+
+Use `:::` (three colons) for components nested inside a `::` block. Source: <https://ui.nuxt.com/docs/typography>.
+
 ## Creating Custom Components
 
 Create Vue components in `components/content/` to use in MDC:
