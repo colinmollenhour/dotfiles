@@ -351,7 +351,8 @@ alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgut
 # Override claude defaults
 claude=$(command -v claude 2>/dev/null)
 if [[ -n $claude ]]; then
-  alias claude="$claude --allow-dangerously-skip-permissions"
+  alias claude="$claude --allow-dangerously-skip-permissions --mcp-config '{\"mcpServers\":{}}'"
+  alias claude-mcp="$claude --allow-dangerously-skip-permissions"
   alias claude-yolo="$claude --dangerously-skip-permissions"
 fi
 

@@ -23,9 +23,14 @@
 [color]
 	ui = auto
 
+[include]
+    path = ~/.config/delta/themes.gitconfig
+
 [delta]
+    features = colibri
     navigate = true  # use n and N to move between diff sections
     dark = true      # or light = true, or omit for auto-detection
+    #side-by-side = true
 
 [push]
 	default = tracking

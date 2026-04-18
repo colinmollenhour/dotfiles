@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "Glob",
+      "Grep",
+      "LS",
+      "WebFetch",
+      "WebSearch",
+      "TodoWrite",
+      "WebFetch(domain:proxy.golang.org)",
+      "WebFetch(domain:0.0.0.0)",
+      "Skill(colin:commit-and-push)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.osv.dev)",
+      "WebFetch(domain:gitlab.bss-llc.com)"
+    ],
+    "deny": [
+      "Read(~/.ssh/**)",
+      "Read(**/.env)",
+      "Read(**/.env.*)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "skipDangerousModePermissionPrompt": true
+}
