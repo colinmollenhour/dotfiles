@@ -349,7 +349,7 @@ alias share-dir='npx share-cli'
 alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgutz/vpsbench/master/vpsbench)'
 
 # Override claude defaults
-claude=$(command -v claude 2>/dev/null)
+claude=$(which claude 2>/dev/null)
 if [[ -n $claude ]]; then
   alias claude="$claude --allow-dangerously-skip-permissions --mcp-config '{\"mcpServers\":{}}'"
   alias claude-mcp="$claude --allow-dangerously-skip-permissions"
