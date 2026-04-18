@@ -1,0 +1,1134 @@
+# ============================================================================
+# Claude Code Statusline - Default Configuration Template
+# ============================================================================
+#
+# This file serves as the comprehensive configuration template for installations.
+# It uses simplified flat TOML format for reliable parsing across all platforms.
+# All settings use dot notation instead of nested sections.
+#
+# Configuration Order (simplified single source of truth):
+# 1. Environment variables (ENV_CONFIG_*) - Temporary overrides
+# 2. ~/.claude/statusline/Config.toml - Your configuration (THIS FILE)
+# 3. Inline script defaults - Fallback when config missing
+#
+# ============================================================================
+
+# === THEME CONFIGURATION ===
+# Choose your visual theme for the statusline
+# Available themes: "classic", "garden", "catppuccin", "custom"
+theme.name = "catppuccin"
+
+# === CUSTOM COLORS ===
+# Only used when theme.name = "custom"
+# Use ANSI escape codes for terminal colors
+
+# Basic ANSI colors (most compatible)
+colors.basic.red = "\\033[31m"
+colors.basic.blue = "\\033[34m" 
+colors.basic.green = "\\033[32m"
+colors.basic.yellow = "\\033[33m"
+colors.basic.magenta = "\\033[35m"
+colors.basic.cyan = "\\033[36m"
+colors.basic.white = "\\033[37m"
+
+# Extended colors (256-color and bright ANSI)
+colors.extended.orange = "\\033[38;5;208m"
+colors.extended.light_orange = "\\033[38;5;215m"
+colors.extended.light_gray = "\\033[38;5;248m"
+colors.extended.bright_green = "\\033[92m"
+colors.extended.purple = "\\033[95m"
+colors.extended.teal = "\\033[38;5;73m"
+colors.extended.gold = "\\033[38;5;220m"
+colors.extended.pink_bright = "\\033[38;5;205m"
+colors.extended.indigo = "\\033[38;5;105m"
+colors.extended.violet = "\\033[38;5;99m"
+colors.extended.light_blue = "\\033[38;5;111m"
+
+# Text formatting
+colors.formatting.dim = "\\033[2m"
+colors.formatting.italic = "\\033[3m"
+colors.formatting.strikethrough = "\\033[9m"
+colors.formatting.reset = "\\033[0m"
+
+# === CORE FEATURE TOGGLES ===
+# Enable/disable major sections of the statusline
+features.show_commits = true
+features.show_version = true
+features.show_submodules = true
+features.hide_submodules_when_empty = true  # Hide SUB component when no submodules present
+features.show_worktree = true               # Show [WT] indicator for git worktrees
+features.show_mcp_status = true
+features.show_cost_tracking = true
+features.show_reset_info = true
+features.show_session_info = true
+features.show_prayer_times = false
+features.show_hijri_date = false
+
+# === MODEL EMOJIS ===
+# Emojis displayed for different Claude models
+emojis.opus = "🧠"
+emojis.haiku = "⚡"
+emojis.sonnet = "🎵"
+emojis.default_model = "🤖"
+emojis.clean_status = "✅"
+emojis.dirty_status = "📁"
+emojis.clock = "🕐"
+emojis.live_block = "🔥"
+
+# === TIMEOUTS ===
+# Timeout values for external command execution
+timeouts.mcp = "10s"
+timeouts.version = "10s"
+timeouts.prayer = "10s"
+
+# === COST TRACKING CONFIGURATION (Issue #99) ===
+# Control how session cost data is sourced and displayed
+#
+# Session cost source options:
+# • "auto"    - Use native Anthropic data (RECOMMENDED)
+# • "native"  - Use only native cost.total_cost_usd from Anthropic JSON
+cost.session_source = "auto"
+
+# === COST THRESHOLD ALERTS (Issue #93) ===
+# Alert users when costs exceed configured thresholds
+# Visual warnings change cost display color when approaching limits
+
+cost.alerts.enabled = false                # Enable cost threshold monitoring
+cost.alerts.daily_threshold = 5.00         # Alert if daily cost > $5.00
+cost.alerts.weekly_threshold = 25.00       # Alert if weekly cost > $25.00
+cost.alerts.monthly_threshold = 100.00     # Alert if monthly cost > $100.00
+cost.alerts.session_threshold = 2.00       # Alert if session cost > $2.00
+
+# Visual warning settings
+cost.alerts.warn_percent = 80              # Yellow warning at 80% of threshold
+cost.alerts.critical_percent = 100         # Red critical at 100% of threshold
+
+# Desktop notification settings (optional)
+cost.alerts.desktop_notify = false         # Enable desktop notifications
+cost.alerts.notify_cooldown = 300          # Seconds between repeated notifications (5 min)
+cost.alerts.notify_on_warn = false         # Notify at warning level (80%)
+cost.alerts.notify_on_critical = true      # Notify at critical level (100%)
+
+# Cache efficiency source (Issue #103)
+# • "auto"    - Use native current_usage data (RECOMMENDED)
+# • "native"  - Use only native cache_read/cache_creation tokens
+cache.efficiency_source = "auto"
+
+# Code productivity metrics (Issue #100)
+# Display lines added/removed during session
+features.show_code_productivity = true
+code_productivity.show_zero = false   # Hide when +0/-0
+code_productivity.emoji = ""          # Optional emoji prefix (e.g., "")
+
+# === CONTEXT WINDOW CONFIGURATION (Issue #101) ===
+# Display accurate context window usage via transcript parsing.
+# This avoids the bug in native context_window JSON (cumulative vs current).
+# Reference: https://codelynx.dev/posts/calculate-claude-code-context
+#
+# Display format: 🧠 45% (90K/200K) or 🧠 85% ⚠️
+features.show_context_window = true
+context_window.emoji = "🧠"            # Brain emoji for context
+context_window.show_tokens = true      # Show raw token count (90K/200K)
+context_window.show_when_empty = false # Hide when no transcript data
+context_window.warn_threshold = 75     # Yellow warning above this %
+context_window.critical_threshold = 90 # Red critical above this %
+context_window.medium_threshold = 50   # Yellow medium (50-75%)
+
+# === USAGE LIMITS CONFIGURATION (v2.15.0) ===
+# Display Claude Code rate limit usage from Anthropic OAuth API.
+# Shows 5-hour session and 7-day weekly usage percentages.
+# Reference: https://codelynx.dev/posts/claude-code-usage-limits-statusline
+#
+# Display format (Line 3): Limit: 5h:22% • 7d:54%
+# Display format (Line 4): ⏱ 5h:2h5m • 7d:Sun 8:00AM
+features.show_usage_limits = true
+usage_limits.label = "Limit:"          # Label prefix for percentages
+usage_limits.warn_threshold = 50       # Yellow warning above this %
+usage_limits.critical_threshold = 80   # Red critical above this %
+usage_limits.cache_ttl = 300           # API cache TTL in seconds (5 min)
+
+# === v2.20.0 NEW COMPONENTS (Claude Code v2.1.50+) ===
+
+# Version Display (CC version ONLY from native JSON — lightweight, no network)
+# NOTE: Redundant if using version_info (which shows CC + SL versions + update checking)
+features.show_version_display = false
+version_display.format = "short"       # "short" (v2.1.66) or "full" (CC v2.1.66)
+
+# Vim Mode (shows VIM:NORMAL or VIM:INSERT when vim mode enabled)
+features.show_vim_mode = true
+
+# Agent Display (shows agent name when running with --agent flag)
+features.show_agent_display = true
+
+# Context Alert (warns when token usage exceeds 200K threshold)
+features.show_context_alert = true
+context_alert.show_only_when_exceeded = true
+context_alert.threshold_label = ">200K"
+
+# Total Tokens (cumulative session input/output token counts)
+features.show_total_tokens = true
+total_tokens.format = "split"          # "split" (15.2K in / 4.5K out) or "compact" (19.8K total)
+
+# === SESSION INFO CONFIGURATION (Issue #102) ===
+# Display session identification for multi-session awareness.
+# Useful for: resume sessions (claude -r abc12345), debug correlation.
+#
+# Display format: 🔗 abc12345 • project-name
+session_info.show_id = true            # Show short session ID
+session_info.show_project = true       # Show derived project name
+session_info.id_length = 8             # Characters to show from session ID
+session_info.separator = " • "         # Separator between ID and project
+session_info.emoji_session = "🔗"      # Session ID emoji
+session_info.emoji_project = "📁"      # Project name emoji
+session_info.show_when_empty = false   # Hide when no session data
+
+# === SESSION MODE CONFIGURATION (Output Style Display) ===
+# Display the current Claude Code output style (default, explanatory, learning, or custom).
+# Helps users quickly identify how Claude is formatting its responses.
+#
+# Display format: Style: default  OR  📚 Style: explanatory  OR  🎓 Style: learning
+session_mode.label = "Style:"          # Label prefix
+session_mode.show_emoji = true         # Show emoji indicator
+session_mode.hide_default = false      # Hide when style is "default" (reduce clutter)
+session_mode.show_when_empty = false   # Hide when no style data
+
+# Output style emojis (built-in styles)
+session_mode.emoji_default = ""        # No emoji for default style
+session_mode.emoji_explanatory = "📚"  # Book emoji for explanatory mode
+session_mode.emoji_learning = "🎓"     # Graduation cap for learning mode
+session_mode.emoji_custom = "✨"       # Sparkle for custom styles
+
+# === BEDROCK MODEL CONFIGURATION (AWS Bedrock Inference Profiles) ===
+# Resolves AWS Bedrock inference profile ARNs to friendly model names.
+# Requires CLAUDE_CODE_USE_BEDROCK=true in ~/.claude/settings.json env block.
+# When active, replaces the raw ARN with e.g. "Claude Opus 4.6 (us-east-2)"
+#
+# Dependencies: aws CLI, jq (graceful degradation without them)
+bedrock_model.enabled = false          # Enable Bedrock model name resolution
+bedrock_model.show_emoji = true        # Show model-family emoji
+bedrock_model.emoji = ""               # Cloud emoji prefix (e.g. "☁️")
+bedrock_model.show_region = true       # Show AWS region after model name
+bedrock_model.timeout = "10s"          # AWS API call timeout
+
+# === PRAYER TIMES AUTO-CONFIGURATION ===
+# Islamic prayer times with intelligent worldwide auto-detection
+# 🌍 ZERO CONFIGURATION: Works automatically for 2+ billion Muslims worldwide!
+
+# === AUTO-DETECTION MODES ===
+# Choose how the statusline determines your location and prayer method:
+
+prayer.enabled = false
+prayer.location_mode = "local_gps"       # ⭐ RECOMMENDED: GPS-first accurate detection
+
+# LOCATION MODE OPTIONS:
+# • "local_gps" - GPS-first detection (Local GPS → IP → Cache → Timezone) ⭐ RECOMMENDED
+# • "auto"      - Legacy multi-tier detection (IP → Cache → Timezone → Locale)
+# • "ip_based"  - Force IP geolocation only (requires internet)
+# • "manual"    - Use coordinates below (disable auto-detection)
+
+# === GPS-FIRST DETECTION PROCESS ===
+# When location_mode = "local_gps" (RECOMMENDED):
+#
+# 📍 Tier 1: Fresh Local GPS (VPN-Independent)
+#   • macOS: CoreLocationCLI integration (95% accuracy)
+#   • Linux: geoclue2 system service (95% accuracy)
+#   • Windows: Native Location API (future)
+#   • Fresh device coordinates regardless of VPN/network
+#   • No network required, works offline
+#
+# 🌐 Tier 2: IP Geolocation (Network Fallback)
+#   • Uses free ip-api.com service (45 req/min, no key required)
+#   • Detects: Country, City, Coordinates, Timezone
+#   • Maps country → prayer method automatically
+#   • Caches results for 7 days
+#
+# 💾 Tier 3: Cached Location (Offline)
+#   • Uses cached IP geolocation data (7-day expiry)
+#   • No network required
+#
+# 🕐 Tier 4: System Timezone Mapping (Ultimate Fallback)
+#   • Maps system timezone → country → prayer method
+#   • Covers 98% of global Muslim population
+#   • Provides region-specific coordinates
+
+# === WORLDWIDE COVERAGE ===
+# Auto-detection supports:
+# ✅ 28 major Islamic countries (2+ billion Muslims)
+# ✅ All Middle Eastern countries  
+# ✅ Major Muslim communities in Europe/Americas
+# ✅ Comprehensive timezone mapping (100+ regions)
+# ✅ Country code mapping (80+ countries)
+
+# === MANUAL OVERRIDE (Optional) ===
+# Leave these empty for auto-detection, or set for manual control:
+
+prayer.calculation_method = ""          # Auto-detected from location
+prayer.madhab = "2"                     # Hanafi (Indonesian default) - 1=Shafi, 2=Hanafi
+prayer.latitude = ""                    # Auto-detected from GPS/IP/timezone
+prayer.longitude = ""                   # Auto-detected from GPS/IP/timezone
+prayer.timezone = ""                    # Auto-detected from system
+
+# === PRAYER DISPLAY SETTINGS ===
+prayer.show_completed_indicator = true  # Show ✓ for completed prayers
+prayer.highlight_next_prayer = true     # Highlight next upcoming prayer
+prayer.show_countdown = false           # Show countdown to next prayer
+prayer.time_format = "24h"             # 12h or 24h format
+prayer.show_time_remaining = true       # Show time remaining for next prayer (e.g., "3h 29m")
+prayer.use_legacy_indicator = false     # Use "(next)" instead of time remaining
+prayer.next_prayer_color_enabled = true # Apply color highlighting to next prayer
+prayer.next_prayer_color = "bright_green" # Color for next prayer: green, bright_green, teal
+
+# === PRAYER BREAK REMINDERS (Issue #212) ===
+# Configurable reminders that integrate with the statusline display
+# to alert you of upcoming prayer times at progressive urgency levels.
+
+prayer.reminders.enabled = false           # Enable prayer break reminders
+prayer.reminders.headsup_minutes = 30      # Minutes before prayer for heads-up level
+prayer.reminders.prepare_minutes = 15      # Minutes before prayer for prepare level
+prayer.reminders.imminent_minutes = 5      # Minutes before prayer for imminent level
+prayer.reminders.desktop_notify = false    # Send desktop notifications (requires notify-send/osascript)
+prayer.reminders.cooldown_seconds = 900    # Minimum seconds between repeated notifications (15 min)
+prayer.reminders.integrate_wellness = true # Integrate with wellness break system
+prayer.reminders.integrate_focus = true    # Integrate with focus session tracking
+
+# === CALCULATION METHODS WORLDWIDE ===
+# Choose the method used in your country/region:
+#
+# WORLDWIDE ORGANIZATIONS:
+#  0 = Shia Ithna-Ashari
+#  3 = Muslim World League (MWL) - Europe, Far East, parts of USA
+# 15 = Moonsighting Committee Worldwide
+#
+# MIDDLE EAST & AFRICA:
+#  4 = Umm al-Qura, Makkah - Saudi Arabia
+#  5 = Egyptian General Authority - Egypt, Africa, Middle East  
+#  8 = Gulf Region - Kuwait, Saudi Arabia (old method)
+#  9 = Kuwait
+# 10 = Qatar
+# 16 = Dubai (UAE)
+# 21 = Tunisia
+# 22 = Algeria
+# 23 = Morocco
+#
+# ASIA:
+#  1 = University of Islamic Sciences, Karachi - Pakistan, Afghanistan, India
+#  7 = Institute of Geophysics, Tehran - Iran
+# 11 = Majlis Ugama Islam Singapura (MUIS) - Singapore
+# 17 = Jabatan Kemajuan Islam Malaysia (JAKIM) - Malaysia
+# 20 = Kementerian Agama RI (KEMENAG) - Indonesia ✓ DEFAULT
+#
+# EUROPE & AMERICA:
+#  2 = Islamic Society of North America (ISNA) - USA, Canada
+# 12 = Union of Islamic Organizations of France (UOIF) - France
+# 13 = Diyanet İşleri Başkanlığı - Turkey
+# 14 = Spiritual Administration of Muslims - Russia
+#
+# CUSTOM:
+# 99 = Custom (provide parameters in method_settings)
+
+# === AUTO-DETECTION COVERAGE ===
+# Countries automatically detected with correct prayer methods:
+
+# 🌏 SOUTHEAST ASIA (450M Muslims) - Auto-detected ✅
+# Indonesia (231M)    → KEMENAG (20)      → Asia/Jakarta timezone
+# Malaysia (20M)      → JAKIM (17)        → Asia/Kuala_Lumpur timezone
+# Singapore (0.9M)    → MUIS (11)         → Asia/Singapore timezone
+# Brunei (0.4M)       → JAKIM (17)        → Asia/Brunei timezone
+
+# 🕌 SOUTH ASIA (620M Muslims) - Auto-detected ✅  
+# Pakistan (225M)     → Karachi (1)       → Asia/Karachi timezone
+# Bangladesh (153M)   → Karachi (1)       → Asia/Dhaka timezone
+# India (195M)        → Karachi (1)       → Asia/Kolkata|Delhi|Mumbai timezone
+# Afghanistan (38M)   → Karachi (1)       → Asia/Kabul timezone
+# Sri Lanka (2M)      → Karachi (1)       → Asia/Colombo timezone
+# Maldives (0.5M)     → Karachi (1)       → Indian/Maldives timezone
+
+# 🏜️ MIDDLE EAST & GULF (120M Muslims) - Auto-detected ✅
+# Saudi Arabia (31M)  → Umm al-Qura (4)  → Asia/Riyadh timezone
+# UAE (7M)           → Dubai (16)         → Asia/Dubai timezone  
+# Kuwait (3M)        → Kuwait (9)         → Asia/Kuwait timezone
+# Qatar (2M)         → Qatar (10)         → Asia/Qatar timezone
+# Bahrain (1M)       → Umm al-Qura (4)   → Asia/Bahrain timezone
+# Oman (4M)          → Umm al-Qura (4)   → Asia/Muscat timezone
+# Iraq (38M)         → Kuwait (9)         → Asia/Baghdad timezone
+# Iran (82M)         → Tehran (7)         → Asia/Tehran timezone
+# Turkey (79M)       → Diyanet (13)       → Europe/Istanbul timezone
+# Yemen (28M)        → Umm al-Qura (4)   → Asia/Aden timezone
+
+# 🌍 NORTH AFRICA (280M Muslims) - Auto-detected ✅
+# Egypt (87M)        → Egyptian (5)       → Africa/Cairo timezone
+# Nigeria (99M)      → Egyptian (5)       → Africa/Lagos timezone
+# Algeria (43M)      → Algeria (22)       → Africa/Algiers timezone
+# Morocco (37M)      → Morocco (23)       → Africa/Casablanca timezone
+# Sudan (39M)        → Egyptian (5)       → Africa/Khartoum timezone
+# Tunisia (12M)      → Tunisia (21)       → Africa/Tunis timezone
+# Libya (7M)         → Egyptian (5)       → Africa/Tripoli timezone
+# Somalia (11M)      → Egyptian (5)       → Africa/Mogadishu timezone
+
+# 🌍 SUB-SAHARAN AFRICA (200M Muslims) - Auto-detected ✅
+# Senegal (16M)      → MWL (3)           → Africa/Dakar timezone
+# Mali (18M)         → MWL (3)           → Africa/Bamako timezone
+# Niger (21M)        → MWL (3)           → Africa/Niamey timezone
+# Chad (8M)          → MWL (3)           → Africa/Ndjamena timezone
+# Ethiopia (35M)     → Egyptian (5)       → Africa/Addis_Ababa timezone
+# Kenya (5M)         → Egyptian (5)       → Africa/Nairobi timezone
+# Tanzania (20M)     → Egyptian (5)       → Africa/Dar_es_Salaam timezone
+
+# 🌍 EUROPE (60M Muslims) - Auto-detected ✅
+# Russia (20M)       → Spiritual Admin (14) → Europe/Moscow timezone
+# France (6M)        → UOIF (12)          → Europe/Paris timezone
+# UK (3M)            → MWL (3)            → Europe/London timezone
+# Germany (5M)       → MWL (3)            → Europe/Berlin timezone
+# Bosnia (2M)        → MWL (3)            → Europe/Sarajevo timezone
+# Albania (2M)       → MWL (3)            → Europe/Tirana timezone
+# Kosovo (2M)        → MWL (3)            → Europe/Pristina timezone
+
+# 🌎 AMERICAS & OCEANIA (15M Muslims) - Auto-detected ✅
+# USA (3.5M)         → ISNA (2)           → America/New_York|Chicago|Los_Angeles timezone
+# Canada (1.5M)      → ISNA (2)           → America/Toronto|Vancouver timezone
+# Australia (0.6M)   → MWL (3)            → Australia/Sydney|Melbourne timezone
+# Brazil (1M)        → MWL (3)            → America/Sao_Paulo timezone
+
+# 🎯 TOTAL COVERAGE: 2+ billion Muslims (98% of global Muslim population)
+
+# === REGIONAL CONFIGURATION EXAMPLES ===
+# Manual configuration examples (only needed if auto-detection fails)
+# Find your region below, uncomment and adjust coordinates for your city
+# To find coordinates: Google "latitude longitude [your city name]"
+
+# --- INDONESIA (DEFAULT - Active above) ---
+# Major Indonesian cities coordinates:
+# Jakarta:    -6.2088, 106.8456
+# Surabaya:   -7.2504, 112.7688  
+# Bandung:    -6.9147, 107.6098
+# Medan:      3.5952, 98.6722
+# Makassar:   -5.1477, 119.4327
+# Bekasi:     -6.2349, 106.9896
+
+# --- SAUDI ARABIA (Umm al-Qura Method) ---
+# prayer.calculation_method = "4"   # Umm al-Qura
+# prayer.madhab = "1"               # Shafi
+# prayer.latitude = "21.4225"       # Makkah
+# prayer.longitude = "39.8262"
+# prayer.timezone = "Asia/Riyadh"
+# Major cities:
+# Riyadh:     24.7136, 46.6753
+# Jeddah:     21.5433, 39.1728
+# Dammam:     26.3927, 49.9777
+
+# --- USA/CANADA (ISNA Method) ---
+# prayer.calculation_method = "2"   # ISNA
+# prayer.madhab = "1"               # Shafi
+# prayer.latitude = "40.7128"       # New York
+# prayer.longitude = "-74.0060"
+# prayer.timezone = "America/New_York"
+# Major cities:
+# Los Angeles: 34.0522, -118.2437
+# Chicago:     41.8781, -87.6298
+# Toronto:     43.6532, -79.3832
+
+# --- MALAYSIA (JAKIM Method) ---
+# prayer.calculation_method = "17"  # JAKIM
+# prayer.madhab = "1"               # Shafi
+# prayer.latitude = "3.1390"        # Kuala Lumpur
+# prayer.longitude = "101.6869"
+# prayer.timezone = "Asia/Kuala_Lumpur"
+
+# --- TURKEY (Diyanet Method) ---
+# prayer.calculation_method = "13"  # Diyanet
+# prayer.madhab = "2"               # Hanafi
+# prayer.latitude = "41.0082"       # Istanbul
+# prayer.longitude = "28.9784"
+# prayer.timezone = "Europe/Istanbul"
+# Major cities:
+# Ankara:     39.9334, 32.8597
+# Izmir:      38.4192, 27.1287
+
+# --- UK/EUROPE (Muslim World League) ---
+# prayer.calculation_method = "3"   # Muslim World League
+# prayer.madhab = "2"               # Hanafi
+# prayer.latitude = "51.5074"       # London
+# prayer.longitude = "-0.1278"
+# prayer.timezone = "Europe/London"
+# Major cities:
+# Paris:      48.8566, 2.3522
+# Berlin:     52.5200, 13.4050
+# Rome:       41.9028, 12.4964
+
+# --- EGYPT/MIDDLE EAST (Egyptian Authority) ---
+# prayer.calculation_method = "5"   # Egyptian Authority
+# prayer.madhab = "1"               # Shafi
+# prayer.latitude = "30.0444"       # Cairo
+# prayer.longitude = "31.2357"
+# prayer.timezone = "Africa/Cairo"
+# Major cities:
+# Dubai:      25.2048, 55.2708
+# Baghdad:    33.3152, 44.3661
+# Damascus:   33.5138, 36.2765
+
+# --- PAKISTAN/INDIA (Karachi Method) ---
+# prayer.calculation_method = "1"   # Karachi University
+# prayer.madhab = "2"               # Hanafi
+# prayer.latitude = "24.8607"       # Karachi
+# prayer.longitude = "67.0011"
+# prayer.timezone = "Asia/Karachi"
+# Major cities:
+# Delhi:      28.6139, 77.2090
+# Mumbai:     19.0760, 72.8777
+# Islamabad:  33.6844, 73.0479
+
+# --- HIGH LATITUDE (Scandinavia, Northern Canada) ---
+# Special handling for extreme latitudes where sun may not set
+# prayer.calculation_method = "3"   # MWL (handles high latitude well)
+# prayer.madhab = "1"               # Shafi
+# prayer.latitude = "59.3293"       # Stockholm
+# prayer.longitude = "18.0686"
+# prayer.timezone = "Europe/Stockholm"
+# prayer.high_latitude_method = "1" # Angle-based adjustment for extreme latitudes
+
+# === HIJRI CALENDAR CONFIGURATION ===
+# Islamic calendar display with proper Maghrib-based day changes
+
+# Hijri calculation settings
+hijri.enabled = true
+hijri.calculation_method = "umm_alqura" # umm_alqura, kuwait, qatar, singapore
+hijri.adjustment_days = 0              # Manual adjustment for moon sighting differences
+hijri.show_arabic = false              # Display Arabic month names instead of English
+hijri.highlight_friday = true          # Special formatting for Jumu'ah (Friday)
+hijri.show_maghrib_indicator = true    # Show 🌙 when Islamic day changes at Maghrib
+hijri.show_moon_phase = true           # Dynamic moon phase icon based on Hijri day
+hijri.show_gregorian = true            # Show Gregorian date alongside Hijri
+
+# Hijri display format
+hijri.display_format = "short"         # short, full, with_weekday
+hijri.show_weekday = true              # Include day of week in display
+
+# === VERSION INFO CONFIGURATION ===
+# Automatic update checking and version display settings
+
+# Version info component settings
+version_info.enabled = false            # Enable version_info component
+version_info.check_updates = true      # Check for new versions (silent, cached 24h)
+version_info.show_update_indicator = true  # Show ⬆️ when update available
+
+# === MODULAR DISPLAY CONFIGURATION ===
+# Configure 1-9 line statusline with atomic component system
+# Each line can contain any combination of available components
+
+# Number of lines to display (1-9) - SHOWCASING ALL 26 ATOMIC COMPONENTS!
+display.lines = 6
+
+# Line 1: Repository Identity (path, branch, status)
+display.line1.components = ["repo_info"]
+display.line1.separator = " │ "
+display.line1.show_when_empty = true
+
+# Line 2: Model + Git Metrics & Versions (model first, then commits, submodules hidden when empty, versions, time)
+display.line2.components = ["model_info", "bedrock_model", "commits"]
+display.line2.separator = " │ "
+display.line2.show_when_empty = true
+
+# Line 3: Cost Analytics (pure cost line - repo, monthly, weekly, daily, live)
+display.line3.components = ["cost_repo", "cost_monthly", "cost_weekly", "cost_daily", "cost_live"]
+display.line3.separator = " │ "
+display.line3.show_when_empty = true
+
+# Line 4: Block Metrics + Token Tracking + Context (v2.20.0: total_tokens + context_alert)
+display.line4.components = ["burn_rate", "cache_efficiency", "block_projection", "code_productivity", "context_window"]
+display.line4.separator = " │ "
+display.line4.show_when_empty = true
+
+# Line 5: Usage Reset Timer (detailed reset countdown)
+display.line5.components = ["usage_reset"]
+display.line5.separator = " │ "
+display.line5.show_when_empty = true
+
+# Line 6: MCP Status (total count + Native/Remote/Plugin details)
+display.line6.components = ["mcp_status", "mcp_native", "mcp_servers", "mcp_plugins", "wellness"]
+display.line6.separator = " │ "
+display.line6.show_when_empty = false
+
+# Line 7: Available for future expansion
+#display.line7.components = []
+#display.line7.separator = " │ "
+#display.line7.show_when_empty = false
+
+# === AVAILABLE COMPONENTS REFERENCE ===
+# 🔄 SYNC WARNING: This section MUST be kept synchronized with CLAUDE.md
+# When updating component counts, descriptions, or categories here, update CLAUDE.md too!
+# ⚠️  SOURCE OF TRUTH: This Config.toml file - In case of discrepancy, follow this file
+#
+# === LOGICAL COMPONENT CATEGORIES (35 Total) ===
+#
+# Repository & Git Components (5):
+# - "repo_info"      - Repository directory and git branch/status
+# - "commits"        - Commit count for current repository
+# - "submodules"     - Submodule status and count
+# - "git_stats"      - Combined commits + submodules (legacy format)
+# - "version_info"   - CC + SL versions with update checking (recommended)
+#
+# Model & Session Components (7):
+# - "model_info"     - Claude model name with emoji
+# - "bedrock_model"  - AWS Bedrock inference profile to friendly model name
+# - "session_mode"   - Output style display (default, explanatory, learning, custom)
+# - "cost_repo"      - Repository cost tracking (native JSONL)
+# - "cost_live"      - Live block cost monitoring
+# - "reset_timer"    - Block reset countdown timer
+# - "session_info"   - Session ID + project name (🔗 abc12345 • project) [v2.13.0]
+#
+# Cost Analytics Components (4):
+# - "cost_monthly"   - 30-day cost summary
+# - "cost_weekly"    - 7-day cost summary
+# - "cost_daily"     - Daily cost summary
+# - "cost_period"    - Combined 30day/7day/daily costs (legacy format)
+#
+# Block Metrics Components (6):
+# - "burn_rate"         - Token consumption rate (🔥3.5k/min $2.10/hr)
+# - "token_usage"       - Total tokens in current 5-hour block (📊9.5M)
+# - "cache_efficiency"  - Cache hit percentage (native JSON)
+# - "block_projection"  - Projected cost and tokens (📈$8.25 10.5M)
+# - "code_productivity" - Lines added/removed (+156/-23) [v2.13.0]
+# - "context_window"    - Context usage via transcript (🧠 45% 90K/200K) [v2.13.0]
+#
+# System Components (4):
+# - "mcp_status"        - MCP server health and connection status (native JSON, future)
+# - "mcp_servers"       - Project MCP servers from .mcp.json (with probe status)
+# - "mcp_plugins"       - Enabled CC plugins/extensions (non-LSP)
+# - "time_display"      - Current time formatting
+# - "version_display"   - CC version only from JSON (lightweight, no network)
+# - "context_alert"     - Warns when tokens exceed 200K threshold
+#
+# Session State Components (2):
+# - "vim_mode"        - VIM:NORMAL or VIM:INSERT when vim mode enabled
+# - "agent_display"   - Agent name when running with --agent flag
+#
+# Cumulative Metrics (1):
+# - "total_tokens"    - Session input/output token counts (split or compact)
+#
+# Wellness (1):
+# - "wellness"        - Coding timer, break reminders, focus mode
+#
+# Spiritual & Location Components (5):
+# - "prayer_times"      - Combined Hijri + prayer times (legacy)
+# - "prayer_times_only" - Prayer times only (Fajr, Dhuhr, Asr, Maghrib, Isha)
+# - "prayer_icon"       - Dynamic prayer time icon (◐●◑◒○)
+# - "hijri_calendar"    - Hijri + moon phase + Gregorian + location
+# - "location_display"  - GPS-accurate location detection
+#
+# Example Component Configurations:
+# display.line1.components = ["repo_info", "commits", "submodules", "version_info"]  # Separate git data
+# display.line2.components = ["model_info", "cost_monthly", "cost_weekly", "cost_daily"]  # Separate cost data
+# display.line3.components = ["burn_rate", "token_usage", "cache_efficiency", "block_projection"]  # Block metrics
+# display.line4.components = ["cost_repo", "cost_live", "prayer_times"]  # Mixed components
+#
+# Environment Override Examples:
+# ENV_CONFIG_DISPLAY_LINES=3 ./statusline.sh
+# ENV_CONFIG_LINE1_COMPONENTS="repo_info,commits,version_info" ./statusline.sh
+# ENV_CONFIG_LINE2_COMPONENTS="model_info,cost_monthly,cost_daily" ./statusline.sh
+
+# === DISPLAY LABELS ===
+# Text labels used throughout the statusline
+labels.commits = "Commits:"
+labels.repo = "REPO"
+labels.monthly = "30DAY"
+labels.weekly = "7DAY"
+labels.daily = "DAY"
+labels.mcp = "MCP"
+labels.version_prefix = "ver"
+labels.claude_code_prefix = "CC:"
+labels.statusline_prefix = "SL:"
+labels.submodule = "SUB:"
+labels.session_prefix = "S:"
+labels.live = "LIVE"
+labels.reset = "RESET"
+
+# === CACHE SETTINGS ===
+# Control caching behavior for performance optimization
+cache.base_directory = "auto"
+cache.enable_universal_caching = true
+cache.enable_statistics = true
+cache.enable_corruption_detection = true
+cache.cleanup_stale_files = true
+cache.migrate_legacy_cache = true
+
+# Cache duration settings (in seconds, or "session" for session-wide)
+cache.durations.command_exists = "session"
+cache.durations.system_info = 86400
+cache.durations.claude_version = 21600
+cache.durations.git_config = 3600
+cache.durations.git_submodules = 300
+cache.durations.git_branches = 30
+cache.durations.git_status = 10
+cache.durations.git_current_branch = 10
+cache.durations.mcp_server_list = 120
+
+# Prayer & Location Cache - Travel-friendly durations for Muslim travelers
+# These shorter durations detect timezone/country changes quickly for accurate prayer times
+cache.durations.prayer_data = 3600        # 1 hour - prayer times refresh for travelers
+cache.durations.hijri_date = 3600          # 1 hour - hijri date cache
+cache.durations.location_data = 1800       # 30 minutes - location detection (was 7 days)
+
+cache.durations.directory_info = 5
+cache.durations.file_operations = 2
+
+# Performance and reliability settings
+cache.performance.max_lock_retries = 10
+cache.performance.lock_retry_delay_ms = "100-500"
+cache.performance.atomic_write_timeout = 10
+cache.performance.cache_cleanup_interval = 300
+cache.performance.max_cache_age_hours = 168
+
+# Security and integrity settings
+cache.security.directory_permissions = "700"
+cache.security.file_permissions = "600"
+cache.security.enable_checksums = true
+cache.security.validate_on_read = true
+cache.security.secure_temp_files = true
+cache.security.instance_isolation = true
+
+# Instance isolation settings - prevent cache contamination between repositories
+# Options: "repository" (isolate by working directory), "instance" (by process), "shared" (no isolation)
+cache.isolation.mode = "repository"          # Default isolation mode for all cache types
+cache.isolation.mcp = "instance"           # MCP server status (prevents showing wrong servers)
+cache.isolation.git = "repository"           # Git operations (already repository-aware by design)
+cache.isolation.cost = "shared"              # Cost tracking (user-wide, should be shared)
+cache.isolation.session = "repository"       # Session costs (isolate per project)
+cache.isolation.prayer = "shared"            # Prayer times (user-wide, location-based)
+cache.isolation.hijri = "shared"             # Hijri dates (user-wide, location-based)
+
+# Legacy compatibility settings
+cache.legacy.version_duration = 3600
+cache.legacy.version_file = "/tmp/.claude_version_cache"
+
+# ==============================================================================
+# Responsive Width (always-on, zero config required)
+# ==============================================================================
+# The statusline automatically adapts to terminal width by dropping
+# lower-priority components. Override detected width if needed:
+#
+# [responsive]
+# fallback_width = 120    # Default when auto-detection fails
+
+# === DISPLAY FORMATS ===
+# Date and time formatting options
+display.time_format = "%H:%M"
+display.date_format = "%Y-%m-%d"
+display.date_format_compact = "%Y%m%d"
+
+# === ERROR/FALLBACK MESSAGES ===
+# Messages displayed when services are unavailable
+messages.no_active_block = "No active block"
+messages.mcp_unknown = "unknown"
+messages.mcp_none = "none"
+messages.unknown_version = "?"
+messages.no_submodules = "--"
+
+# === ADVANCED SETTINGS ===
+# Fine-grained control over behavior and performance
+advanced.warn_missing_deps = false
+advanced.debug_mode = false
+advanced.performance_mode = false
+advanced.strict_validation = true
+
+# === BASH COMPATIBILITY ===
+# Universal bash compatibility settings (automatically managed)
+compatibility.auto_detect_bash = true
+compatibility.enable_compatibility_mode = true
+compatibility.compatibility_warnings = true
+compatibility.bash_path = ""
+
+# === PLATFORM SETTINGS ===  
+# Platform-specific configurations
+platform.prefer_gtimeout = true
+platform.use_gdate = false
+platform.color_support_level = "full"
+
+# === PATH CONFIGURATIONS ===
+# Customizable paths for various functions
+paths.temp_dir = "/tmp"
+paths.config_dir = "~/.config/claude-code-statusline"
+paths.cache_dir = "~/.cache/claude-code-statusline"
+paths.log_file = "~/.cache/claude-code-statusline/statusline.log"
+
+# === PERFORMANCE TUNING ===
+# Optimization settings
+performance.parallel_data_collection = true
+performance.max_concurrent_operations = 3
+performance.git_operation_timeout = "10s"
+performance.network_operation_timeout = "10s"
+performance.enable_smart_caching = true
+performance.cache_compression = false
+
+# === DEBUGGING & LOGGING ===
+# Development and troubleshooting options
+debug.log_level = "error"
+debug.log_config_loading = false
+debug.log_theme_application = false
+debug.log_validation_details = false
+debug.benchmark_performance = false
+debug.export_debug_info = false
+
+# === DYNAMIC THEME SYSTEM ===
+# Automatic theme switching based on time of day or prayer times
+# Issue #94: Time-based, sunrise/sunset, and prayer-based theme switching
+
+theme.dynamic.enabled = false              # Enable dynamic theme switching
+theme.dynamic.mode = "time"                # time, sunrise_sunset, prayer
+
+# Time-based switching (mode = "time")
+# Switches between day/night themes at specified times
+theme.dynamic.day_theme = "garden"         # Theme during daytime
+theme.dynamic.night_theme = "catppuccin"   # Theme during nighttime
+theme.dynamic.day_start = "06:00"          # When day theme starts (24h format)
+theme.dynamic.night_start = "18:00"        # When night theme starts (24h format)
+
+# Sunrise/sunset mode (mode = "sunrise_sunset")
+# Uses location coordinates to calculate actual sunrise/sunset times
+# Requires prayer system or manual coordinates
+theme.dynamic.sunrise_offset = 30          # Minutes after sunrise for day theme
+theme.dynamic.sunset_offset = 30           # Minutes after sunset for night theme
+
+# Prayer-based mode (mode = "prayer")
+# Uses Islamic prayer times for switching
+# Day theme: After Fajr, Night theme: After Maghrib
+theme.dynamic.prayer_day_trigger = "fajr"  # Prayer that triggers day theme
+theme.dynamic.prayer_night_trigger = "maghrib"  # Prayer that triggers night theme
+
+# Manual override
+# Set to a specific theme name to override dynamic switching temporarily
+# Clear/empty to resume dynamic switching
+theme.dynamic.manual_override = ""
+
+# === THEME INHERITANCE SYSTEM (Issue #85) ===
+# Create custom themes by inheriting from a base theme and overriding colors
+# This avoids duplicating entire theme definitions for small tweaks
+
+theme.inheritance.enabled = false          # Enable theme inheritance
+theme.inheritance.base_theme = ""          # Base theme to inherit from (classic/garden/catppuccin/ocean)
+theme.inheritance.merge_strategy = "override"  # How to merge: "override" (child wins) or "merge" (blend)
+
+# Individual color overrides (only specified colors are changed)
+# Use hex colors (#RRGGBB) or ANSI codes (\033[38;2;R;G;Bm)
+theme.inheritance.colors.red = ""          # Override red color
+theme.inheritance.colors.blue = ""         # Override blue color
+theme.inheritance.colors.green = ""        # Override green color
+theme.inheritance.colors.yellow = ""       # Override yellow color
+theme.inheritance.colors.magenta = ""      # Override magenta color
+theme.inheritance.colors.cyan = ""         # Override cyan color
+theme.inheritance.colors.white = ""        # Override white color
+theme.inheritance.colors.orange = ""       # Override orange color
+theme.inheritance.colors.purple = ""       # Override purple color
+theme.inheritance.colors.teal = ""         # Override teal color
+theme.inheritance.colors.gold = ""         # Override gold color
+theme.inheritance.colors.pink = ""         # Override pink color
+
+# === THEME INHERITANCE EXAMPLES ===
+#
+# Example 1: Catppuccin with custom accent colors
+# theme.inheritance.enabled = true
+# theme.inheritance.base_theme = "catppuccin"
+# theme.inheritance.colors.green = "#00ff88"    # Brighter green for success
+# theme.inheritance.colors.red = "#ff4444"      # More vibrant red for errors
+#
+# Example 2: Garden theme with ocean-inspired tweaks
+# theme.inheritance.enabled = true
+# theme.inheritance.base_theme = "garden"
+# theme.inheritance.colors.blue = "#48cae4"     # Ocean blue
+# theme.inheritance.colors.cyan = "#00b4d8"     # Bright cyan
+#
+# Example 3: Classic with modern pastel touches
+# theme.inheritance.enabled = true
+# theme.inheritance.base_theme = "classic"
+# theme.inheritance.colors.yellow = "#ffd166"   # Softer yellow
+# theme.inheritance.colors.magenta = "#bd93f9"  # Pastel purple
+
+# === CONDITIONAL CONFIGURATION ===
+# Context-aware configuration
+conditional.enabled = false
+
+# Work hours configuration (24-hour format)
+conditional.work_hours.enabled = false
+conditional.work_hours.start_time = "09:00"
+conditional.work_hours.end_time = "17:00"
+conditional.work_hours.timezone = "local"
+conditional.work_hours.work_profile = "work"
+conditional.work_hours.off_hours_profile = "personal"
+
+# Git repository context
+conditional.git_context.enabled = false
+conditional.git_context.work_repos = []
+conditional.git_context.personal_repos = []
+
+# === CONFIGURATION PROFILES (Issue #84) ===
+# Automatic configuration switching based on context
+# Supports: directory matching, git remote matching, time-based switching
+
+profiles.enabled = false
+profiles.default_profile = "personal"
+profiles.auto_switch = true
+
+# Detection priority: 1=git_remote, 2=directory, 3=time, 4=default
+profiles.detection_priority = ["git_remote", "directory", "time"]
+
+# === WORK PROFILE ===
+# Automatically activates for work directories/repos
+profiles.work.theme = "classic"
+profiles.work.show_cost_tracking = true
+profiles.work.show_reset_info = true
+profiles.work.mcp_timeout = "10s"
+
+# Directory patterns (glob-style matching)
+# Matches: /work/*, ~/projects/company/*, ~/src/work-*
+profiles.work.directories = ["/work/*", "~/projects/company/*", "~/src/work-*"]
+
+# Git remote patterns (substring matching)
+# Matches: github.com/mycompany/*, gitlab.com/work/*
+profiles.work.git_remotes = ["github.com/mycompany/", "gitlab.com/work/"]
+
+# Time-based activation (24h format, optional)
+profiles.work.time_start = "09:00"
+profiles.work.time_end = "17:00"
+profiles.work.time_days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+# === PERSONAL PROFILE ===
+profiles.personal.theme = "catppuccin"
+profiles.personal.show_cost_tracking = false
+profiles.personal.show_reset_info = false
+profiles.personal.mcp_timeout = "10s"
+
+# Directory patterns
+profiles.personal.directories = ["~/personal/*", "~/projects/personal/*", "~/hobby/*"]
+
+# Git remote patterns
+profiles.personal.git_remotes = ["github.com/myusername/"]
+
+# === DEMO PROFILE ===
+# For presentations and screen sharing
+profiles.demo.theme = "garden"
+profiles.demo.show_cost_tracking = false
+profiles.demo.show_commits = false
+profiles.demo.show_reset_info = false
+
+# Activate demo profile in specific directories
+profiles.demo.directories = ["~/demo/*", "~/presentations/*"]
+
+# === DEFAULT PROFILE ===
+# Fallback when no other profile matches
+profiles.default.theme = "catppuccin"
+profiles.default.show_cost_tracking = true
+profiles.default.show_reset_info = true
+
+# === PLUGIN SYSTEM (Issue #90) ===
+# Extensible component system for custom data sources
+# Plugins can add new components to the statusline
+
+plugins.enabled = false                    # Enable plugin system
+plugins.auto_discovery = true              # Scan plugin directories on startup
+plugins.plugin_dirs = ["~/.claude/statusline/plugins", "./plugins"]
+plugins.timeout_per_plugin = "5s"          # Max execution time per plugin
+plugins.validate_plugins = true            # Security validation (recommended)
+plugins.allow_network = false              # Allow plugins to make network calls
+plugins.debug_plugins = false              # Log plugin execution details
+
+# === SIGNATURE VERIFICATION (Issue #120) ===
+# GPG signature verification for plugin security
+plugins.require_signature = false          # Require valid GPG signatures (strict mode)
+plugins.warn_unsigned = true               # Show warning for unsigned plugins
+plugins.trusted_keys = ""                  # Comma-separated list of trusted GPG key IDs
+plugins.keyserver = "hkps://keys.openpgp.org"  # GPG keyserver for key retrieval
+
+# === PLUGIN STRUCTURE ===
+# Plugins are directories with a plugin.sh file and optional plugin.toml metadata
+#
+# ~/.claude/statusline/plugins/
+# ├── my-plugin/
+# │   ├── plugin.toml      # Metadata (name, version, description)
+# │   └── plugin.sh        # Implementation (must define get_<name>_component)
+#
+# === PLUGIN API ===
+# Your plugin.sh must define a component function:
+#
+# #!/bin/bash
+# # plugins/weather/plugin.sh
+#
+# get_weather_component() {
+#     echo "🌤️ 72°F"
+# }
+#
+# # Plugin is auto-registered based on directory name
+# # Component will be available as "weather" in display.lineX.components
+#
+# === PLUGIN METADATA (plugin.toml) ===
+# name = "weather"
+# version = "1.0.0"
+# description = "Display current weather"
+# author = "Your Name"
+# requires_network = true
+# dependencies = ["curl", "jq"]
+#
+# === PLUGIN SIGNING (Issue #120) ===
+# Sign your plugins with GPG for enhanced security:
+#
+# 1. Create a detached signature:
+#    gpg --detach-sign --armor plugin.sh
+#    # Creates plugin.sh.asc
+#
+# 2. Or use binary signature:
+#    gpg --detach-sign plugin.sh
+#    # Creates plugin.sh.sig
+#
+# 3. Share your public key:
+#    gpg --export --armor YOUR_KEY_ID > public.key
+#
+# Users can then:
+# - Add your key ID to plugins.trusted_keys
+# - Import your key: gpg --import public.key
+#
+# Signature verification flow:
+# - Valid signature: Plugin loads normally
+# - Invalid signature: Plugin REJECTED (always)
+# - Unsigned + require_signature=true: Plugin REJECTED
+# - Unsigned + warn_unsigned=true: Warning logged, plugin loads
+# - Untrusted key: Plugin REJECTED (when trusted_keys configured)
+
+# Built-in plugin configurations (examples)
+plugins.git_extended.enabled = true
+plugins.git_extended.show_stash_count = false
+plugins.git_extended.show_ahead_behind = false
+plugins.git_extended.show_branch_age = false
+
+plugins.system_info.enabled = false
+plugins.system_info.show_load_average = false
+plugins.system_info.show_memory_usage = false
+plugins.system_info.show_disk_usage = false
+
+plugins.weather.enabled = false
+plugins.weather.api_key = ""
+plugins.weather.location = "auto"
+plugins.weather.units = "metric"
+
+# === GITHUB INTEGRATION (Issue #92) ===
+# Display CI/CD status, PR information, workflow status in statusline
+# Requires: gh CLI (GitHub CLI) - install with: brew install gh
+# Note: For private repos, ensure gh is authenticated: gh auth login
+
+github.enabled = false                    # Enable GitHub integration
+github.show_ci_status = true              # Show CI/CD workflow status (passing/failing)
+github.show_open_prs = true               # Show count of open pull requests
+github.show_latest_release = false        # Show latest release version tag
+github.cache_ttl = 300                    # Cache duration in seconds (5 minutes)
+github.timeout = 10                       # API timeout in seconds
+
+# Status indicators (customize symbols)
+github.ci_passing = "✓"                   # Shown when CI passes
+github.ci_failing = "✗"                   # Shown when CI fails
+github.ci_pending = "●"                   # Shown when CI is running
+github.ci_unknown = "?"                   # Shown when status unknown
+
+# === GITHUB DISPLAY EXAMPLES ===
+# With show_ci_status and show_open_prs enabled:
+#   CI: ✓ │ PRs: 3
+#
+# With show_latest_release also enabled:
+#   CI: ✓ │ PRs: 3 │ Release: v2.1.0
+#
+# Compact summary (for constrained lines):
+#   ✓ 3PR
+#
+# === USAGE ===
+# Add "github" to your line components:
+#   display.line2.components = ["model_info", "github", "cost_repo"]
+
+# === COST ATTRIBUTION (Issues #215, #216) ===
+# Track costs per git commit and per MCP server.
+# Use `statusline.sh --commits` and `statusline.sh --mcp-costs` to view reports.
+
+cost.commit_attribution.enabled = true
+cost.commit_attribution.lookback_days = 30
+
+cost.mcp_attribution.enabled = true
+
+# === COST RECOMMENDATIONS (Issue #221) ===
+# Smart heuristic analysis to identify cost optimization opportunities.
+# Use `statusline.sh --recommendations` to view suggestions.
+
+cost.recommendations.enabled = true
+cost.recommendations.cache_target_percent = 70
+cost.recommendations.session_spike_multiplier = 2.0
+
+# === WATCH MODE (Issue #208) ===
+# Live monitoring dashboard with configurable refresh interval.
+# Use `statusline.sh --watch` or `statusline.sh --watch --refresh 5`.
+
+watch.enabled = true
+watch.default_refresh = 10
+watch.min_refresh = 0.5
+
+# === HISTORICAL TRENDS (Issue #217) ===
+# ASCII bar charts showing cost trends over time.
+# Use `statusline.sh --trends` or `statusline.sh --trends --period 7d`.
+
+trends.default_period = "30d"
+trends.chart_height = 10
+
+# === LIMIT WARNINGS (Issue #210) ===
+# Unified warning system for context window, rate limits, and daily cost.
+# Use `statusline.sh --limits` to check all thresholds.
+
+limits.context_warn_percent = 75
+limits.context_critical_percent = 90
+limits.five_hour_warn_percent = 70
+limits.five_hour_critical_percent = 90
+limits.seven_day_warn_percent = 70
+limits.seven_day_critical_percent = 90
+limits.daily_cost_warn = 5.00
+limits.daily_cost_critical = 10.00
+limits.show_limit_summary = true
+
+# [Wellness & Focus Mode]
+# Unified session tracking: coding timer + break reminders + focus mode.
+# Idle detection auto-resets the timer when you take a break (>15 min gap).
+# Focus mode: `statusline.sh --focus start` sets a custom target.
+# Usage: Add "wellness" to your line components:
+#   display.line6.components = ["hijri_calendar", "wellness"]
+wellness.enabled = true
+wellness.gentle_minutes = 45              # First "break soon" nudge
+wellness.warn_minutes = 90                # Stronger "take a break" warning
+wellness.urgent_minutes = 120             # "Break overdue!" alert
+wellness.idle_reset_minutes = 15          # Gap (min) to consider "took a break"
+wellness.show_in_statusline = true
+
+# [Focus Mode] (integrated into wellness)
+# Use `statusline.sh --focus start` to begin a session,
+# `--focus stop` to end and record, `--focus status` to check progress.
+# When active, focus target replaces wellness threshold in display.
+# Auto-abandons after idle gap > abandon_minutes.
+focus.enabled = true
+focus.default_duration = 50               # Default session target in minutes
+focus.abandon_minutes = 120               # Auto-stop focus after this idle gap
+focus.show_in_statusline = true
+focus.track_commits = true
+focus.track_cost = true
+
+# ============================================================================
+# TEMPLATE MAINTENANCE NOTES
+# ============================================================================
+#
+# 🔧 IMPORTANT: When adding new configuration options to the codebase:
+#    1. Add the new option to this template with sensible default values
+#    2. Include comprehensive documentation comments for new sections
+#    3. Update any related documentation referencing configuration options
+#    4. Test the template for TOML syntax validity before committing
+#
+# 📚 This file serves multiple purposes:
+#    • Installation template (copied to ~/.claude/statusline/Config.toml)
+#    • Configuration documentation (comprehensive reference)
+#    • Testing baseline (validated for TOML syntax)
+#    • Developer reference (complete list of all available options)
+#
+# 🎯 Usage by installer:
+#    • Downloaded from: https://raw.githubusercontent.com/rz1989s/claude-code-statusline/{branch}/examples/Config.toml
+#    • Copied to: ~/.claude/statusline/Config.toml (with backup if exists)
+#    • No shell processing required - direct TOML-to-TOML copy
+#
+# ============================================================================
