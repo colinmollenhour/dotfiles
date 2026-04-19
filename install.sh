@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-dotfiles=".bashrc.colin .gitattributes.global .gitconfig.colin .gitignore.global .tmux.conf .vimrc .config/tmux/tmux-onedark-theme.tmux .config/starship.toml .config/docker-fzf.bash .config/delta/themes.gitconfig"
+dotfiles=".bashrc.colin .gitattributes.global .gitconfig.colin .gitignore.global .tmux.conf .vimrc .config/tmux/tmux-onedark-theme.tmux .config/starship.toml .config/docker-fzf.bash .config/delta/themes.gitconfig .config/tmux-powerline/config.sh .config/tmux-powerline/themes/colin.sh"
 cd $(dirname "${BASH_SOURCE[0]}")
 
 # Function to display help
@@ -42,7 +42,7 @@ install_dotfiles() {
   echo "==> Installing dotfiles..."
   export INSTALL_REPO_HEAD="$(cat .git/$(awk '{print $2}' .git/HEAD))"
   export INSTALL_DATE="$(date)"
-  mkdir -p ~/.config/tmux ~/.config/delta
+  mkdir -p ~/.config/tmux ~/.config/tmux-powerline/themes ~/.config/delta
   for f in $dotfiles; do
     echo "Installing $f"
     envsubst '$INSTALL_REPO_HEAD:$INSTALL_DATE' < $f > ~/$f
