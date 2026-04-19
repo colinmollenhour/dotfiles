@@ -47,7 +47,9 @@ Use the **Many Brain One Task (MBOT)** skill with task type `code-review`.
 If `--re-review` is active, review only the new changes since the last review.
 
 - Skip the normal "already commented" stop condition
-- Gather prior review comments and determine the incremental diff since the last reviewed SHA/version
+- Gather prior review comments and extract the last reviewed commit SHA from the most recent `**AI Code Review**` header (format: `· Commit: <sha>`)
+- If no prior header with a SHA is found, fall back to the earliest reviewed version/SHA available from the platform
+- Compute the incremental diff between the last reviewed SHA and the current HEAD of the PR/MR branch
 - Give agents the incremental diff as primary input, and the full diff as background only
 - Do not re-flag issues already covered by prior comments unless they remain unresolved and are still relevant
 - If no new issues are found, use a re-review summary comment that says no new issues were found in the latest changes
@@ -56,7 +58,7 @@ If `--re-review` is active, review only the new changes since the last review.
 
 ### Step 1: Pre-flight Checks
 
-For PR/MR reviews, fetch state, draft status, title, and author using the loaded platform CLI skill.
+For PR/MR reviews, fetch state, draft status, title, author, and the latest commit SHA on the PR/MR branch using the loaded platform CLI skill. Record the SHA — it must be included in every `**AI Code Review**` header posted during this run so later re-reviews can diff against it.
 
 Stop if:
 - The PR/MR is closed or merged
@@ -174,12 +176,12 @@ Supported follow-ups:
 Post a single summary comment:
 
 ```text
-> **AI Code Review** · Models: <comma-separated list>
+> **AI Code Review** · Commit: <sha> · Models: <comma-separated list>
 
 No issues found. Checked for bugs and AGENTS.md compliance.
 ```
 
-In re-review mode, say `No new issues found in the latest changes.` instead.
+In re-review mode, say `No new issues found in the latest changes.` instead. Keep the `Commit: <sha>` segment in the header so the next re-review can diff from this point.
 
 #### Issues Found
 
@@ -192,10 +194,12 @@ Comment rules:
 - Every comment starts with:
 
 ```text
-> **AI Code Review** · Flagged by: <agent-name(s)>
+> **AI Code Review** · Commit: <sha> · Flagged by: <agent-name(s)>
 
 <issue description>
 ```
+
+- `<sha>` is the full PR/MR head commit SHA captured in Step 1. Use the same SHA for every comment posted in this run, including the summary comment.
 
 - Use exactly one comment per unique issue
 - Include links or citations when referring to source material such as `AGENTS.md`
