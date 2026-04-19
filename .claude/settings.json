@@ -18,6 +18,7 @@
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.osv.dev)",
+      "WebFetch(domain:registry.npmjs.org)",
       "WebFetch(domain:gitlab.bss-llc.com)"
     ],
     "deny": [
