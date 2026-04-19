@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npm ci)",
+      "Bash(npm run *)",
+      "Bash(pnpm install)",
+      "Bash(pnpm install:*)",
+      "Bash(yarn install)",
+      "Bash(pip install:*)",
+      "Bash(uv pip install:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
       "Read",
       "Edit",
       "Write",
@@ -9,12 +22,11 @@
       "Glob",
       "Grep",
       "LS",
-      "WebFetch",
       "WebSearch",
       "TodoWrite",
+      "Skill(colin:commit-and-push)",
       "WebFetch(domain:proxy.golang.org)",
       "WebFetch(domain:0.0.0.0)",
-      "Skill(colin:commit-and-push)",
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.osv.dev)",
@@ -23,13 +35,38 @@
     ],
     "deny": [
       "Read(~/.ssh/**)",
-      "Read(**/.env)",
-      "Read(**/.env.*)"
+      "Read(**/.env)"
     ]
   },
   "sandbox": {
     "enabled": true,
-    "autoAllowBashIfSandboxed": true
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "*.npmjs.org",
+        "registry.yarnpkg.com",
+        "*.yarnpkg.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "*.pythonhosted.org",
+        "github.com",
+        "*.github.com",
+        "raw.githubusercontent.com",
+        "objects.githubusercontent.com",
+        "api.anthropic.com",
+        "crates.io",
+        "static.crates.io",
+        "index.crates.io",
+        "registry.hub.docker.com",
+        "deb.debian.org",
+        "archive.ubuntu.com",
+        "security.ubuntu.com",
+        "proxy.golang.org",
+        "api.osv.dev",
+        "gitlab.bss-llc.com"
+      ]
+    }
   },
   "skipDangerousModePermissionPrompt": true
 }
