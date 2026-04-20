@@ -131,6 +131,46 @@ Line positioning rules:
 - Removed lines: `LEFT`
 - Use `-F` for integer fields
 
+## Resolve PR Review Threads
+
+There is no high-level `gh` command for this — use the GraphQL `resolveReviewThread` mutation. Inline review comments from the REST `pulls/{N}/comments` endpoint map to threads; fetch the thread IDs first, then resolve.
+
+```bash
+# 1. List unresolved threads with their underlying comment IDs
+gh api graphql -f query='{
+  repository(owner:"<owner>", name:"<repo>") {
+    pullRequest(number:<PR>) {
+      reviewThreads(first:50) {
+        nodes {
+          id
+          isResolved
+          comments(first:1) { nodes { databaseId path body } }
+        }
+      }
+    }
+  }
+}' --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+         | select(.isResolved | not)
+         | {id, commentId: .comments.nodes[0].databaseId, path: .comments.nodes[0].path}'
+```
+
+```bash
+# 2. Resolve a thread. Write the mutation to a file (see HEREDOC gotcha below)
+#    — never try to inline a GraphQL mutation that contains `ID!` via HEREDOC.
+cat > /tmp/resolve.graphql <<'EOF'
+mutation($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) {
+    thread { id isResolved }
+  }
+}
+EOF
+
+gh api graphql -F threadId="<PRRT_...>" -F query=@/tmp/resolve.graphql \
+  --jq '.data.resolveReviewThread.thread'
+```
+
+Note: thread IDs start with `PRRT_`; they are not the same as the numeric `databaseId` on inline comments. To unresolve, swap `resolveReviewThread` for `unresolveReviewThread`.
+
 ## Issue Queries
 
 ```bash
@@ -167,3 +207,16 @@ Preferred sequence:
 - Prefer `--json ... --jq ...` over parsing human-readable output
 - Re-fetch after mutations when you need confirmation
 - Use HEREDOCs for multiline bodies to avoid escaping bugs
+
+## Gotcha: `!` in HEREDOCs gets mangled by shell history expansion
+
+On interactive bash/zsh, history expansion rewrites `!` inside a HEREDOC to `\!` even with a single-quoted `<<'EOF'` delimiter. This silently corrupts:
+
+- GraphQL non-null type markers (`ID!`, `String!`) — `gh api graphql` then fails with `Expected VAR_SIGN, actual: UNKNOWN_CHAR ("")`
+- Any legitimate `!` in commit messages, PR bodies, or JSON string values
+
+Mitigations, in order of preference:
+
+1. **Write the payload with the Write tool to a temp file**, then pass via `--body-file`, `-F query=@file`, or `--input file`. Most robust — no shell involved.
+2. Prefix the command with `set +H` (bash) or `setopt no_bang_hist` (zsh) before the HEREDOC.
+3. Inspect the file with `xxd | head` if a `gh api graphql` call fails with a syntax error near a `!` — a `5c21` byte pair (`\!`) where you wrote `!` confirms the problem.

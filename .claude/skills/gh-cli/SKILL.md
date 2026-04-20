@@ -36,9 +36,11 @@ Use `gh api` when a high-level command does not expose the needed operation or f
 
 - Prefer REST endpoints for comments, reviews, timeline data, commits, labels, and other missing mutations
 - Use `gh api` for repository security advisories, including `POST /repos/{owner}/{repo}/security-advisories`
+- Use `gh api graphql` for operations with no REST equivalent — notably **resolving PR review threads** (see [reference.md](reference.md))
 - Use `-f` for string fields and `-F` for integer or typed fields
 - Use `--input` with a HEREDOC for nested JSON request bodies such as advisory payloads
 - For multiline comment or PR bodies, use a HEREDOC rather than inline escaping
+- **Do not inline a GraphQL query containing `!` via HEREDOC** — shell history expansion will rewrite `!` to `\!` and break the query. Write the query with the Write tool to a temp file, then pass via `-F query=@file`. See the gotcha in [reference.md](reference.md).
 - Re-fetch the resource after mutation when confirmation matters
 
 ### Step 4: Avoid interactive flows
@@ -60,6 +62,7 @@ Always pass explicit flags instead of relying on prompts.
 - Fetch PR state, author, files, checks, and head SHA
 - Create or update a PR
 - Post a PR summary comment or inline review comment
+- Resolve PR review threads (GraphQL `resolveReviewThread`)
 - Add labels to a PR
 - Create or update a repository security advisory
 - Inspect workflow runs and fetch failed logs
