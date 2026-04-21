@@ -16,7 +16,6 @@
 #   dm                   docker-machine
 #   dstats               docker stats
 #   g                    git (see Git Shortcuts section for more)
-#   k                    kontena
 #   kc                   kubectl
 #   l                    ls -l
 #   lcd                  cd && ls
@@ -51,7 +50,6 @@
 #   hdd-write-test       do a simple write test in the current directory
 #   ip-summary           show number of connections per ip
 #   ipinfo               helper for `curl https://ipinfo.io/$1`
-#   kontena-vpn-start    connect to a kontena vpn
 #   mysql-extract-table  pipe mysqldump through this to extract a single table
 #   mysql-strip-definer  pipe mysqldump through this to strip the DEFINER clauses
 #   nsps                 netstat -plunt | sort
@@ -131,7 +129,6 @@
 #   ~/.bashrc.after      add your own .bashrc customizations without modifying this file
 #   ~/.bash_aliases      add your own .bashrc customizations without modifying this file
 #   <git-root>/.gitoff   disable git-enhanced prompt for a specific repo
-#   .kontena-ps1         enable the Kontena prompt info
 #   ~/.no-color          disable colored prompt
 #   ~/.nogitprompt       disable git-enhanced prompt
 #   ~/.ssh/.auto-agent   enable auto-start of SSH Agent
@@ -333,7 +330,7 @@ shopt -s histappend
 alias l='ls -l'
 alias ll='ls -al'
 alias vi='vim -p'
-alias colin-help="awk 'BEGIN{f=1}/END/{f=0}f' ~/.bashrc | tail -n +2 | sed 's/^#//' | ${PAGER:-less}"
+alias colin-help="awk 'BEGIN{f=1}/END/{f=0}f' ~/.bashrc.colin | tail -n +2 | sed 's/^#//' | ${PAGER:-less}"
 alias rdns='dig +short -x'
 alias lvim="vim -c \"normal '0\""
 alias rfromdos='find . -type f -not \( -name "*.png" -o -name "*.gif" -o -name "*.jpg" -o -name "*.ico" -o -name "*gz" -o -name "*.swf" -o -path "./.*" \) -print0 | xargs -0 -r fromdos'
@@ -457,26 +454,9 @@ function update-dotfiles {
   elif [ -d /opt/dotfiles ]; then
     mv /opt/dotfiles ~/.local/colin-dotfiles && cd ~/.local/colin-dotfiles && git pull && ./install.sh --all
   else
-    echo "Could not file the dotfiles repo?"
+    echo "Could not find the dotfiles repo?"
   fi
   echo 'See: https://github.com/colinmollenhour/dotfiles'
-}
-function kontena-vpn-start {
-  set -e
-  local pidfile=/var/run/kontena-openvpn.pid
-  if [[ -s $pidfile ]] && [[ -f /proc/$(cat $pidfile)/stat ]]; then
-    echo -n "Killing old OpenVPN process... "
-    sudo kill -TERM $(cat $pidfile)
-    while [[ -f /proc/$(cat $pidfile)/stat ]]; do sleep 1; done
-    echo "Done"
-  fi
-  local tmpfile=$(mktemp -t openvpn.XXXXX)
-  echo -n "Loading VPN config... "
-  kontena vpn config "$@" > $tmpfile
-  echo -n "Starting OpenVPN connection to $(awk '/^remote /{print $2}' $tmpfile)... "
-  sudo openvpn --daemon --writepid $pidfile --config $tmpfile
-  echo "Done"
-  (sleep 5; rm $tmpfile; rm -f /tmp/openvpn.*)&
 }
 
 test -f ~/.bashrc.after && . ~/.bashrc.after
@@ -1019,7 +999,5 @@ if type __git_complete >/dev/null 2>&1; then
     __git_complete g __git_main
 fi
 
-function __kontena_ps1 {
-  [[ -f ~/.kontena_client.json ]] && [[ -f ./.kontena-ps1 ]] && awk '/"current_server"/{master=$2} /"name"/{active = $2 == master} /"grid"/ && active{grid=$2} END{gsub(/[",]/,"",master);gsub(/[",]/,"",grid);printf("%s/%s", master, grid);}' < ~/.kontena_client.json
-}
+function __kontena_ps1 {}
 
