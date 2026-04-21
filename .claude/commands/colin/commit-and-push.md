@@ -1,6 +1,6 @@
 ---
 description: Commit, push, and open/update a Github PR or GitLab MR (unless otherwise specified)
-allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr comment:*), Bash(glab mr create:*), Bash(glab mr note:*), Bash(gh pr view:*), Bash(glab mr view:*), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*)
+allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr comment:*), Bash(gh pr edit:*), Bash(glab mr create:*), Bash(glab mr note:*), Bash(glab mr update:*), Bash(gh pr view:*), Bash(glab mr view:*), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*)
 argument-hints: Special instructions
 ---
 
@@ -48,9 +48,13 @@ Based on the above info and the context of this session:
    - Unless otherwise specified, create the PR/MR if one does not already exist
    - If the branch is already tracking an open PR/MR, add a short comment or note describing the motivation and effect of the new commit
 7. Fetch the new state of the working tree with `git status --short`
+8. After the PR/MR is created or updated, remind the user to request a review. Include the exact copy-pasteable command for the detected platform, using the PR/MR number from the previous step:
+   - GitHub: `gh pr edit <PR_NUMBER> --add-reviewer username1,username2`
+   - GitLab: `glab mr update <MR_IID> --reviewer username1,username2`
+   Do NOT run the command yourself — reviewer usernames are not known. Just surface it as a reminder.
 
 You have the capability to call multiple tools in a single response so do all of the above in a single message IF AT ALL POSSIBLE.
-Do NOT send any other text or messages besides these tool calls and a short list of what you did.
+Do NOT send any other text or messages besides these tool calls, a short list of what you did, and the review-request reminder from step 8.
 
 # Special Instructions
 
