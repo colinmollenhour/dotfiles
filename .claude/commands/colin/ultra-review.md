@@ -104,6 +104,12 @@ If `--re-review` is active, review only the new changes since the last ultra-rev
 
 For PR/MR reviews, fetch state, draft status, title, author, and the latest commit SHA on the PR/MR branch using the loaded platform CLI skill. Record the SHA — it must be included in every `**AI Ultra Review**` header posted during this run so later re-reviews can diff against it.
 
+Also capture the base SHA from the platform:
+- GitHub: `gh pr view <N> --json headRefOid,baseRefOid | jq -r '.headRefOid, .baseRefOid'`
+- GitLab: `glab mr view <IID> --output json | jq -r '.diff_refs.head_sha, .diff_refs.base_sha'`
+
+Both SHAs are a **precondition**: they must already be present in the local repository. Verify each with `git cat-file -e <sha>^{commit}`. If either is missing, stop and ask the user to fetch the branch locally (e.g. `gh pr checkout <N>`, `glab mr checkout <IID>`, or `git fetch origin <branch>`) before re-running. Do not auto-fetch. The rest of this command uses local `git diff <base>...<head>` against these SHAs instead of reading a consolidated PR/MR diff blob.
+
 Stop if:
 - The PR/MR is closed or merged
 - The PR/MR is draft/WIP
@@ -112,15 +118,41 @@ Stop if:
 
 For git diff mode, skip pre-flight entirely.
 
-### Step 2: Triage and Filter
+### Step 2: Triage, Filter, and Bucket
 
-Fetch the file list and diff, then exclude review noise before running agents.
+Generate the file list and per-file changed-line counts **locally** using:
 
-Exclude:
+```bash
+git diff --stat <base>...<head>
+```
+
+Do not read the full diff yet.
+
+**Exclusions.** Remove the following before bucketing:
 - Generated files
 - Vendored or dependency directories: `vendor/`, `node_modules/`, `.yarn/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.venv/`, `third_party/`
 - Lock files and built artifacts: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `go.sum`, `composer.lock`, `Gemfile.lock`, `Cargo.lock`, `poetry.lock`, `*.min.js`, `*.min.css`, `*.map`
-- Any single-file diff larger than `5000` lines
+- Test fixture data dumps and other large non-code blobs: `sample_data.sql`, `*_fixture.sql`, `*.dump`, `*.ndjson`, `*.parquet`, `*.tar`, `*.tar.gz`, `*.zip`, `*.bin`; also any `*.sql` file that is clearly a data dump rather than a migration
+- Any single-file change larger than `5000` lines (fallback catch for anything the patterns above missed)
+
+**Bucketing.** Let `T` be the total changed-line count across the filtered file set.
+
+- If `T ≤ 5000`: one bucket containing all filtered files. A single bucket can run up to 5000 lines without splitting.
+- Otherwise, split into `K = ⌈T / 4000⌉` buckets, targeting ~`T/K` lines each (roughly 3000–4000 per bucket). Worked examples: 7000 → 2 buckets of ~3500; 10000 → 3 buckets of ~3333; 13000 → 4 buckets of ~3250. **Minimize `K`** — do not over-split.
+
+When splitting, use directory-aware packing:
+  1. Group files by top-level directory (first path segment, e.g. `apps/web/`, `packages/core/`, `migrations/`). Keeping related files together preserves cross-file context for each reviewer.
+  2. If a group exceeds the per-bucket cap, subdivide it by second-level directory first; only split a single directory across buckets as a last resort.
+  3. Pack groups greedily, starting a new bucket only when the next group would push the current bucket past ~`T/K` lines.
+  4. Keep the computed `K` unless a single file exceeds the per-bucket cap — in that rare case, it gets its own bucket and `K` grows by one.
+
+**Materialize per-bucket diffs locally** — only after bucketing, and only for files in a bucket:
+
+```bash
+git diff <base>...<head> -- <files-in-bucket>
+```
+
+Do not read files that are not in any bucket.
 
 ### Step 3: Role Selection
 
@@ -129,12 +161,15 @@ Apply the [Role Selection](#role-selection) rules to the filtered diff. Record:
 - Any role skipped and a one-line reason
 - Whether role set came from `--roles` or default
 
-### Step 4: Report Triage and Roles
+### Step 4: Report Triage, Roles, and Buckets
 
 ```text
 Triage: <N> files, <M> excluded (<reasons>), reviewing <N-M> files (<L> diff lines)
 Roles: <csv of running roles> (default | from --roles)
 Skipped: <role: reason> (omit when no role skipped)
+Buckets: <K> (single bucket up to 5000 lines; otherwise ~3000 per bucket via K=⌈T/4000⌉)
+  1. <file count> files, <line count> lines — <top-level dirs>
+  ...  (list per-bucket breakdown only when K > 1)
 ```
 
 ### Step 5: Gather Context
@@ -154,15 +189,18 @@ Supported external context:
 
 Pass external summaries to review agents, but do not post them as comments.
 
-### Step 6: Review the Changes (N × 3 threads)
+### Step 6: Review the Changes (N × 3 threads per bucket)
 
-For each running role (`bugs`, `runtime`, `craft` unless one was skipped), invoke MBOT **once** with the role-specific focus prompt. Launch all per-role MBOT invocations **in parallel** — they are independent.
+Run one **review pass** per bucket. Bucket passes execute **sequentially** to bound total cost; within a pass, per-role MBOT invocations run in parallel.
 
-Each per-role MBOT invocation runs the full agent list (e.g. 3 agents), so total threads = `agents × 3` by default (e.g. 9 threads for the standard 3-agent MBOT config).
+For each bucket, for each running role (`bugs`, `runtime`, `craft` unless one was skipped), invoke MBOT **once** with the role-specific focus prompt. Launch all per-role MBOT invocations for that bucket **in parallel** — they are independent.
+
+Each per-role MBOT invocation runs the full agent list (e.g. 3 agents), so threads per bucket = `agents × 3` by default (e.g. 9 threads per bucket for the standard 3-agent MBOT config).
 
 Give each agent in each role:
-- The filtered diff
-- Relevant `AGENTS.md` context
+- **Only the current bucket's diff** as the primary review target
+- A one-line summary of the other buckets' scopes (top-level dirs + line counts) so agents know what they are *not* seeing in this pass — instruct them not to flag issues that would require cross-bucket context they don't have
+- Relevant `AGENTS.md` context (for files in the current bucket and their parents)
 - Any external context
 - The role's focus prompt from the [Role Library](#role-library) as the primary directive
 - Instruction: "Tag each issue with both your agent name AND the role name (e.g. `agent=Opus 4.6, role=security`)"
@@ -187,9 +225,9 @@ If confidence is low, do not flag the issue.
 
 ### Step 7: Validate and Deduplicate
 
-For each issue across **all (agent × role) threads**, run a validation agent and keep only issues confirmed with high confidence.
+For each issue across **all (agent × role × bucket) threads**, run a validation agent and keep only issues confirmed with high confidence.
 
-- Merge duplicate issues across agents AND across roles (same file:line and same root cause = one issue)
+- Merge duplicate issues across agents, roles, AND buckets (same file:line and same root cause = one issue). Cross-bucket duplicates are rare but possible when the same underlying bug surfaces via touchpoints in different directories.
 - Preserve every (agent, role) attribution on merged issues
 - Keep full per-(agent, role) validation results for the summary unless `--no-summary` is active
 
@@ -197,7 +235,7 @@ For each issue across **all (agent × role) threads**, run a validation agent an
 
 Skip this step if `--no-summary` is active.
 
-Produce **two** tables.
+Produce **two** tables. Both aggregate across all buckets.
 
 **Per-agent table** (aggregated across all roles for each agent):
 
