@@ -524,29 +524,29 @@ display.line1.separator = " │ "
 display.line1.show_when_empty = true
 
 # Line 2: Model + Git Metrics & Versions (model first, then commits, submodules hidden when empty, versions, time)
-display.line2.components = ["model_info", "bedrock_model", "commits"]
+display.line2.components = ["model_info", "context_window", "commits", "code_productivity"]
 display.line2.separator = " │ "
 display.line2.show_when_empty = true
 
 # Line 3: Cost Analytics (pure cost line - repo, monthly, weekly, daily, live)
-display.line3.components = ["cost_repo", "cost_monthly", "cost_weekly", "cost_daily", "cost_live"]
+#display.line3.components = ["cost_repo", "cost_monthly", "cost_weekly", "cost_daily", "cost_live"]
+#display.line3.separator = " │ "
+#display.line3.show_when_empty = true
+
+# Line 4: Block Metrics + Token Tracking + Context (v2.20.0: total_tokens + context_alert)
+display.line3.components = ["mcp_status", "burn_rate", "cache_efficiency", "block_projection"]
 display.line3.separator = " │ "
 display.line3.show_when_empty = true
 
-# Line 4: Block Metrics + Token Tracking + Context (v2.20.0: total_tokens + context_alert)
-display.line4.components = ["burn_rate", "cache_efficiency", "block_projection", "code_productivity", "context_window"]
-display.line4.separator = " │ "
-display.line4.show_when_empty = true
-
 # Line 5: Usage Reset Timer (detailed reset countdown)
-display.line5.components = ["usage_reset"]
-display.line5.separator = " │ "
-display.line5.show_when_empty = true
+#display.line4.components = ["usage_reset"]
+#display.line4.separator = " │ "
+#display.line4.show_when_empty = true
 
 # Line 6: MCP Status (total count + Native/Remote/Plugin details)
-display.line6.components = ["mcp_status", "mcp_native", "mcp_servers", "mcp_plugins", "wellness"]
-display.line6.separator = " │ "
-display.line6.show_when_empty = false
+#display.line6.components = ["mcp_status", "mcp_native", "mcp_servers", "mcp_plugins", "wellness"]
+#display.line6.separator = " │ "
+#display.line6.show_when_empty = false
 
 # Line 7: Available for future expansion
 #display.line7.components = []
