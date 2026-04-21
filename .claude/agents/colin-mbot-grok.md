@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Kimi K2.6
+description: Many brain, one task with Grok 4.20
 mode: subagent
-model: opencode/kimi-k2.6
+model: openrouter/x-ai/grok-4.20-beta
 tools:
   write: false
   edit: false
