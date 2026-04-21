@@ -48,7 +48,7 @@ Not all agents can run subagents with other models. The agents and harnesses ava
 - Claude Code must use another harness such as OpenCode for non-Claude models
 - Codex must use another harness for non-OpenAI models
 - Gemini must use another harness for non-Gemini models
-- OpenCode must use Claude Code for Claude models but can likely use subagents for all other models
+- OpenCode **must** use Claude Code (`claude`) for Claude models (Opus, Sonnet, Haiku) but can likely use subagents for all other models (unless the user preferences specify otherwise)
 
 - The user may have specified their preferred harness for a given model such as "Use `codex` CLI for OpenAI models".
   These rules will be specified in the User Preferences file if loaded, otherwise just prefer to use OpenCode as available.
