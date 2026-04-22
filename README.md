@@ -128,6 +128,7 @@ In git-diff mode (when the target is a rev spec rather than a PR/MR) it always b
 | `/colin:finalize-spec` | Augment the current plan with the "senior-SWE" planning sections needed before implementation. |
 | `/colin:feature-export <feature>` | Generate a portable implementation guide for moving a feature to a sibling repo. |
 | `/colin:handoff [path]` | Dump current session context into a portable markdown handoff doc. No tool calls, just context. |
+| `/colin:progress` | Audit the task in scope and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
 
 ### `agent-sops:*` — heavier structured workflows
 
