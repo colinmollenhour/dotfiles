@@ -46,7 +46,21 @@ Based on the above info and the context of this session:
    - GitHub: use `gh-cli` for PR status, `gh pr create`, and any follow-up PR comment
    - GitLab: use `glab-cli` for MR status, `glab mr create`, and any follow-up MR note
    - Unless otherwise specified, create the PR/MR if one does not already exist
-   - If the branch is already tracking an open PR/MR, add a short comment or note describing the motivation and effect of the new commit
+   - If the branch is already tracking an open PR/MR, add a short comment or note describing the motivation and effect of the new commit.
+     - Decide whether the AI agent itself authored the work being committed, based on prior conversation history:
+       - If this session shows the agent making the code changes (editing files, generating new code, etc.), the AI authored the work — include the self-identifying header below.
+       - If the human wrote the code and the agent is only being used to commit/push/PR on their behalf (no AI-authored edits in this session), omit the header and post the comment as plain prose.
+     - When the AI authored the work, prefix the comment with this header on its own line, a blank line, then the note body:
+
+       ```text
+       > **AI Commit Note** · Commit: <sha> · By: <harness> with <model>
+
+       <short description of the motivation and effect of the new commit>
+       ```
+
+       - `<sha>` is the short SHA of the commit just pushed (from `git rev-parse --short HEAD`).
+       - `<harness>` is the agent harness currently running (e.g. `Claude Code`, `OpenCode`) — take it from your own runtime identity.
+       - `<model>` is the model powering this session (e.g. `Opus 4.7`, `GPT 5.4`) — take it from your own runtime identity. If you cannot determine harness or model, use `By: AI agent` instead.
 7. Fetch the new state of the working tree with `git status --short`
 8. After the PR/MR is created or updated, remind the user to request a review. Include the exact copy-pasteable command for the detected platform, using the PR/MR number from the previous step:
    - GitHub: `gh pr edit <PR_NUMBER> --add-reviewer username1,username2`
