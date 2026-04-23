@@ -4,7 +4,7 @@ When the project uses [Nuxt UI v4](https://ui.nuxt.com) with `@nuxt/content` (th
 
 Source: <https://ui.nuxt.com/docs/typography>
 
-Use `:::` (three colons) for components nested inside a `::` block.
+**Nesting rule:** every level of nesting adds one colon. A child of a `::` block opens with `:::`; a grandchild opens with `::::`. Open and close fences must match exactly.
 
 ## Accordion / AccordionItem
 
@@ -17,13 +17,13 @@ defaultValue:
   - '1'
 ---
 
-::accordion-item{label="Is Nuxt UI free to use?" icon="i-lucide-circle-help"}
-Yes! Nuxt UI is MIT-licensed and free.
-::
+  :::accordion-item{label="Is Nuxt UI free to use?" icon="i-lucide-circle-help"}
+  Yes! Nuxt UI is MIT-licensed and free.
+  :::
 
-::accordion-item{label="Can I use it without Nuxt?" icon="i-lucide-circle-help"}
-Yes — it works with standalone Vue via the Vite plugin.
-::
+  :::accordion-item{label="Can I use it without Nuxt?" icon="i-lucide-circle-help"}
+  Yes — it works with standalone Vue via the Vite plugin.
+  :::
 ::
 ```
 
@@ -78,25 +78,25 @@ Cards in a responsive grid, optionally linked. Card props: `title`, `icon`, `col
 ```mdc
 ::card-group
 
-::card
----
-title: Dashboard
-icon: i-simple-icons-github
-to: https://github.com/nuxt-ui-templates/dashboard
-target: _blank
----
-A dashboard with multi-column layout.
-::
+  :::card
+  ---
+  title: Dashboard
+  icon: i-simple-icons-github
+  to: https://github.com/nuxt-ui-templates/dashboard
+  target: _blank
+  ---
+  A dashboard with multi-column layout.
+  :::
 
-::card
----
-title: Docs
-icon: i-simple-icons-github
-to: https://github.com/nuxt-ui-templates/docs
-target: _blank
----
-A documentation template with `@nuxt/content`.
-::
+  :::card
+  ---
+  title: Docs
+  icon: i-simple-icons-github
+  to: https://github.com/nuxt-ui-templates/docs
+  target: _blank
+  ---
+  A documentation template with `@nuxt/content`.
+  :::
 
 ::
 ```
@@ -208,12 +208,12 @@ Document API parameters or component props as a structured list. Field props: `n
 
 ```mdc
 ::field-group
-::field{name="title" type="string" required}
-The page title shown in the header.
-::
-::field{name="icon" type="string"}
-Icon name from any Iconify collection.
-::
+  :::field{name="title" type="string" required}
+  The page title shown in the header.
+  :::
+  :::field{name="icon" type="string"}
+  Icon name from any Iconify collection.
+  :::
 ::
 ```
 
@@ -260,19 +260,19 @@ Tabbed content panels. TabsItem props: `label`, `icon`.
 ````mdc
 ::tabs
 
-:::tabs-item{label="Code" icon="i-lucide-code"}
-```mdc
-::callout
-Lorem ipsum dolor sit amet.
-::
-```
-:::
+  :::tabs-item{label="Code" icon="i-lucide-code"}
+  ```mdc
+  ::callout
+  Lorem ipsum dolor sit amet.
+  ::
+  ```
+  :::
 
-:::tabs-item{label="Preview" icon="i-lucide-eye"}
-::callout
-Lorem ipsum dolor sit amet.
-::
-:::
+  :::tabs-item{label="Preview" icon="i-lucide-eye"}
+    ::::callout
+    Lorem ipsum dolor sit amet.
+    ::::
+  :::
 
 ::
 ````

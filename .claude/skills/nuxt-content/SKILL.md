@@ -19,6 +19,16 @@ MDC (Markdown Components) extends standard Markdown with Vue component support. 
 | `[text]{.class}` | Span with attributes |
 | `{{ $doc.var }}` | Variable binding |
 
+## Core Rules (read this first)
+
+These are the MDC rules most commonly violated. Get them right and everything else follows.
+
+1. **Nested block components need MORE colons, not fewer or equal.** The outer component opens with `::`, any child inside its slot opens with `:::`, a grandchild with `::::`, and so on. The closing fence must match the opening fence exactly (`::::` closes `::::`, not `::`). Using `::` for both outer and inner — a common mistake — silently closes the outer component at the inner component's opening line. **Convention:** indent each child component (and its content) by 2 spaces per level to make the structure obvious at a glance.
+2. **An inline component alone on its own line becomes a block component.** `:icon{name="x"}` inside a paragraph is inline; the same text on a blank line on both sides is parsed as a block. If you need it to stay inline, keep surrounding text on the same line.
+3. **Disambiguate inline components from following characters with empty props `{}`.** `:hello-world` is read as a component named `hello-world`. Write `:hello{}-world` to mean the component `hello` followed by `-world`. Same trick separates a component from punctuation when needed.
+4. **JSON/JS prop values are prefixed with `:` and wrapped in single quotes.** `{:items='["a","b"]'}` — the leading `:` marks it as an expression, and single quotes let the inside use standard JSON double quotes.
+5. **YAML props block replaces inline props for complex values.** Open the block with `---` on the line after the component opener, close with `---`, then put slot content below. Don't mix YAML block props with inline props on the same component.
+
 ## Frontmatter
 
 YAML metadata block at the top of the file:
@@ -50,16 +60,42 @@ This is a warning message with **Markdown** support.
 
 ### Nested Components
 
+Every level of nesting adds one colon. Outer `::`, child `:::`, grandchild `::::`. Open and close must match.
+
+```markdown
+::card
+  :::card-header
+  Card Title
+  :::
+
+  Card body content here.
+
+  :::card-footer
+  Footer text
+  :::
+::
+```
+
+A three-level example:
+
+```markdown
+::hero
+  :::card
+  A nested card.
+
+    ::::callout
+    A deeply nested callout inside the card.
+    ::::
+  :::
+::
+```
+
+**Anti-pattern** (this does NOT do what it looks like — the inner `::card-header` opener is parsed as the *closer* for `::card`, so `card-header` ends up outside):
+
 ```markdown
 ::card
   ::card-header
   Card Title
-  ::
-
-  Card body content here.
-
-  ::card-footer
-  Footer text
   ::
 ::
 ```
@@ -109,6 +145,12 @@ Use square brackets for default slot content:
 :badge[Premium]
 :button[Click Me]{variant="outline"}
 ```
+
+### Inline gotchas
+
+- **Alone on a line → block.** `:badge[Premium]` surrounded by blank lines is parsed as a block component, not inline. To keep it inline, embed it in a paragraph: `This plan is :badge[Premium] tier.`
+- **Trailing characters need the `{}` escape.** Component names greedily consume `[A-Za-z0-9-]`, so `:hello-world` is the single component `hello-world`, and `:icon{name="x"}s` tries to make `s` part of the props syntax. Insert empty props to terminate the name: `:hello{}-world`, `:icon{name="x"}{}s`.
+- **Inline components with text content use `[...]`, not `{...}`**. Props go in `{...}`, slot text goes in `[...]`. Order: `:component[slot text]{prop="value"}`.
 
 ## Props
 
@@ -202,17 +244,19 @@ Build amazing things with Nuxt
 
 ### Nested Slots
 
+Children of a `::` block must open with `:::` (and close with `:::`):
+
 ```markdown
 ::tabs
-  ::tab{label="Preview"}
+  :::tab{label="Preview"}
   Preview content here.
-  ::
+  :::
 
-  ::tab{label="Code"}
+  :::tab{label="Code"}
   ```ts
   const example = 'code'
   ```
-  ::
+  :::
 ::
 ```
 
@@ -412,13 +456,13 @@ This card showcases a new feature with an image header and action buttons.
 
 ```markdown
 ::accordion
-  ::accordion-item{title="What is Nuxt Content?"}
+  :::accordion-item{title="What is Nuxt Content?"}
   Nuxt Content is a file-based CMS for Nuxt applications.
-  ::
+  :::
 
-  ::accordion-item{title="How do I install it?"}
+  :::accordion-item{title="How do I install it?"}
   Run `npx nuxi module add content` to add it to your project.
-  ::
+  :::
 ::
 ```
 
@@ -426,21 +470,21 @@ This card showcases a new feature with an image header and action buttons.
 
 ```markdown
 ::tabs
-  ::tab{label="Vue"}
+  :::tab{label="Vue"}
   ```vue
   <template>
     <div>Hello Vue!</div>
   </template>
   ```
-  ::
+  :::
 
-  ::tab{label="React"}
+  :::tab{label="React"}
   ```jsx
   function Hello() {
     return <div>Hello React!</div>
   }
   ```
-  ::
+  :::
 ::
 ```
 
@@ -478,7 +522,7 @@ When the project uses [Nuxt UI v4](https://ui.nuxt.com) (including Docus, Nuxt U
 
 Available components: `accordion` / `accordion-item`, `badge`, `callout` (+ `note` / `tip` / `warning` / `caution` shortcuts), `card` / `card-group`, `code-collapse`, `code-group`, `code-preview`, `code-tree`, `collapsible`, `field` / `field-group`, `icon`, `kbd`, `steps`, `tabs` / `tabs-item`. (`prompt` is upcoming.)
 
-Use `:::` (three colons) for components nested inside a `::` block. Source: <https://ui.nuxt.com/docs/typography>.
+Remember the universal nesting rule (see Core Rules above): a child inside a `::` block opens with `:::`, not `::`. This matters for pairs like `tabs` / `tabs-item`, `accordion` / `accordion-item`, `card-group` / `card`, `field-group` / `field`, and `steps` with its step children. Source: <https://ui.nuxt.com/docs/typography>.
 
 ## Creating Custom Components
 
