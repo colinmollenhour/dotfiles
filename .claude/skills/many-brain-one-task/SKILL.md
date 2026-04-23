@@ -107,6 +107,50 @@ When the shared prompt concatenates instructions + AGENTS.md + a large diff, som
 
 When running `opencode` via the CLI, use `opencode models` to find the correct model name from the available models if the user did not specify the exact model name. For example, "GLM 5.1" might resolve to `zai-coding-plan/glm-5.1` or `openrouter/z-ai/glm-5.1` depending on which connections are available. Prefer coding plans over `openrouter/` and `opencode/` when available unless otherwise specified.
 
+#### OpenCode server attach (optional)
+
+If the user's profile contains an **attach directive**, prefer attaching `opencode run` to a running OpenCode server instead of spawning a fresh local opencode per agent. This is much faster and avoids reloading provider config / session DB on every invocation.
+
+**Recognize these prose forms in profiles** (case-insensitive):
+
+- **Global** (applies to every OpenCode invocation in this MBOT run):
+
+  ```
+  Attach OpenCode to seamus:4096
+  Attach OpenCode to http://seamus:4096 with password hunter2
+  OpenCode attach: seamus:4096 (password: hunter2)
+  ```
+
+- **Per-agent** (overrides any global directive on that line only):
+
+  ```
+  - OpenCode with GLM 5.1 via attach seamus:4096
+  - OpenCode with GPT-5.4 via attach http://seamus:4096 (password: hunter2)
+  ```
+
+**URL normalization:** if the directive is missing a scheme, prefix `http://` (e.g. `seamus:4096` → `http://seamus:4096`). Default opencode port is `4096`.
+
+**Password:** optional. If `with password X` / `(password: X)` / `password: X` is present, pass `--password X`. Otherwise omit the flag — `opencode` falls back to `OPENCODE_SERVER_PASSWORD` from the environment.
+
+**Resulting command shape:**
+
+```
+opencode run \
+  --attach http://seamus:4096 \
+  --password "$PASSWORD_FROM_PROFILE_OR_ENV" \
+  --dir . \
+  --model opencode/gemini-3.1-pro \
+  --title "MBOT: ..." \
+  --file .tmp/.../prompt.md \
+  -- "short message"
+```
+
+**`--dir .` is required in attach mode.** Without it the remote session opens in the server's CWD, not the project directory you're working in. Use the project root path *as the remote server sees it* — typically `.` when the remote has the same checkout at the same path, or an absolute path otherwise.
+
+**Project must be accessible to the remote server.** `--file` paths are resolved by the *remote* opencode, not locally. If the remote can't see the local `.tmp/` directory (e.g. different machine, no shared filesystem, no checkout at the same path), attach mode won't work — fall back to launching opencode locally for that run and note it in the summary.
+
+**Sandbox:** `opencode run --attach` from Claude Code still needs `dangerouslyDisableSandbox: true`. The local CLI is a thin client but it still touches `~/.local/share/opencode/` for client-side state.
+
 #### Dry Run
 
 If the user specified `--dry-run` then do not actually run the review and instead just advise the user what the exact execution plan looks like using an abbreviated prompt (first ~100 characters) for readability.

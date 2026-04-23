@@ -171,7 +171,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 ### Code generation & review
 
-- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare/merge results. Powers `/colin:review`, `/colin:critique`, `/colin:ultra-review`. **Configurable — see below.**
+- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare/merge results. Powers `/colin:review`, `/colin:critique`, `/colin:ultra-review`, `/colin:ultra-audit`. **Configurable — see below.**
 - **`generate-e2e-test`** — Drives Playwright MCP to perform a workflow, then generates the E2E test code.
 - **`security-hardening`** — App-level security review: abuse prevention, rate limiting, business logic, input validation. Beyond generic checklists.
 - **`skill-writer`** — Author new `.claude` skills with correct frontmatter and structure.
@@ -236,6 +236,7 @@ Copy one of the examples above and edit to taste. Things you can specify:
 - **Which provider/route** (e.g. `via OpenCode Zen`, `via Z.ai Coding Plan`, `via OpenRouter`). Prefer coding-plan routes over generic `openrouter/` or `opencode/` when you have entitlements, since they're cheaper and/or uncapped.
 - **Model-specific knobs** (e.g. `"max" thinking`, `"xhigh" variant`).
 - **Backups** — list fallbacks so a failed primary can be swapped automatically.
+- **OpenCode server attach** — point MBOT at a running `opencode serve` instance instead of spawning a fresh local opencode per agent. Add a line like `Attach OpenCode to seamus:4096 with password hunter2` (global, applies to every OpenCode agent in the run) or `via attach seamus:4096` on a single agent line (overrides for that agent only). MBOT translates this into `opencode run --attach http://… --password … --dir . …`. **Path-prefix requirement:** the remote server must see the project at the *same absolute path* as the host — i.e. the container's home directory has to match the host's home directory prefix (e.g. host `/home/colin/proj/foo` → remote also resolves `/home/colin/proj/foo`). If your remote runs in a container, bind-mount or symlink so `$HOME` matches. Without this, `--file .tmp/...` and `--dir .` resolve to the wrong place on the remote and the run fails. Falls back to local opencode if the remote isn't reachable.
 
 Profiles are just prose — MBOT reads them naturally and translates them into the right CLI/subagent invocations. No JSON schema, no YAML, no tooling required.
 
