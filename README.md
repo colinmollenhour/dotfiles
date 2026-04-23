@@ -121,6 +121,16 @@ In git-diff mode (when the target is a rev spec rather than a PR/MR) it always b
 | `--agents opus gpt …` | Override the MBOT `critique` profile for this run. |
 | `--summary` | Include per-model comparison table (found / validated / unique / accuracy / composite score). |
 
+**`/colin:ultra-audit [scope] [agents] [flags]`** — production-readiness audit of the **current repo state** (not a diff). Runs **3 roles × N models** per module bucket: `hardening` (security + resiliency), `operability` (observability + deployment + config + performance + dependencies), and `stewardship` (docs + tests + code quality). Findings are merged and presented grouped by severity (`Blocker / High / Medium / Low`). Display only — no PR comments, no labels. Expensive — reserve for pre-launch or quarterly checkups.
+
+| Flag | Effect |
+|---|---|
+| `[scope]` (positional) | `whole repo` (default), a path, comma-separated paths, or a glob. |
+| `[agents]` (positional) | Model list for this run; overrides the MBOT profile. |
+| `--roles=hardening,operability,stewardship` | Restrict to specific roles. Default is all three. |
+| `--save <path>` | Also write the rendered report to `<path>`. |
+| `--no-summary` | Skip both the per-model and per-role comparison tables. |
+
 #### Planning & porting
 
 | Command | Use it when… |
