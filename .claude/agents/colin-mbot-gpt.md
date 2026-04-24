@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with GPT 5.4
+description: Many brain, one task with GPT 5.5
 mode: subagent
-model: openai/gpt-5.4
+model: openai/gpt-5.5
 tools:
   write: false
   edit: false

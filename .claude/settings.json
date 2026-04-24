@@ -38,7 +38,11 @@
     ],
     "deny": [
       "Read(~/.ssh/**)",
-      "Read(**/.env)"
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.env.development)",
+      "Read(.env.production)",
+      "Read(.env.test)"
     ]
   },
   "sandbox": {
@@ -71,5 +75,6 @@
       ]
     }
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "agentPushNotifEnabled": true
 }

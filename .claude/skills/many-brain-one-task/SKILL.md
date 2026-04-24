@@ -1,6 +1,7 @@
 ---
 name: many-brain-one-task
 description: Run the same task with multiple agents simultaneously. Good for reviews, critiques, comparing models. Abbreviated as "MBOT"
+allowed-tools: Bash(bun *)
 ---
 
 # Many Brain One Task
@@ -53,47 +54,64 @@ Not all agents can run subagents with other models. The agents and harnesses ava
 - The user may have specified their preferred harness for a given model such as "Use `codex` CLI for OpenAI models".
   These rules will be specified in the User Preferences file if loaded, otherwise just prefer to use OpenCode as available.
 
-Translate the user's preferences into a plan for launching the agents. You may have to use a mix of sug-agents and bash commands.
+Translate the user's preferences into a plan for launching the agents.
 
 For OpenCode running models via OpenCode, use the "task" tool by specifying a `subagent_type` from the available sub-agents with names that start with "colin-mbot-". DO NOT use other agents that do not start with "colin-mbot-". For example, you can use "colin-mbot-glm" if the user has specified "GLM" as a desired participating agent. This automatically runs with the correct model.
 
-**When Claude Code is the host**, the `colin-mbot-*` subagents are NOT exposed in the Agent tool's `subagent_type` enum — they're OpenCode subagents only reachable from inside OpenCode. From Claude Code, shell out to `opencode run -m ...` per the pattern below. For Claude models, use the Claude Code Agent tool directly (`Agent({subagent_type: "general-purpose", model: "opus"})`) rather than shelling out to the claude CLI — the claude-CLI form is a fallback.
+**When Claude Code is the host**, the `colin-mbot-*` subagents are NOT exposed in the Agent tool's `subagent_type` enum — they're OpenCode subagents only reachable from inside OpenCode. From Claude Code, shell out through the bundled wrapper script described below. For Claude models, use the Claude Code Agent tool directly (`Agent({subagent_type: "general-purpose", model: "opus"})`) rather than shelling out to the claude CLI — the claude-CLI form is a fallback.
 
-Other harnesses may need to be invoked via a shell command:
+#### Invoking OpenCode (the only supported form)
+
+Every OpenCode call from this skill goes through `run-opencode.ts`. It normalizes the flags that have tripped us in the past (file vs argv, the `--` separator, `--dir .` in attach mode, `--format json` parsing, `--dangerously-skip-permissions` for local spawns) so callers only pass what varies. Invoke it inline in a single Bash call (wrapper `.sh` forms trip the Claude Code sandbox even with `dangerouslyDisableSandbox: true`):
+
+```bash
+bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
+  --model opencode/gemini-3.1-pro \
+  --variant xhigh \
+  --title "ultra-review !2514 craft/Gemini-3.1-Pro" \
+  --file .tmp/ultra-review-2514/craft.full.md \
+  --attach http://seamus:4095 \
+  --out .tmp/ultra-review-2514/results/craft-gemini.out \
+  -- "Perform the code review exactly as instructed."
+```
+
+Flags:
+
+| Flag | When to pass | Notes |
+|---|---|---|
+| `--model <provider/model>` | always | e.g. `opencode/gemini-3.1-pro`, `zai-coding-plan/glm-5.1`. Prefer coding plans over `openrouter/` and `opencode/` when available. |
+| `--variant <name>` | when the model supports it | `xhigh`, `high`, `max`, `minimal`, etc. — provider-specific reasoning effort. |
+| `--title <str>` | always | Session title in the opencode UI. Include a stable prefix so batch runs are groupable. |
+| `--file <path>` | always | Path to the full prompt. Repeatable. See "`.tmp/` must be inside the project root" below. |
+| `--attach <url>` | when the profile says so | Server URL, e.g. `http://seamus:4095`. Script auto-adds `--dir .`. |
+| `--password <pw>` | attach with auth | Otherwise `OPENCODE_SERVER_PASSWORD` is used. |
+| `--dir <path>` | rare override | Default is `.` in attach mode, unset in local mode. |
+| `--out <path>` | usually | Write assistant text to this file. Parent dirs are created. Without it, text is written to stdout. |
+| `--stderr <path>` | on failures | Capture the opencode stderr to a file for diagnosis. |
+| `--format default\|json` | rarely | Defaults to `json`. In `json` mode the script extracts and concatenates every `text` event; `default` passes through as-is. |
+| `--thinking` | rarely | Forward `--thinking` to opencode. |
+| `--agent <name>` | rarely | Forwarded verbatim. Omit by default — opencode's default agent is fine. |
+| `-- <message>` | always | Positional short message after `--`. Keep it brief; the real instructions go in `--file`. |
+
+What the script does **not** handle: choosing the model, choosing whether to attach, writing the prompt file. Those are still caller decisions.
+
+Other harnesses may be invoked via a shell command directly:
 
 - `claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort max "PROMPT_HERE"` (fallback only — prefer the Agent tool when Claude Code is the host)
 - `codex exec -c model="gpt-5.4" --ephemeral "PROMPT_HERE"`
 - `codex review -c model="gpt-5.4" --base <branch> > ./.codex-review.txt 2>&1`
 - `gemini --model gemini-3.1-flash-lite-preview --prompt "PROMPT_HERE"`
-- `opencode run --model openai/gpt-5.4 --variant xhigh --title "MBOT: Code review for X" --file .tmp/the-shared-detailed-prompt.md -- "SIMPLE PROMPT_HERE"`
 
 It may be helpful to instruct the agent to use markers to help parse the output for the "Gather and summarize" step at the end.
 
-#### Claude Code notes
+#### Caveats that still apply
 
-When running a CLI agent, you must write the detailed shared prompt to a file since large prompts on the command line cause problems. Use the `.tmp/` directory in the project root as a scratch space instead of TMPDIR to avoid sandbox or permission issues. Example:
+- **`.tmp/` must be inside the project root, not `$TMPDIR`.** opencode has its own permission system (separate from the Claude Code sandbox) that auto-rejects reads outside the project with `permission requested: external_directory; auto-rejecting`. Keep prompt files inside a gitignored `.tmp/` in the project. `$TMPDIR` also resolves to different paths in sandboxed vs sandbox-disabled Bash calls, so files created in one may be invisible to the other.
+- **Sandbox escape.** `bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" …` from Claude Code may still need `dangerouslyDisableSandbox: true` depending on the host's `sandbox.filesystem.allowWrite`. opencode writes to `~/.local/share/opencode/`; if that path is not in `allowWrite`, the SQLite `PRAGMA wal_checkpoint` fails. The Seamus bot's `gitlab-settings.json` already allows `~/.local/share`, but other hosts may not.
+- **Model availability varies by plan.** `opencode models` lists everything the install knows about, but some return `Error: Model is disabled` at runtime (e.g. `opencode/gpt-5.4-nano` on certain plans). If a profile names a model, verify it with a trivial prompt before launching a batch.
+- **`--file` is more reliable than "Read /path/..." in the prompt body.** When the prompt tells the model to use the Read tool to fetch a large file, some models (observed with Gemini 3.1 Pro and GLM 5.1) silently terminate after 3-4 chunk reads without producing any ISSUE blocks. Attaching via `--file` sidesteps that.
 
-```
-opencode run \
-  --model opencode/gemini-3.1-pro \
-  --title "ultra-review #58 craft/Gemini-3.1-Pro" \
-  --dangerously-skip-permissions \
-  --file .tmp/ultra-review-58/full-craft.md \
-  -- "Perform the code review exactly as instructed. ..." \
-  > .tmp/ultra-review-58/results/craft-gemini.out 2>&1
-```
-
-##### Common opencode pitfalls
-
-- **Argument-list limit**: do not pass the prompt as a single argv string. `getconf ARG_MAX` lies — the effective limit is closer to ~100 KB once env vars are included, and long prompts fail with exit 126 "Argument list too long". Always use `--file path -- "short message"` or pipe via stdin.
-- **The `--` separator is required, not optional**: `--file` is an array flag, so `opencode run --file FILE "msg"` silently parses `"msg"` as another filename and fails with `File not found: <your message text>`. The `--` between `--file ...` and the message is load-bearing.
-- **`.tmp/` must be inside the project root, not `$TMPDIR`**: opencode has its own permission system (separate from the Claude Code sandbox) that auto-rejects reads outside the project with `permission requested: external_directory; auto-rejecting`. Either keep prompt files inside a gitignored `.tmp/` in the project, or pass `--dangerously-skip-permissions`. `$TMPDIR` also resolves to different paths in sandboxed vs sandbox-disabled Bash calls, so files created in one may be invisible to the other.
-- **Sandbox**: every `opencode` invocation from Claude Code needs `dangerouslyDisableSandbox: true` — it writes to `~/.local/share/opencode/` which is outside the default write allowlist. Symptom is a SQLite error on `PRAGMA wal_checkpoint` from `opencode models` or `opencode run`.
-- **Don't copy `--agent general` from the claude CLI example**: that's a Claude CLI flag. opencode's general agent is the default; passing `--agent general` triggers a harmless `agent "general" not found. Falling back to default agent` warning but otherwise does nothing. Just omit the flag.
-- **Prefer `--file` over "Read /path/..." in the prompt body**: when the prompt tells the model to use the Read tool to fetch a large file, some models (observed with Gemini 3.1 Pro and GLM 5.1) silently terminate after 3-4 chunk reads without producing any ISSUE blocks. Attaching via `--file` is more reliable across models.
-- **Model availability varies by plan**: `opencode models` lists everything the install knows about, but some return `Error: Model is disabled` at runtime (e.g. `opencode/gpt-5.4-nano` on certain plans). If a profile names a model, verify it with a trivial prompt before launching a batch.
-
-##### Line-number caveat for code reviews
+#### Line-number caveat for code reviews
 
 When the shared prompt concatenates instructions + AGENTS.md + a large diff, some models (observed with GLM 5.1) report line numbers relative to the prompt file rather than the real source file. During the validation step, re-anchor any finding whose line number exceeds the actual file length before trusting the citation.
 
@@ -105,51 +123,32 @@ When the shared prompt concatenates instructions + AGENTS.md + a large diff, som
 
 #### OpenCode model names
 
-When running `opencode` via the CLI, use `opencode models` to find the correct model name from the available models if the user did not specify the exact model name. For example, "GLM 5.1" might resolve to `zai-coding-plan/glm-5.1` or `openrouter/z-ai/glm-5.1` depending on which connections are available. Prefer coding plans over `openrouter/` and `opencode/` when available unless otherwise specified.
+When using `opencode`, resolve model names with `opencode models` if the user did not specify the exact name. For example, "GLM 5.1" might resolve to `zai-coding-plan/glm-5.1` or `openrouter/z-ai/glm-5.1` depending on which connections are available. Prefer coding plans over `openrouter/` and `opencode/` when available unless otherwise specified.
 
 #### OpenCode server attach (optional)
 
-If the user's profile contains an **attach directive**, prefer attaching `opencode run` to a running OpenCode server instead of spawning a fresh local opencode per agent. This is much faster and avoids reloading provider config / session DB on every invocation.
+If the user's profile contains an **attach directive**, prefer attaching to a running OpenCode server instead of spawning a fresh local opencode per agent. This is much faster and avoids reloading provider config / session DB on every invocation.
 
 **Recognize these prose forms in profiles** (case-insensitive):
 
 - **Global** (applies to every OpenCode invocation in this MBOT run):
 
   ```
-  Attach OpenCode to seamus:4096
-  Attach OpenCode to http://seamus:4096 with password hunter2
-  OpenCode attach: seamus:4096 (password: hunter2)
+  Attach OpenCode to seamus:4095
+  Attach OpenCode to http://seamus:4095 with password hunter2
+  OpenCode attach: seamus:4095 (password: hunter2)
   ```
 
 - **Per-agent** (overrides any global directive on that line only):
 
   ```
-  - OpenCode with GLM 5.1 via attach seamus:4096
-  - OpenCode with GPT-5.4 via attach http://seamus:4096 (password: hunter2)
+  - OpenCode with GLM 5.1 via attach seamus:4095
+  - OpenCode with GPT-5.4 via attach http://seamus:4095 (password: hunter2)
   ```
 
-**URL normalization:** if the directive is missing a scheme, prefix `http://` (e.g. `seamus:4096` → `http://seamus:4096`). Default opencode port is `4096`.
+**URL normalization:** if the directive is missing a scheme, prefix `http://` (e.g. `seamus:4095` → `http://seamus:4095`). Default opencode port is `4096`.
 
-**Password:** optional. If `with password X` / `(password: X)` / `password: X` is present, pass `--password X`. Otherwise omit the flag — `opencode` falls back to `OPENCODE_SERVER_PASSWORD` from the environment.
-
-**Resulting command shape:**
-
-```
-opencode run \
-  --attach http://seamus:4096 \
-  --password "$PASSWORD_FROM_PROFILE_OR_ENV" \
-  --dir . \
-  --model opencode/gemini-3.1-pro \
-  --title "MBOT: ..." \
-  --file .tmp/.../prompt.md \
-  -- "short message"
-```
-
-**`--dir .` is required in attach mode.** Without it the remote session opens in the server's CWD, not the project directory you're working in. Use the project root path *as the remote server sees it* — typically `.` when the remote has the same checkout at the same path, or an absolute path otherwise.
-
-**Project must be accessible to the remote server.** `--file` paths are resolved by the *remote* opencode, not locally. If the remote can't see the local `.tmp/` directory (e.g. different machine, no shared filesystem, no checkout at the same path), attach mode won't work — fall back to launching opencode locally for that run and note it in the summary.
-
-**Sandbox:** `opencode run --attach` from Claude Code still needs `dangerouslyDisableSandbox: true`. The local CLI is a thin client but it still touches `~/.local/share/opencode/` for client-side state.
+**Password:** optional. If `with password X` / `(password: X)` / `password: X` is present, pass `--password X` to `run-opencode.ts`. Otherwise omit the flag — `opencode` falls back to `OPENCODE_SERVER_PASSWORD` from the environment.
 
 #### Dry Run
 
