@@ -54,11 +54,46 @@ Always pass explicit flags instead of relying on prompts.
 
 - Resolve the open MR for the current branch
 - Fetch MR state, author, diffs, and version SHAs
+- Fetch the full MR context (metadata + notes + discussions + versions + diff) in one call — see [Bundled helpers](#bundled-helpers)
 - Create or update an MR
 - Post MR notes or inline diff comments
 - Add labels to an MR
 - Inspect pipelines and fetch failing job logs
 - Compare revisions with the repository compare API
+
+## Bundled helpers
+
+### `mr-context.ts` — fetch all MR context in one call
+
+When a workflow needs the full picture of an MR (metadata + notes + discussions + versions + diff), this bundled wrapper consolidates the five `glab` calls into one parallel fetch. Use it for reviews, audits, and any flow that would otherwise issue four or more sequential `glab` calls just to gather context.
+
+```bash
+bun "${CLAUDE_SKILL_DIR}/mr-context.ts" \
+  --project shipstream/server \
+  --mr 2514 \
+  --out-dir .tmp/mr-2514-context
+```
+
+Writes `mr.json`, `notes.json`, `discussions.json`, `versions.json`, and `diff.patch` under `--out-dir`. If any individual fetch fails, the helper still writes the rest and emits a per-endpoint `<name>.stderr` file for diagnosis.
+
+stdout is a single JSON summary suitable for `jq`:
+
+```json
+{
+  "project": "shipstream/server",
+  "mr": 2514,
+  "dir": ".tmp/mr-2514-context",
+  "mr_state": "opened",
+  "mr_title": "…",
+  "source_branch": "…",
+  "target_branch": "main",
+  "head_sha": "…", "base_sha": "…", "start_sha": "…",
+  "files": { "mr.json": 1234, "notes.json": 567, "diff.patch": 123456, … },
+  "errors": { "notes": "Unauthenticated.", … }
+}
+```
+
+Exit code is 0 only if every fetch succeeded. The diff is written as raw text, not embedded in the summary, so callers can route on metadata without pulling the full diff into context.
 
 ## CI Triage
 
