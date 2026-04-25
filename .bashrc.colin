@@ -875,7 +875,7 @@ if [ ! -f ~/.no-color ]; then
     fi
   else
     if [ "$(type -t __git_ps1)" = "function" ] && ! [ -f ~/.nogitprompt ]; then
-      PS1='\[\e]0;\u@\h: \w\a\]\[\e[36m\]$(printf "%(%r)T") \[\e[32m\]\u@\h\[\e[31m\]$(__git_ps1)\[\e[1;30m\] $(__git_colin_dirty)\[\e[0m\] \e[2m\e[95m$(__kontena_ps1)\e[22m'$'\n''\[\e[33m\]\w\[\e[0m\] $ '
+      PS1='\[\e]0;\u@\h: \w\a\]\[\e[36m\]$(printf "%(%r)T") \[\e[32m\]\u@\h\[\e[31m\]$(__git_ps1)\[\e[1;30m\] $(__git_colin_dirty)\[\e[0m\]'$'\n''\[\e[33m\]\w\[\e[0m\] $ '
     else
       PS1='\[\e]0;\u@\h: \w\a\]\[\e[36m\]$(printf "%(%r)T") \[\e[32m\]\u@\h\[\e[0m\]\n\[\e[33m\]\w\[\e[0m\] $ '
     fi
@@ -998,6 +998,4 @@ fi
 if type __git_complete >/dev/null 2>&1; then
     __git_complete g __git_main
 fi
-
-function __kontena_ps1 {}
 
