@@ -107,6 +107,34 @@ Multi-line addition:
 
 Successful inline comments should include `"type": "DiffNote"` in the response.
 
+## Committable Suggestion Blocks
+
+A `` ```suggestion `` block lets the MR author one-click-apply a literal patch from a review comment. **The number of lines inside the block must equal the number of lines being replaced** at the comment's anchor — mismatch produces silently-wrong patches.
+
+GitLab anchors a single-line note to one line. To replace a range, the suggestion fence MUST use the explicit modifier:
+
+````
+```suggestion:-N+M
+<replacement lines>
+```
+````
+
+- `N` = lines **above** the anchor to also replace
+- `M` = lines **below** the anchor to also replace
+- Total lines replaced = `N + 1 + M`, must equal lines inside the body
+- Empty body deletes the range without inserting anything
+- Reference: <https://docs.gitlab.com/ee/user/project/merge_requests/reviews/suggestions.html#multi-line-suggestions>
+
+A bare `` ```suggestion `` (no `:-N+M`) only ever replaces one line — the anchor — regardless of how many lines are in the block. **Multi-line bodies without the modifier are the most common cause of broken suggestion-apply commits**: GitLab inserts the new lines while leaving the original surrounding lines in place, producing stray fragments, unbalanced braces, or duplicated declarations. Some such corruption parses cleanly and is silently wrong; some causes loud parse errors.
+
+For multi-line discussion notes (a comment anchored across N..M with `line_range`), the suggestion's body line count must equal `M - N + 1` and the `:-N+M` modifier is not needed. The modifier is only required when the comment itself is single-line but the suggestion replaces a range.
+
+**Self-check before posting any suggestion block:**
+
+1. Count lines inside the body
+2. Identify the exact range of lines it should replace at the anchor
+3. If the counts do not match, do not emit a `` ```suggestion `` block — describe the fix in prose with a fenced ` ``` ` example block instead
+
 ## Pipelines
 
 ```bash

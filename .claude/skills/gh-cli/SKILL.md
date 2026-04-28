@@ -89,6 +89,7 @@ When posting GitHub inline review comments:
 - Fetch the PR head SHA first
 - Use `RIGHT` for added or unchanged lines and `LEFT` for removed lines
 - Post exactly one comment per unique issue
+- Whenever the comment includes a `` ```suggestion `` block, follow the [Committable Suggestion Blocks](reference.md#committable-suggestion-blocks) rules — the body's line count MUST equal the anchor range, otherwise GitHub applies a broken patch
 
 ## Failure Handling
 

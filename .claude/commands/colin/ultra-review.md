@@ -204,6 +204,7 @@ Give each agent in each role:
 - Any external context
 - The role's focus prompt from the [Role Library](#role-library) as the primary directive
 - Instruction: "Tag each issue with both your agent name AND the role name (e.g. `agent=Opus 4.6, role=security`)"
+- Instruction: "If you propose a literal patch as the fix, format it per the loaded platform skill's Committable Suggestion Blocks rules — the body's line count MUST equal the lines being replaced at the comment's anchor. On GitLab, multi-line replacements REQUIRE the explicit `` ```suggestion:-N+M `` range modifier. If you cannot be precise about the replacement range, return a prose description with a fenced ` ``` ` example block instead of a `` ```suggestion `` block."
 - In re-review mode: prior comments plus incremental diff as primary context
 
 Review focus across all roles:
@@ -230,6 +231,7 @@ For each issue across **all (agent × role × bucket) threads**, run a validatio
 - Merge duplicate issues across agents, roles, AND buckets (same file:line and same root cause = one issue). Cross-bucket duplicates are rare but possible when the same underlying bug surfaces via touchpoints in different directories.
 - Preserve every (agent, role) attribution on merged issues
 - Keep full per-(agent, role) validation results for the summary unless `--no-summary` is active
+- For any issue whose proposed fix includes a `` ```suggestion `` block, verify the block satisfies the platform skill's Committable Suggestion Blocks rules (line counts match the anchor range; on GitLab the `:-N+M` modifier is present when the replacement spans more than one line). If the block is malformed and cannot be corrected with high confidence, downgrade the fix to a prose description before posting.
 
 ### Step 8: Model & Role Comparison Summary
 
@@ -316,8 +318,8 @@ Comment rules:
 
 - Use exactly one comment per unique issue
 - Include links or citations when referring to source material such as `AGENTS.md`
-- For self-contained fixes of up to 5 lines, include a committable suggestion block
-- If the fix is not self-contained, describe it and include a copyable prompt instead of a suggestion block
+- For self-contained fixes of up to 5 lines, include a committable suggestion block following the loaded platform skill's Committable Suggestion Blocks rules. The block's line count MUST equal the lines being replaced at the comment's anchor — on GitLab, multi-line replacements REQUIRE the explicit `` ```suggestion:-N+M `` modifier (a bare `` ```suggestion `` only ever replaces one line, regardless of body size). Do not emit a suggestion block if the replacement range cannot be determined precisely.
+- If the fix is not self-contained, or the suggestion-block rules above can't be satisfied, describe the fix and include a copyable prompt instead of a suggestion block
 
 Unless `--no-summary` is active, post the model & role comparison summary as a single additional comment after all inline comments. The summary comment header uses:
 

@@ -117,6 +117,7 @@ When posting GitLab inline diff comments:
 - Add `line_range` for multi-line notes when needed
 - Verify success by checking for `"type": "DiffNote"` in the response
 - Post exactly one comment per unique issue
+- Whenever the comment includes a `` ```suggestion `` block, follow the [Committable Suggestion Blocks](reference.md#committable-suggestion-blocks) rules — multi-line replacements on a single-line anchor REQUIRE the explicit `:-N+M` range modifier on the fence, otherwise GitLab applies a broken patch
 
 ## Failure Handling
 

@@ -131,6 +131,25 @@ Line positioning rules:
 - Removed lines: `LEFT`
 - Use `-F` for integer fields
 
+## Committable Suggestion Blocks
+
+A `` ```suggestion `` block lets the PR author one-click-apply a literal patch from a review comment. **The number of lines inside the block must equal the number of lines covered by the inline comment's anchor.** Mismatch produces silently-wrong patches.
+
+| Replacement size | Comment anchor params | Block body |
+|---|---|---|
+| 1 line | `-F line=<L> -f side=RIGHT` | exactly 1 line |
+| N lines (N > 1) | `-F start_line=<S> -f start_side=RIGHT -F line=<E> -f side=RIGHT` (where `N = E - S + 1`) | exactly `N` lines |
+
+The `mcp__github_inline_comment__create_inline_comment` MCP tool exposes the same fields and follows the same rule.
+
+**Self-check before posting any suggestion block:**
+
+1. Count lines inside the body
+2. For multi-line comments, compute `(line - start_line + 1)`; for single-line, the answer is `1`
+3. If the counts do not match, do not emit a `` ```suggestion `` block — describe the fix in prose with a fenced ` ``` ` example block instead
+
+If the posting surface only supports single-line anchors, restrict suggestion blocks to single-line replacements. Multi-line patches whose body length does not match the anchor range produce a broken commit that contains both the old and new code.
+
 ## Resolve PR Review Threads
 
 There is no high-level `gh` command for this — use the GraphQL `resolveReviewThread` mutation. Inline review comments from the REST `pulls/{N}/comments` endpoint map to threads; fetch the thread IDs first, then resolve.
