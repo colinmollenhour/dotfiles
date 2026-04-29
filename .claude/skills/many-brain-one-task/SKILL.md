@@ -71,6 +71,7 @@ bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
   --title "ultra-review !2514 craft/Gemini-3.1-Pro" \
   --file .tmp/ultra-review-2514/craft.full.md \
   --attach http://seamus:4095 \
+  --timeout-ms 540000 \
   --out .tmp/ultra-review-2514/results/craft-gemini.out \
   -- "Perform the code review exactly as instructed."
 ```
@@ -86,12 +87,15 @@ Flags:
 | `--attach <url>` | when the profile says so | Server URL, e.g. `http://seamus:4095`. Script auto-adds `--dir .`. |
 | `--password <pw>` | attach with auth | Otherwise `OPENCODE_SERVER_PASSWORD` is used. |
 | `--dir <path>` | rare override | Default is `.` in attach mode, unset in local mode. |
+| `--timeout-ms <n>` | recommended | Script-level timeout. Prefer a value below the Bash tool timeout so the script can write diagnostics and sidecars before the outer command is killed. |
 | `--out <path>` | usually | Write assistant text to this file. Parent dirs are created. Without it, text is written to stdout. |
 | `--stderr <path>` | on failures | Capture the opencode stderr to a file for diagnosis. |
 | `--format default\|json` | rarely | Defaults to `json`. In `json` mode the script extracts and concatenates every `text` event; `default` passes through as-is. |
 | `--thinking` | rarely | Forward `--thinking` to opencode. |
 | `--agent <name>` | rarely | Forwarded verbatim. Omit by default — opencode's default agent is fine. |
 | `-- <message>` | always | Positional short message after `--`. Keep it brief; the real instructions go in `--file`. |
+
+In `json` mode with `--out`, the script also writes `<out>.raw.jsonl` with raw opencode events and `<out>.session` with any discovered OpenCode session ids. If opencode exits 0 but produces no non-whitespace text, the script exits non-zero and reports that the provider may be unavailable or spend-limited.
 
 What the script does **not** handle: choosing the model, choosing whether to attach, writing the prompt file. Those are still caller decisions.
 

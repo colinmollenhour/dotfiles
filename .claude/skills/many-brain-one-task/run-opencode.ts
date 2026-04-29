@@ -41,6 +41,7 @@ interface Values {
   format?: string
   thinking?: boolean
   agent?: string
+  "timeout-ms"?: string
 }
 
 const { values, positionals } = parseArgs({
@@ -59,6 +60,7 @@ const { values, positionals } = parseArgs({
     format: { type: "string", default: "json" },
     thinking: { type: "boolean", default: false },
     agent: { type: "string" },
+    "timeout-ms": { type: "string", default: "0" },
   },
 }) as { values: Values; positionals: string[] }
 
@@ -70,6 +72,8 @@ function die(msg: string, code = 2): never {
 if (!values.model) die("--model is required (e.g. opencode/gemini-3.1-pro)")
 if (!values.file || values.file.length === 0) die("--file is required (prompt file path)")
 if (values.format !== "default" && values.format !== "json") die(`--format must be "default" or "json" (got ${JSON.stringify(values.format)})`)
+const timeoutMs = Number(values["timeout-ms"] ?? "0")
+if (!Number.isFinite(timeoutMs) || timeoutMs < 0) die(`--timeout-ms must be a non-negative number (got ${JSON.stringify(values["timeout-ms"])})`)
 
 const message = positionals.join(" ").trim() || "Follow the attached file's instructions exactly."
 
@@ -112,17 +116,30 @@ if (!spawnEnv.XDG_STATE_HOME) {
 const child = spawn("opencode", args, { stdio: ["ignore", "pipe", "pipe"], env: spawnEnv })
 let stdoutBuf = ""
 let stderrBuf = ""
+let timedOut = false
+let closed = false
 child.stdout.on("data", (b: Buffer) => { stdoutBuf += b.toString() })
 child.stderr.on("data", (b: Buffer) => { stderrBuf += b.toString() })
 child.on("error", (err) => die(`failed to spawn opencode: ${err.message}`, 127))
 
+const timer = timeoutMs > 0 ? setTimeout(() => {
+  timedOut = true
+  child.kill("SIGTERM")
+  setTimeout(() => {
+    if (!closed) child.kill("SIGKILL")
+  }, 5000).unref()
+}, timeoutMs) : undefined
+
 child.on("close", (code) => {
+  closed = true
+  if (timer) clearTimeout(timer)
   let output = stdoutBuf
   const writeTo = (path: string, body: string): void => {
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, body)
   }
 
+  const sessionIds = new Set<string>()
   if (values.format === "json") {
     // `--format json` emits newline-delimited events; concatenate every
     // text part into a single blob. Non-JSON lines (banner, progress) are
@@ -133,6 +150,8 @@ child.on("close", (code) => {
       if (!t) continue
       try {
         const ev = JSON.parse(t)
+        if (typeof ev?.sessionID === "string") sessionIds.add(ev.sessionID)
+        if (typeof ev?.part?.sessionID === "string") sessionIds.add(ev.part.sessionID)
         if (ev?.type === "text" && typeof ev.part?.text === "string") {
           parts.push(ev.part.text)
         }
@@ -143,11 +162,22 @@ child.on("close", (code) => {
 
   let exitCode = code ?? 1
   let stderrOutput = stderrBuf
+  const sessionIdList = Array.from(sessionIds)
+
+  if (timedOut) {
+    exitCode = 124
+    stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: opencode timed out after ${timeoutMs}ms.\nmodel: ${values.model}${sessionIdList.length ? `\nsession_ids: ${sessionIdList.join(",")}` : ""}\nstdout_bytes: ${Buffer.byteLength(stdoutBuf)}\nstderr_bytes: ${Buffer.byteLength(stderrBuf)}\n`
+  }
 
   if (exitCode === 0 && values.format === "json" && output.trim() === "") {
     exitCode = 1
     const rawPreview = stdoutBuf.trim().slice(0, 4000)
-    stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: provider returned no text; there could be an availability issue or the account spending limits may have been reached for this provider.\nmodel: ${values.model}\nstdout_bytes: ${Buffer.byteLength(stdoutBuf)}\nstderr_bytes: ${Buffer.byteLength(stderrBuf)}${rawPreview ? `\nraw_stdout_preview:\n${rawPreview}` : ""}\n`
+    stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: provider returned no text; there could be an availability issue or the account spending limits may have been reached for this provider.\nmodel: ${values.model}${sessionIdList.length ? `\nsession_ids: ${sessionIdList.join(",")}` : ""}\nstdout_bytes: ${Buffer.byteLength(stdoutBuf)}\nstderr_bytes: ${Buffer.byteLength(stderrBuf)}${rawPreview ? `\nraw_stdout_preview:\n${rawPreview}` : ""}\n`
+  }
+
+  if (values.out && values.format === "json") {
+    writeTo(`${values.out}.raw.jsonl`, stdoutBuf)
+    if (sessionIdList.length) writeTo(`${values.out}.session`, `${sessionIdList.join("\n")}\n`)
   }
 
   if (values.out) writeTo(values.out, output)
