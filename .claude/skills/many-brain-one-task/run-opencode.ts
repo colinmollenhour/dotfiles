@@ -118,6 +118,11 @@ child.on("error", (err) => die(`failed to spawn opencode: ${err.message}`, 127))
 
 child.on("close", (code) => {
   let output = stdoutBuf
+  const writeTo = (path: string, body: string): void => {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, body)
+  }
+
   if (values.format === "json") {
     // `--format json` emits newline-delimited events; concatenate every
     // text part into a single blob. Non-JSON lines (banner, progress) are
@@ -136,16 +141,20 @@ child.on("close", (code) => {
     output = parts.join("")
   }
 
-  const writeTo = (path: string, body: string): void => {
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, body)
+  let exitCode = code ?? 1
+  let stderrOutput = stderrBuf
+
+  if (exitCode === 0 && values.format === "json" && output.trim() === "") {
+    exitCode = 1
+    const rawPreview = stdoutBuf.trim().slice(0, 4000)
+    stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: provider returned no text; there could be an availability issue or the account spending limits may have been reached for this provider.\nmodel: ${values.model}\nstdout_bytes: ${Buffer.byteLength(stdoutBuf)}\nstderr_bytes: ${Buffer.byteLength(stderrBuf)}${rawPreview ? `\nraw_stdout_preview:\n${rawPreview}` : ""}\n`
   }
 
   if (values.out) writeTo(values.out, output)
   else process.stdout.write(output)
 
-  if (values.stderr) writeTo(values.stderr, stderrBuf)
-  else if (stderrBuf && code !== 0) process.stderr.write(stderrBuf)
+  if (values.stderr) writeTo(values.stderr, stderrOutput)
+  else if (stderrOutput && exitCode !== 0) process.stderr.write(stderrOutput)
 
-  process.exit(code ?? 1)
+  process.exit(exitCode)
 })
