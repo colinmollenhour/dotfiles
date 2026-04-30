@@ -58,6 +58,7 @@
 #   reencrypt-ssh-key    re-encrypt the ssh private key with PKCS#8
 #   rfromdos             run fromdos recursively on current directory
 #   rnotabs              replace tabs with four spaces on files in current directory
+#   sendclip             send the clipboard contents to a remote ssh host defined in CLIPSSH_HOST (clipssh for WSL)
 #   ssh-proxy <1-4> <port> start a ShipStream SSH proxy tunnel to <port>
 #   tsv2csv              convert TSV (e.g. from mysql batch mode) to CSV
 #   unfubar-upstart      unfubar upstart when it is tracking a PID that doesn't exist
@@ -998,4 +999,50 @@ fi
 if type __git_complete >/dev/null 2>&1; then
     __git_complete g __git_main
 fi
+
+# Sends the clipboard contents to a remote SSH host
+# Add this to your .bashrc or .zshrc
+export CLIPSSH_HOST="colin@seamus"
+
+sendclip() {
+    # Early check for environment variable
+    if [[ -z "$CLIPSSH_HOST" ]]; then
+        echo "❌ Error: CLIPSSH_HOST is not set."
+        return 1
+    fi
+
+    local PS_EXE="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    local LOCAL_PNG="/tmp/local_clip.png"
+    local LOCAL_TXT="/tmp/local_clip.txt"
+
+    # PowerShell logic to detect and save content
+    $PS_EXE -NoProfile -Command "
+        Add-Type -AssemblyName System.Drawing;
+        if (Get-Clipboard -Format Image) {
+            (Get-Clipboard -Format Image).Save('$LOCAL_PNG', [System.Drawing.Imaging.ImageFormat]::Png);
+            exit 10
+        } elseif (Get-Clipboard -Format Text) {
+            Get-Clipboard -Format Text | Out-File -FilePath '$LOCAL_TXT' -Encoding utf8;
+            exit 20
+        } else {
+            exit 1
+        }"
+    
+    local TYPE_CODE=$?
+
+    case $TYPE_CODE in
+        10)
+            echo "📸 Image detected. Sending to $CLIPSSH_HOST:clip.png"
+            scp "$LOCAL_PNG" "${CLIPSSH_HOST}:clip.png" && rm "$LOCAL_PNG"
+            ;;
+        20)
+            echo "📄 Text detected. Sending to $CLIPSSH_HOST:clip.txt"
+            scp "$LOCAL_TXT" "${CLIPSSH_HOST}:clip.txt" && rm "$LOCAL_TXT"
+            ;;
+        *)
+            echo "❌ No image or text found in clipboard."
+            return 1
+            ;;
+    esac
+}
 
