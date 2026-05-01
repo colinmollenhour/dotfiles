@@ -9,13 +9,14 @@ Determine the hosting platform first, then load `gh-cli` for GitHub Actions or `
 ## Context
 
 - **Remotes:** !`git remote -v`
-- **GitHub pipeline status:** !`gh run list --branch $(git branch --show-current) --limit 3 --json databaseId,displayTitle,conclusion,status 2>/dev/null || echo "Not a GitHub repo or not authenticated"`
-- **GitLab pipeline status:** !`glab ci list --per-page 3 --output json 2>/dev/null || echo "Not a GitLab repo or not authenticated"`
+- **Current branch:** !`git branch --show-current`
+- **GitHub pipeline status:** !`gh run list --limit 10 --json databaseId,displayTitle,conclusion,status,headBranch 2>/dev/null || echo "Not a GitHub repo or not authenticated"`
+- **GitLab pipeline status:** !`glab ci list --per-page 10 --output json 2>/dev/null || echo "Not a GitLab repo or not authenticated"`
 
 ## Step 1: Assess Context
 
 1. **Identify platform** — determine GitHub or GitLab from the remote URLs and load the matching CLI skill (`gh-cli` or `glab-cli`)
-2. **Start with the branch-scoped CI status commands** — there may already be inlined context above if the harness supports it, otherwise run the tools to get the context
+2. **Filter the listed runs to the current branch** — the context block above lists the most recent runs across all branches; match `headBranch` (GitHub) or `ref` (GitLab) against the **Current branch** value above. If nothing in the listed runs matches, re-query with the platform CLI scoped to that branch.
 3. **If all pipelines passed** → report success and exit early
 4. **If pipelines are still running** → report status and provide the matching watch/live command from the loaded skill, then exit early
 5. **If a pipeline has failed** → continue to Step 2
