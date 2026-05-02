@@ -1,2 +1,4 @@
 .claude/skills/many-brain-one-task/*.md
 !.claude/skills/many-brain-one-task/SKILL.md
+.claude/skills/many-brain-one-decision/*.md
+!.claude/skills/many-brain-one-decision/SKILL.md

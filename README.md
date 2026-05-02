@@ -70,7 +70,7 @@ A quick reference to the shared slash commands, skills, and agents available in 
 
 - **Slash commands** (`/name`) — you type them to kick off a workflow.
 - **Skills** — reusable procedures Claude loads on demand (often invoked internally by commands).
-- **MBOT agents** — dedicated sub-agents backed by specific models. Used by the review/critique commands to get multi-model opinions. **Which models run, and through which harness, is driven by MBOT profile files — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).**
+- **MBOT agents** — dedicated sub-agents backed by specific models. Used by the review/critique commands and MBOD debates to get multi-model opinions. **Which models run, and through which harness, is driven by MBOT-style profile files — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).**
 
 ---
 
@@ -172,6 +172,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 ### Code generation & review
 
 - **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare/merge results. Powers `/colin:review`, `/colin:critique`, `/colin:ultra-review`, `/colin:ultra-audit`. **Configurable — see below.**
+- **`many-brain-one-decision`** (MBOD) — Coordinate a multi-round debate across MBOT agents with distinct personalities until they converge on a decision or hit the configured round limit. Use it for prompts like "decide which option is best", "debate this tradeoff", or "propose a solution to this problem".
 - **`generate-e2e-test`** — Drives Playwright MCP to perform a workflow, then generates the E2E test code.
 - **`security-hardening`** — App-level security review: abuse prevention, rate limiting, business logic, input validation. Beyond generic checklists.
 - **`skill-writer`** — Author new `.claude` skills with correct frontmatter and structure.
@@ -186,6 +187,45 @@ Claude loads these automatically when a task matches, or you can reference them 
 ### Media
 
 - **`nano-banana`** — Required for any image generation or editing. Uses the Gemini CLI under the hood.
+
+---
+
+## Using MBOD (Many Brain One Decision)
+
+`many-brain-one-decision` reuses the same MBOT agent pool, but the host thread acts as a moderator instead of sending every model the exact same task. It gathers the current chat context into a decision brief, assigns each selected model a distinct debating personality, runs debate rounds in parallel, summarizes the results, eliminates weak options when appropriate, and returns a final decision with dissent and risks.
+
+Example prompts:
+
+```text
+Use many-brain-one-decision to decide which pizza toppings are best in 3 rounds or less.
+Use MBOD to debate whether we should use Postgres triggers, app-layer events, or a queue.
+Use many-brain-one-decision to propose a solution to this scaling problem: [facts...]
+```
+
+Decision modes:
+
+- **Fixed choice** — use when the user gives explicit options or asks for multiple choice. MBOD preserves the provided options and has each debater choose, score, and argue.
+- **Open proposal** — use when the user provides facts and asks to propose/design/solve. Round 1 lets each debater organically propose a solution; the moderator clusters those proposals into candidate outcomes for later rounds.
+- **Hybrid** — use when the user gives initial options but allows alternatives. MBOD includes the supplied options plus `WRITE_IN`.
+
+Round behavior:
+
+- Default max rounds is 4.
+- The user can override it naturally, e.g. "in 3 rounds or less", "one round only", or `--rounds 2`.
+- Consensus means all active debaters choose the same outcome.
+- If there is no consensus by the final round, MBOD recommends a winner by vote count, average score, least-regret score, then host judgment against the stated criteria.
+
+Harness routing follows MBOT's rules with one cost-sensitive exception: Claude-backed debaters should use native Claude agents or the `claude` CLI first so usage can stay on the Claude Max plan. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if the CLI does not work or the user explicitly requests OpenCode-routed Claude. Claude-hosted runs still use the sibling MBOT `run-opencode.ts` helper for OpenCode-backed debaters.
+
+Profiles live in `~/.claude/skills/many-brain-one-decision/` and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill can fall back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities, for example:
+
+```markdown
+Use the following:
+- OpenCode with GPT-5.5 with "high" variant as "tech-bro"
+- OpenCode with Gemini 3.1 Pro as "bean-counter"
+- Claude Opus with "max" thinking as "pragmatic-operator"
+For OpenCode use `--attach seamus:4095`
+```
 
 ---
 

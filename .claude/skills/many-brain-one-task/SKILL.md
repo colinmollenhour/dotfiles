@@ -58,11 +58,82 @@ Translate the user's preferences into a plan for launching the agents.
 
 For OpenCode running models via OpenCode, use the "task" tool by specifying a `subagent_type` from the available sub-agents with names that start with "colin-mbot-". DO NOT use other agents that do not start with "colin-mbot-". For example, you can use "colin-mbot-glm" if the user has specified "GLM" as a desired participating agent. This automatically runs with the correct model.
 
-**When Claude Code is the host**, the `colin-mbot-*` subagents are NOT exposed in the Agent tool's `subagent_type` enum — they're OpenCode subagents only reachable from inside OpenCode. From Claude Code, shell out through the bundled wrapper script described below. For Claude models, use the Claude Code Agent tool directly (`Agent({subagent_type: "general-purpose", model: "opus"})`) rather than shelling out to the claude CLI — the claude-CLI form is a fallback.
+**When Claude Code is the host**, the `colin-mbot-*` subagents are NOT exposed in the Agent tool's `subagent_type` enum — they're OpenCode subagents only reachable from inside OpenCode. From Claude Code, drive OpenCode through `occtl run` (preferred) or the bundled `run-opencode.ts` wrapper (fallback) as described below. For Claude models, use the Claude Code Agent tool directly (`Agent({subagent_type: "general-purpose", model: "opus"})`) rather than shelling out to the claude CLI — the claude-CLI form is a fallback.
 
-#### Invoking OpenCode (the only supported form)
+#### Invoking OpenCode
 
-Every OpenCode call from this skill goes through `run-opencode.ts`. It normalizes the flags that have tripped us in the past (file vs argv, the `--` separator, `--dir .` in attach mode, `--format json` parsing, `--dangerously-skip-permissions` for local spawns) so callers only pass what varies. Invoke it inline in a single Bash call (wrapper `.sh` forms trip the Claude Code sandbox even with `dangerouslyDisableSandbox: true`):
+There are two ways to launch an OpenCode session from this skill. Prefer **`occtl run`** when it is available; fall back to the bundled `run-opencode.ts` script only when `occtl` is missing, too old, or its server check fails.
+
+##### Preflight (run once at the start of the batch)
+
+Decide the invocation method up front and reuse the same one for every OpenCode-backed agent in this MBOT run. Cache the result (e.g. `OPENCODE_VIA=occtl` or `OPENCODE_VIA=run-opencode-ts`).
+
+```bash
+# 1. occtl installed and at least 1.2.0 (occtl run was added in 1.2.0)
+occtl --version            # prints version, exits 0 on success
+
+# 2. occtl can reach an OpenCode server (auto-detected, env-overridden, or attach-directive target)
+occtl ping                 # prints "OK <url>", exits 0 on success
+```
+
+Treat `occtl` as available only when **both** checks pass and the printed version compares ≥ `1.2.0` (`1.2.x`, `1.3.x`, `2.x` qualify; `1.1.x` does not). If `occtl` is missing, older, or `ping` fails, fall through to the `run-opencode.ts` path. If a profile contains an attach directive (see "OpenCode server attach" below), set `OPENCODE_SERVER_HOST`/`OPENCODE_SERVER_PORT` and `OPENCODE_SERVER_PASSWORD` from it before the `ping` so the check exercises the real target.
+
+When occtl is the chosen path, also consult its bundled skill for the full surface area (sessions, send, attach, worktrees, Ralph Mode):
+
+```bash
+occtl view-skill | head -200
+```
+
+##### Preferred: `occtl run` (when occtl is available)
+
+`occtl run` creates a session, sends the prompt, waits for `session.idle`, and writes the assistant text — all through the OpenCode HTTP API. None of the `opencode run` subprocess workarounds (`--dir .` flag dance, NDJSON parsing, XDG_STATE_HOME EROFS, `--dangerously-skip-permissions`) apply because there's no subprocess.
+
+```bash
+occtl run \
+  --model opencode/gemini-3.1-pro \
+  --variant xhigh \
+  --title "ultra-review !2514 craft/Gemini-3.1-Pro" \
+  --file .tmp/ultra-review-2514/craft.full.md \
+  --out .tmp/ultra-review-2514/results/craft-gemini.out \
+  --timeout 540000 \
+  -- "Perform the code review exactly as instructed."
+```
+
+If there is no running server (or the profile asks for one fresh server per agent, e.g. for isolation), add `--spawn`. occtl picks a random free port, isolates `XDG_STATE_HOME`, runs the prompt, and SIGTERM/SIGKILLs the child on exit:
+
+```bash
+occtl run --spawn --model openai/gpt-5.4 \
+  --file .tmp/ultra-review-2514/bugs.full.md \
+  --out .tmp/ultra-review-2514/results/bugs-gpt.out \
+  --timeout 540000 \
+  -- "Perform the code review exactly as instructed."
+```
+
+Flag mapping from `run-opencode.ts` → `occtl run`:
+
+| `run-opencode.ts` | `occtl run` | Notes |
+|---|---|---|
+| `--model` | `--model` | same |
+| `--variant` | `--variant` | same |
+| `--agent` | `--agent` | same |
+| `--title` | `--title` | same |
+| `--file` (repeatable) | `--file` (repeatable) | files are concatenated into one text part with the trailing positional appended |
+| `--attach <url>` | env: `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` | `occtl` auto-detects a running server or honors the env vars; there is no separate attach flag |
+| `--password <pw>` | `--password <pw>` | same; reads `OPENCODE_SERVER_PASSWORD` if the flag is omitted |
+| `--timeout-ms <n>` | `--timeout <n>` | same units (ms) |
+| `--out <path>` | `--out <path>` | same; sidecar `<out>.session` is always written |
+| `--stderr <path>` | `--stderr <path>` | same |
+| `--thinking` | `--thinking` | same |
+| `--format json` extraction | (always API) | for the full assistant message JSON pass `--raw <path>` |
+| (none) | `--spawn`, `--spawn-port` | spawn an ephemeral `opencode serve` on a random free port; tears down on exit |
+| (none) | `--ephemeral` | delete the session after a successful run (default keeps it so you can audit token usage) |
+| `-- <message>` | `-- <message>` | same; keep brief, real instructions go in `--file` |
+
+Exit codes match the script: `0` success, `1` empty/no-text response or generic failure, `2` invalid arguments, `124` timeout.
+
+##### Fallback: `run-opencode.ts` (when occtl is not available)
+
+When the preflight finds occtl missing, too old, or unable to reach a server, every OpenCode call goes through `run-opencode.ts`. It normalizes the flags that have tripped us in the past (file vs argv, the `--` separator, `--dir .` in attach mode, `--format json` parsing, `--dangerously-skip-permissions` for local spawns) so callers only pass what varies. Invoke it inline in a single Bash call (wrapper `.sh` forms trip the Claude Code sandbox even with `dangerouslyDisableSandbox: true`):
 
 ```bash
 bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
@@ -183,7 +254,16 @@ If the user's profile contains an **attach directive**, prefer attaching to a ru
 
 **URL normalization:** if the directive is missing a scheme, prefix `http://` (e.g. `seamus:4095` → `http://seamus:4095`). Default opencode port is `4096`.
 
-**Password:** optional. If `with password X` / `(password: X)` / `password: X` is present, pass `--password X` to `run-opencode.ts`. Otherwise omit the flag — `opencode` falls back to `OPENCODE_SERVER_PASSWORD` from the environment.
+**Password:** optional. If `with password X` / `(password: X)` / `password: X` is present, pass `--password X` (works for both `occtl run` and `run-opencode.ts`). Otherwise omit the flag — both tools fall back to `OPENCODE_SERVER_PASSWORD` from the environment.
+
+**Plumbing the directive to `occtl run`:** `occtl` has no `--attach` flag — it auto-detects a server from `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` (and `OPENCODE_SERVER_PASSWORD`). For an attach directive `http://seamus:4095 with password hunter2`, set the env vars once at the start of the batch (single-statement env-prefix form, since this is run inline through the Bash tool):
+
+```bash
+OPENCODE_SERVER_HOST=seamus OPENCODE_SERVER_PORT=4095 OPENCODE_SERVER_PASSWORD=hunter2 \
+  occtl ping
+```
+
+Then run each `occtl run` invocation in the same shape (the env vars only need to be set on each command — the cached `OPENCODE_VIA=occtl` decision from preflight stays valid for the rest of the batch).
 
 #### Dry Run
 
