@@ -91,6 +91,63 @@ update_gitconfig() {
   fi
 }
 
+install_command_skills() {
+  local commands_dir=".claude/commands"
+  local skills_dir="$HOME/.agents/skills"
+  local command_file rel command_path command_name command_subdir command_namespace skill_name skill_dir
+
+  if [[ ! -d "$commands_dir" ]]; then
+    echo "Skipping command skills (no $commands_dir directory)"
+    return
+  fi
+
+  while IFS= read -r command_file; do
+    rel="${command_file#$commands_dir/}"
+    command_path="${rel%.md}"
+    command_name="$(basename "$command_path")"
+    command_subdir="$(dirname "$command_path")"
+
+    if [[ "$command_subdir" == "." ]]; then
+      skill_name="$command_name"
+      skill_dir="$skills_dir/$command_name"
+    else
+      command_namespace="${command_subdir//\//:}"
+      skill_name="$command_namespace:$command_name"
+      skill_dir="$skills_dir/$command_subdir/$command_name"
+    fi
+
+    mkdir -p "$skill_dir/agents"
+    awk -v skill_name="$skill_name" '
+      BEGIN { frontmatter = 0; inserted = 0 }
+      NR == 1 && $0 == "---" {
+        print
+        print "name: " skill_name
+        frontmatter = 1
+        inserted = 1
+        next
+      }
+      frontmatter && $0 == "---" {
+        print
+        frontmatter = 0
+        next
+      }
+      frontmatter && ($0 ~ /^name:[[:space:]]*/ || $0 ~ /^allowed-tools:[[:space:]]*/) {
+        next
+      }
+      !inserted {
+        print "---"
+        print "name: " skill_name
+        print "---"
+        inserted = 1
+      }
+      { print }
+    ' "$command_file" > "$skill_dir/SKILL.md"
+    printf 'policy:\n  allow_implicit_invocation: false\n' > "$skill_dir/agents/openai.yaml"
+  done < <(find "$commands_dir" -type f -name '*.md' | sort)
+
+  echo "Installed Claude commands as OpenAI skills in $skills_dir"
+}
+
 install_agents() {
   echo "==> Installing AI agent files..."
   if [[ -f ~/.claude/settings.json ]] && [[ "$(cat ~/.claude/settings.json)" != "{}" ]]; then
@@ -117,6 +174,7 @@ install_agents() {
   mkdir -p ~/.opencode/{commands,agents} ~/.agents/skills
   cp -rf .claude/commands/* ~/.opencode/commands/
   cp -rf .claude/skills/* ~/.agents/skills/
+  install_command_skills
   cp -rf .claude/agents/* ~/.opencode/agents/
   mkdir -p ~/.gemini/antigravity/skills
   cp -rf .claude/skills/* ~/.gemini/antigravity/skills/
