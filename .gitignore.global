@@ -17,6 +17,8 @@ imc
 .tmp
 .worktrees
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
+
 .claude/worktrees
 .codex
 .opencode/package-lock.json
