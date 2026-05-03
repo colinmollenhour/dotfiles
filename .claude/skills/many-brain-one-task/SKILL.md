@@ -56,6 +56,17 @@ Not all agents can run subagents with other models. The agents and harnesses ava
 
 Translate the user's preferences into a plan for launching the agents.
 
+#### Pre-launch Guard
+
+Before launching any agent, check the selected model family against the current host harness:
+
+- If the current host is OpenCode and the selected model is Claude-family (Opus, Sonnet, Haiku), **do not** use a `colin-mbot-*` subagent. Shell out through the `claude` CLI instead.
+- If the current host is OpenCode and the selected model is non-Claude, use the matching `colin-mbot-*` subagent.
+- If the current host is Claude Code and the selected model is Claude-family, use Claude Code's native Agent tool when available; fallback to the `claude` CLI.
+- If the current host is Claude Code and the selected model is non-Claude/OpenCode-backed, drive OpenCode with `occtl run` when available; fallback to `run-opencode.ts`.
+
+This guard overrides any generic `colin-mbot-*` mapping. In particular, never invoke Opus/Sonnet/Haiku as `colin-mbot-opus`, `colin-mbot-sonnet`, or similar from an OpenCode host unless the user explicitly requests OpenCode-routed Claude.
+
 For OpenCode running models via OpenCode, use the "task" tool by specifying a `subagent_type` from the available sub-agents with names that start with "colin-mbot-". DO NOT use other agents that do not start with "colin-mbot-". For example, you can use "colin-mbot-glm" if the user has specified "GLM" as a desired participating agent. This automatically runs with the correct model.
 
 **When Claude Code is the host**, the `colin-mbot-*` subagents are NOT exposed in the Agent tool's `subagent_type` enum — they're OpenCode subagents only reachable from inside OpenCode. From Claude Code, drive OpenCode through `occtl run` (preferred) or the bundled `run-opencode.ts` wrapper (fallback) as described below. For Claude models, use the Claude Code Agent tool directly (`Agent({subagent_type: "general-purpose", model: "opus"})`) rather than shelling out to the claude CLI — the claude-CLI form is a fallback.

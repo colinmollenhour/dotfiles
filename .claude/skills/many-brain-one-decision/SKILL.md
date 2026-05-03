@@ -80,6 +80,17 @@ Treat occtl as available only when **both** checks pass and the version is ≥ `
 
 Do not use non-MBOT subagents for debaters. If the host exposes `colin-mbot-*`, prefer those over shelling out except for Claude-backed debaters, where the `claude` CLI is preferred to avoid Anthropic extra-usage billing through OpenCode.
 
+#### Pre-launch Guard
+
+Before launching any debater, check the selected model family against the current host harness:
+
+- If the current host is OpenCode and the selected model is Claude-family (Opus, Sonnet, Haiku), **do not** use a `colin-mbot-*` subagent. Shell out through the `claude` CLI instead.
+- If the current host is OpenCode and the selected model is non-Claude, use the matching `colin-mbot-*` subagent.
+- If the current host is Claude Code and the selected model is Claude-family, use Claude Code's native Agent tool when available; fallback to the `claude` CLI.
+- If the current host is Claude Code and the selected model is non-Claude/OpenCode-backed, drive OpenCode with `occtl run` when available; fallback to the sibling MBOT `run-opencode.ts` helper.
+
+This guard overrides any generic `colin-mbot-*` mapping. In particular, never invoke Opus/Sonnet/Haiku as `colin-mbot-opus`, `colin-mbot-sonnet`, or similar from an OpenCode host unless the user explicitly requests OpenCode-routed Claude.
+
 Common mappings:
 
 | Requested model | Subagent type |
@@ -93,9 +104,7 @@ Common mappings:
 | Kimi | `colin-mbot-kimi` |
 | MiMo | `colin-mbot-mimo` |
 | MiniMax | `colin-mbot-minimax` |
-| Opus | `colin-mbot-opus` |
 | Qwen | `colin-mbot-qwen` |
-| Sonnet | `colin-mbot-sonnet` |
 
 When the host is Claude Code and the selected debater is OpenCode-backed, prefer `occtl run` (with attach details supplied via env vars — `occtl` has no `--attach` flag):
 
