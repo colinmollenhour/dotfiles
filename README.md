@@ -1,58 +1,81 @@
-# Colin's dot files
+# Colin's dotfiles
 
-Nothing too fancy, just my dotfiles.
+Personal dotfiles plus a batteries-included Claude Code config for shipping software with AI agents — slash commands for review, planning, and merging; skills for platform CLIs and common frameworks; and a multi-model review and audit toolkit (MBOT) that runs the same diff past Opus, GPT, Gemini, and friends in parallel.
 
-## Features
+## Highlights
 
-These dot files apply to or make use of the following tools:
+- **Multi-model code review.** `/colin:review` and `/colin:ultra-review` fan out across as many models as you configure, dedupe findings, and post inline comments on GitHub PRs or GitLab MRs.
+- **Spec critique and group decisions.** `/colin:critique` and the MBOD debate skill stress-test plans before you write code.
+- **Production-readiness audit.** `/colin:ultra-audit` runs three roles (hardening, operability, stewardship) against the current repo state, grouped by severity.
+- **Boring shell quality of life.** Sensible Bash, Git, tmux, Vim, Delta, and [Starship](https://starship.rs/) configs with non-clobbering installs for `.bashrc` and `.gitconfig`.
+- **Yours to configure.** Models, harnesses, and providers come from plain-prose Markdown profiles you own.
 
-- Bash (non-clobbering `.bashrc.colin`)
-- tmux (clobbering `.tmux.conf` and `.config/tmux-powerline/config.sh`)
-- Git (non-clobbering `.gitconfig.colin` , `.gitignore.global` and `.gitattributes.global`)
-- Vim (clobbering `.vimrc`)
-- Delta (clobbering `.config/delta/themes.gitconfig`)
-- [Starship](https://starship.rs/) (clobbering `.config/starship.toml`)
+## Contents
 
-##### Shell helpers
+- [Quickstart](#quickstart)
+- [What gets installed](#what-gets-installed)
+- [Shell helpers](#shell-helpers)
+- [VS Code dev containers](#vs-code-dev-containers)
+- [AI tools reference](#ai-tools-reference)
+  - [Slash commands](#slash-commands)
+  - [Skills](#skills)
+  - [Using MBOD](#using-mbod-many-brain-one-decision)
+  - [Customizing MBOT](#customizing-mbot-your-models-your-harness)
+  - [Typical flows](#typical-flows)
+- [License](#license)
 
-- Run `colin-help` to see a list of shortcuts and tools
-- Easy package installer (`install-recommended`, `install-packages` and `update-packages`) backed by brew, npm, apt and raw curl+bash.
-- Fuzzy finder for files, git branches, docker containers, kill, ssh hosts, export and unset
+## Quickstart
 
-## Installation
-
-Clone this repo and run the `install.sh` script.
+Clone the repo and run `install.sh`. The script never overwrites `.bashrc` or `.gitconfig` — it appends an `include` directive so the `.colin` variants load alongside whatever you already have.
 
 ```bash
-# Interactive mode (choose what to install)
-./install.sh
+git clone https://github.com/colinmollenhour/dotfiles.git ~/.dotfiles
+cd ~/.dotfiles
 
-# Install only AI agent configurations
-./install.sh --agents
+# Interactive — choose what to install
+./install.sh
 
 # Install everything
 ./install.sh --all
 
-# See all options
+# Install only the AI agent configs
+./install.sh --agents
+
+# Install only the dotfiles
+./install.sh --dotfiles
+
+# Show every flag
 ./install.sh --help
 ```
 
-**Common Options:**
+After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, and tools. The same content lives at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2).
 
-- `--all` - Install everything
-- `--agents` - Install only `.claude` files (also to `.opencode`, `.agents` and `.gemini/antigravity`)
-- `--dotfiles` - Install dotfiles (bashrc, gitconfig, vimrc, tmux, etc.)
-- `--interactive` - Interactive mode (default)
+## What gets installed
 
-The `.bashrc` and `.gitconfig` files will **not** be replaced but rather updated to **include** the `.colin` variants.
+### Dotfiles
 
-## Help
+| File | Behavior |
+|---|---|
+| `.bashrc.colin` | Sourced from `.bashrc` (non-clobbering) |
+| `.gitconfig.colin`, `.gitignore.global`, `.gitattributes.global` | Included from `.gitconfig` (non-clobbering) |
+| `.tmux.conf`, `.config/tmux-powerline/config.sh` | Replace existing files |
+| `.vimrc` | Replaces existing file |
+| `.config/delta/themes.gitconfig` | Replaces existing file |
+| `.config/starship.toml` | Replaces existing file |
 
-Run the `colin-help` command for a list of aliases, commands, tips and tricks or see [here](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2) for the same info online.
+### Claude Code config
 
-## VSCode
+Slash commands, skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors them into `~/.opencode/`, `~/.agents/`, and `~/.gemini/antigravity/` when those tools are present, so the same commands work across harnesses.
 
-Auto-install these in a VS Code devcontainer with `settings.json`:
+## Shell helpers
+
+- `colin-help` — list every alias, command, and tip.
+- `install-recommended`, `install-packages`, `update-packages` — package installers backed by `brew`, `npm`, `apt`, and raw `curl | bash`.
+- Fuzzy finders for files, Git branches, Docker containers, processes to stop, SSH hosts, exported variables, and unset variables.
+
+## VS Code dev containers
+
+Drop this into your `settings.json` to auto-install on every dev container:
 
 ```json
 {
@@ -62,19 +85,19 @@ Auto-install these in a VS Code devcontainer with `settings.json`:
 }
 ```
 
-# AI Tools Reference
+---
 
-A quick reference to the shared slash commands, skills, and agents available in the `.claude/` config. Invoke slash commands directly (e.g. `/colin:review` for Claude Code or `/colin/review` for OpenCode). Skills are loaded automatically when relevant or can be referenced by name.
+# AI tools reference
+
+A reference to the shared slash commands, skills, and agents in `.claude/`. Invoke slash commands directly (`/colin:review` for Claude Code, `/colin/review` for OpenCode). Skills load automatically when relevant or you can name them in a prompt.
 
 ## Concepts
 
-- **Slash commands** (`/name`) — you type them to kick off a workflow.
-- **Skills** — reusable procedures Claude loads on demand (often invoked internally by commands).
-- **MBOT agents** — dedicated sub-agents backed by specific models. Used by the review/critique commands and MBOD debates to get multi-model opinions. **Which models run, and through which harness, is driven by MBOT-style profile files — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).**
+- **Slash commands** (`/name`) kick off workflows. You type them.
+- **Skills** are reusable procedures Claude loads on demand, often invoked internally by commands.
+- **MBOT agents** are dedicated subagents backed by specific models. The review, critique, audit, and MBOD commands use them to gather multi-model opinions. Which models run, and through which harness, is driven by MBOT-style profile files — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
 
----
-
-## Slash Commands
+## Slash commands
 
 ### `colin:*` — day-to-day dev workflow
 
@@ -82,74 +105,74 @@ A quick reference to the shared slash commands, skills, and agents available in 
 
 | Command | Use it when… |
 |---|---|
-| `/colin:commit-and-push` | You're done with changes. Commits, pushes, opens/updates a GitHub PR or GitLab MR. |
-| `/colin:fix-comments` | Address open review comments on the current branch's PR/MR. Posts fixes, rebuttals, and a summary. |
+| `/colin:commit-and-push` | You're done with changes. Commits, pushes, opens or updates a GitHub PR or GitLab MR. |
+| `/colin:fix-comments` | Address open review comments on the current branch's PR or MR. Posts fixes, rebuttals, and a summary. |
 | `/colin:fix-pipeline` | Diagnose and fix a failing GitHub Actions or GitLab CI pipeline on the current branch. |
-| `/colin:fix-conflicts` | Resolve git merge conflicts intelligently, preserving intent from both sides. |
+| `/colin:fix-conflicts` | Resolve Git merge conflicts intelligently, preserving intent from both sides. |
 | `/colin:squash-merge [branch]` | Squash-merge a branch onto trunk with one clean commit **per author**, each AI-summarized. |
 | `/colin:git-cleanup` | Delete local branches that have been merged remotely (including squash-merges). |
 
 #### Reviewing
 
-Both review commands resolve the target the same way. If you pass no argument they'll review the open PR/MR for your current branch; otherwise they accept PR/MR URLs or numbers, `last N commits`, `whole repo`, `branch NAME`, or a git rev spec like `SHA..SHA`.
+Both review commands resolve the target the same way. Pass no argument to review the open PR or MR for your current branch. Otherwise the target accepts: a PR or MR URL or number, `last N commits`, `whole repo`, `branch NAME`, or a Git rev spec like `SHA..SHA`.
 
-**`/colin:review [target] [agents] [flags]`** — standard multi-model review. Triages, buckets large diffs (≤5k lines = single pass; otherwise ~3k-line buckets grouped by top-level directory), runs MBOT agents on each bucket, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label.
+**`/colin:review [target] [agents] [flags]`** — standard multi-model review. Triages, buckets large diffs (≤ 5,000 lines runs as a single pass; otherwise ~3,000-line buckets grouped by top-level directory), runs MBOT agents on each bucket, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label.
 
 | Flag | Effect |
 |---|---|
-| `[agents]` (positional) | Model list for this run; overrides the MBOT profile (e.g. `opus gpt gemini`). |
-| `--re-review` | Only review commits since the last `**AI Code Review**` comment on the PR/MR. |
-| `--no-post` | Print comments to the terminal and wait for your `post` / `drop issue 3` / `edit issue 2 to …` / `cancel` instructions instead of auto-posting. |
+| `[agents]` (positional) | Model list for this run. Overrides the MBOT profile (e.g. `opus gpt gemini`). |
+| `--re-review` | Only review commits since the last `**AI Code Review**` comment on the PR or MR. |
+| `--no-post` | Print comments to the terminal and wait for `post`, `drop issue 3`, `edit issue 2 to …`, or `cancel` instead of auto-posting. |
 | `--no-summary` | Skip the per-model comparison summary comment. |
 
-In git-diff mode (when the target is a rev spec rather than a PR/MR) it always behaves as `--no-post` — nothing is posted, just displayed.
+In Git-diff mode (when the target is a rev spec rather than a PR or MR) the command always behaves as `--no-post` — nothing is posted, just displayed.
 
-**`/colin:ultra-review [target] [agents] [flags]`** — the heavyweight variant. Runs **3 roles × N models** per bucket in parallel: `bugs` (correctness + security), `runtime` (performance + deps + deploy safety), and `craft` (quality + simplification + test quality). Expensive — reserve for important merges. Uses a separate `:Reviewed-By-AI-Ultra` label and a separate `**AI Ultra Review**` comment history, so it can run alongside `/colin:review` on the same PR.
+**`/colin:ultra-review [target] [agents] [flags]`** — the heavyweight variant. Runs **3 roles × N models** per bucket in parallel: `bugs` (correctness and security), `runtime` (performance, dependencies, deploy safety), and `craft` (quality, simplification, test quality). Expensive — reserve for important merges. Uses a separate `:Reviewed-By-AI-Ultra` label and a separate `**AI Ultra Review**` comment history, so it can run alongside `/colin:review` on the same PR.
 
 | Flag | Effect |
 |---|---|
-| `[agents]` (positional) | Model list for this run; overrides the MBOT profile. |
+| `[agents]` (positional) | Model list for this run. Overrides the MBOT profile. |
 | `--roles=bugs,runtime,craft` | Restrict to specific roles. Default is all three. |
 | `--re-review` | Only review commits since the last `**AI Ultra Review**` comment. |
 | `--no-post` | Same as `/colin:review`. |
 | `--no-summary` | Skip both the per-model and per-role comparison tables. |
 
-**`/colin:critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document (not code). Flags contradictions, gaps, poor naming, and inferior design choices — **never** scope expansion or "nice-to-haves". Target is a file path, `current plan` (uses your in-session plan), or a ClickUp TaskID. If omitted it searches for `SPECS-*.md` then `PLAN*.md`.
+**`/colin:critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.
 
 | Flag | Effect |
 |---|---|
 | `--agents opus gpt …` | Override the MBOT `critique` profile for this run. |
-| `--summary` | Include per-model comparison table (found / validated / unique / accuracy / composite score). |
+| `--summary` | Include a per-model comparison table (found, validated, unique, accuracy, composite score). |
 
-**`/colin:ultra-audit [scope] [agents] [flags]`** — production-readiness audit of the **current repo state** (not a diff). Runs **3 roles × N models** per module bucket: `hardening` (security + resiliency), `operability` (observability + deployment + config + performance + dependencies), and `stewardship` (docs + tests + code quality). Findings are merged and presented grouped by severity (`Blocker / High / Medium / Low`). Display only — no PR comments, no labels. Expensive — reserve for pre-launch or quarterly checkups.
+**`/colin:ultra-audit [scope] [agents] [flags]`** — production-readiness audit of the **current repo state**, not a diff. Runs **3 roles × N models** per module bucket: `hardening` (security and resiliency), `operability` (observability, deployment, config, performance, dependencies), and `stewardship` (docs, tests, code quality). Findings merge and group by severity (`Blocker`, `High`, `Medium`, `Low`). Display only — no PR comments, no labels. Expensive — reserve for pre-launch or quarterly checkups.
 
 | Flag | Effect |
 |---|---|
 | `[scope]` (positional) | `whole repo` (default), a path, comma-separated paths, or a glob. |
-| `[agents]` (positional) | Model list for this run; overrides the MBOT profile. |
+| `[agents]` (positional) | Model list for this run. Overrides the MBOT profile. |
 | `--roles=hardening,operability,stewardship` | Restrict to specific roles. Default is all three. |
-| `--save <path>` | Also write the rendered report to `<path>`. |
+| `--save <PATH>` | Also write the rendered report to `<PATH>`. |
 | `--no-summary` | Skip both the per-model and per-role comparison tables. |
 
-#### Planning & porting
+#### Planning and porting
 
 | Command | Use it when… |
 |---|---|
-| `/colin:finalize-spec` | Augment the current plan with the "senior-SWE" planning sections needed before implementation. |
-| `/colin:feature-export <feature>` | Generate a portable implementation guide for moving a feature to a sibling repo. |
-| `/colin:handoff [path]` | Dump current session context into a portable markdown handoff doc. No tool calls, just context. |
-| `/colin:progress` | Audit the task in scope and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
+| `/colin:finalize-spec` | Augment the current plan with the senior-SWE planning sections needed before implementation. |
+| `/colin:feature-export <FEATURE>` | Generate a portable implementation guide for moving a feature to a sibling repo. |
+| `/colin:handoff [PATH]` | Dump the current session context into a portable Markdown handoff doc. No tool calls, just context. |
+| `/colin:progress` | Audit the in-scope task and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
 
 ### `agent-sops:*` — heavier structured workflows
 
 | Command | Use it when… |
 |---|---|
 | `/agent-sops:help` | Short overview of the SOPs and when to use each. |
-| `/agent-sops:pdd` | Prompt-Driven Development: turn a rough idea into a full design doc with an implementation plan. |
+| `/agent-sops:pdd` | Prompt-Driven Development — turn a rough idea into a full design doc with an implementation plan. |
 | `/agent-sops:code-task-generator` | Convert rough descriptions or PDD plans into structured code-task files (Amazon format). |
-| `/agent-sops:code-assist` | Interactive TDD coach — explore → plan → code → commit loop. |
-| `/agent-sops:codebase-summary` | Generate AGENTS.md / README.md / CONTRIBUTING.md for a repo. |
-| `/agent-sops:eval` | Plan, generate, and run evaluations for AI agents via the Strands Evals SDK. |
+| `/agent-sops:code-assist` | Interactive TDD coach — explore, plan, code, commit loop. |
+| `/agent-sops:codebase-summary` | Generate `AGENTS.md`, `README.md`, or `CONTRIBUTING.md` for a repo. |
+| `/agent-sops:eval` | Plan, generate, and run evaluations for AI agents with the Strands Evals SDK. |
 
 ### Other
 
@@ -157,38 +180,37 @@ In git-diff mode (when the target is a rev spec rather than a PR/MR) it always b
 |---|---|
 | `/coolify` | Generate a `docker-compose.coolify.yml` for the current project using Coolify conventions and `SERVICE_*` secrets. |
 
----
-
 ## Skills
 
 Claude loads these automatically when a task matches, or you can reference them by name.
 
 ### Platform CLIs
 
-- **`gh-cli`** — GitHub operations via `gh` (PRs, issues, runs, inline comments, raw API).
-- **`glab-cli`** — GitLab operations via `glab` (MRs, pipelines, discussions, raw API).
-- **`clickup-tasks`** — Create/update ClickUp tasks, custom fields, sprint work. Supports both CLI and MCP backends.
+- **`gh-cli`** — GitHub operations through `gh` (PRs, issues, runs, inline comments, raw API).
+- **`glab-cli`** — GitLab operations through `glab` (MRs, pipelines, discussions, raw API).
+- **`clickup-tasks`** — Create and update ClickUp tasks, custom fields, sprint work. Supports both CLI and MCP backends.
+- **`github-security-advisories`** — End-to-end GitHub Security Advisory (GHSA) handling: validate a report, prepare advisory fields, push fixes to the GHSA private fork.
 
-### Code generation & review
+### Code generation and review
 
-- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare/merge results. Powers `/colin:review`, `/colin:critique`, `/colin:ultra-review`, `/colin:ultra-audit`. **Configurable — see below.**
+- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare or merge results. Powers `/colin:review`, `/colin:critique`, `/colin:ultra-review`, and `/colin:ultra-audit`. Configurable — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
 - **`many-brain-one-decision`** (MBOD) — Coordinate a multi-round debate across MBOT agents with distinct personalities until they converge on a decision or hit the configured round limit. Use it for prompts like "decide which option is best", "debate this tradeoff", or "propose a solution to this problem".
-- **`generate-e2e-test`** — Drives Playwright MCP to perform a workflow, then generates the E2E test code.
-- **`security-hardening`** — App-level security review: abuse prevention, rate limiting, business logic, input validation. Beyond generic checklists.
+- **`generate-e2e-test`** — Drives Playwright MCP through a workflow, then generates the E2E test code.
+- **`security-hardening`** — App-level security review covering abuse prevention, rate limiting, business logic, and input validation. Beyond generic checklists.
+- **`cli-design`** — Design and review CLIs against `clig.dev` guidelines: flags, help text, errors, and scriptability.
+- **`docs-writer`** — Write or restructure technical docs against Diataxis, Google, Microsoft, and Write the Docs style guides.
 - **`skill-writer`** — Author new `.claude` skills with correct frontmatter and structure.
 
-### Frameworks & stacks
+### Frameworks and stacks
 
-- **`drizzle-orm`** — TypeScript-first ORM patterns (Postgres/MySQL/SQLite): schemas, queries, migrations, relations.
+- **`drizzle-orm`** — TypeScript-first ORM patterns for Postgres, MySQL, and SQLite: schemas, queries, migrations, relations.
 - **`nuxt-ui`** — Nuxt UI components. Fetches current docs from `ui.nuxt.com/llms.txt` so APIs are accurate.
-- **`nuxt-content`** — Author markdown/MDC content files for Nuxt Content sites.
+- **`nuxt-content`** — Author Markdown and MDC content files for Nuxt Content sites.
 - **`voltagent`** — Build VoltAgent AI agents: tools, memory, hooks, sub-agents.
 
 ### Media
 
-- **`nano-banana`** — Required for any image generation or editing. Uses the Gemini CLI under the hood.
-
----
+- **`nano-banana`** — Required for any image generation or editing. Wraps the Gemini CLI.
 
 ## Using MBOD (Many Brain One Decision)
 
@@ -202,22 +224,24 @@ Use MBOD to debate whether we should use Postgres triggers, app-layer events, or
 Use many-brain-one-decision to propose a solution to this scaling problem: [facts...]
 ```
 
-Decision modes:
+### Decision modes
 
-- **Fixed choice** — use when the user gives explicit options or asks for multiple choice. MBOD preserves the provided options and has each debater choose, score, and argue.
-- **Open proposal** — use when the user provides facts and asks to propose/design/solve. Round 1 lets each debater organically propose a solution; the moderator clusters those proposals into candidate outcomes for later rounds.
-- **Hybrid** — use when the user gives initial options but allows alternatives. MBOD includes the supplied options plus `WRITE_IN`.
+- **Fixed choice** — when the user gives explicit options or asks for multiple choice. MBOD preserves the supplied options and has each debater choose, score, and argue.
+- **Open proposal** — when the user provides facts and asks to propose, design, or solve. Round 1 lets each debater organically propose a solution; the moderator clusters those proposals into candidate outcomes for later rounds.
+- **Hybrid** — when the user gives initial options but allows alternatives. MBOD includes the supplied options plus `WRITE_IN`.
 
-Round behavior:
+### Round behavior
 
-- Default max rounds is 4.
-- The user can override it naturally, e.g. "in 3 rounds or less", "one round only", or `--rounds 2`.
+- Default max rounds: 4.
+- The user can override naturally: "in 3 rounds or less", "one round only", or `--rounds 2`.
 - Consensus means all active debaters choose the same outcome.
-- If there is no consensus by the final round, MBOD recommends a winner by vote count, average score, least-regret score, then host judgment against the stated criteria.
+- Without consensus by the final round, MBOD recommends a winner by vote count, average score, least-regret score, then host judgment against the stated criteria.
 
-Harness routing follows MBOT's rules with one cost-sensitive exception: Claude-backed debaters should use native Claude agents or the `claude` CLI first so usage can stay on the Claude Max plan. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if the CLI does not work or the user explicitly requests OpenCode-routed Claude. Claude-hosted runs still use the sibling MBOT `run-opencode.ts` helper for OpenCode-backed debaters.
+### Routing and profiles
 
-Profiles live in `~/.claude/skills/many-brain-one-decision/` and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill can fall back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities, for example:
+Harness routing follows MBOT's rules with one cost-sensitive exception: Claude-backed debaters use native Claude agents or the `claude` CLI first so usage stays on the Claude Max plan. Use `colin-mbot-opus` or `colin-mbot-sonnet` only when the CLI does not work or the user explicitly requests OpenCode-routed Claude. Claude-hosted runs still use the sibling MBOT `run-opencode.ts` helper for OpenCode-backed debaters.
+
+Profiles live in `~/.claude/skills/many-brain-one-decision/` and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill falls back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities:
 
 ```markdown
 Use the following:
@@ -227,22 +251,20 @@ Use the following:
 For OpenCode use `--attach seamus:4095`
 ```
 
----
-
 ## Customizing MBOT (your models, your harness)
 
-**You should set up your own MBOT profiles.** The defaults shipped in this repo are one person's preferences — your API keys, entitlements, and trust in specific models will differ. Every review/critique run consults these profile files to decide which models to launch and through which harness.
+**Set up your own MBOT profiles.** The defaults shipped in this repo are one person's preferences — your API keys, entitlements, and trust in specific models will differ. Every review, critique, and audit run consults these profile files to decide which models to launch and through which harness.
 
 ### How profile resolution works
 
 When MBOT starts, it picks a profile in this order:
 
-1. An explicit `--profile X` in the prompt → loads `X.md`.
-2. The task type — `code-review` or `critique` — looks for `code-review.md` or `critique.md`.
-3. Everything else falls back to `default.md`.
-4. If the chosen file doesn't exist, it tries `default.md`. If that's missing too, it uses hardcoded defaults (Opus via claude CLI + GPT/Gemini/GLM/Qwen/MiMo/Kimi/Grok via OpenCode).
+1. An explicit `--profile X` in the prompt loads `X.md`.
+2. The task type (`code-review` or `critique`) loads `code-review.md` or `critique.md`.
+3. Anything else falls back to `default.md`.
+4. If the chosen file does not exist, MBOT tries `default.md`. If that is also missing, it uses hardcoded defaults (Opus through the `claude` CLI plus GPT, Gemini, GLM, Qwen, MiMo, Kimi, and Grok through OpenCode).
 
-All profile files live in `~/.claude/skills/many-brain-one-task/` (right beside the `SKILL.md` file). Profiles are just a list of your preferred agents - a plain markdown bullet list — model + harness, one per line.
+All profile files live in `~/.claude/skills/many-brain-one-task/`, beside the `SKILL.md` file. Profiles are a plain Markdown bullet list — model and harness, one per line.
 
 ### Example: `default.md`
 
@@ -266,56 +288,61 @@ Use the following:
 
 ### Writing your own profile
 
-Copy one of the examples above and edit to taste. Things you can specify:
+Copy one of the examples above and edit to taste. You can specify:
 
-- **Which models** (e.g. Opus 4.6, GPT 5.4 Codex, Gemini 3.1 Pro, Grok 4.20, Kimi K2.6, MiniMax M2.5…).
+- **Which models** (e.g. Opus 4.6, GPT 5.4 Codex, Gemini 3.1 Pro, Grok 4.20, Kimi K2.6, MiniMax M2.5).
 - **Which harness** drives each model (`claude` CLI, `codex`, `gemini`, `opencode`). Constraints:
-  - Claude Code can only run Claude models natively — non-Claude models must go through another harness (typically OpenCode).
-  - OpenCode **must** invoke `claude` for Claude models, but can run everything else as an OpenCode subagent.
-  - Codex can only drive OpenAI models natively; same story for Gemini CLI.
-- **Which provider/route** (e.g. `via OpenCode Zen`, `via Z.ai Coding Plan`, `via OpenRouter`). Prefer coding-plan routes over generic `openrouter/` or `opencode/` when you have entitlements, since they're cheaper and/or uncapped.
+  - Claude Code can only run Claude models natively. Non-Claude models go through another harness, typically OpenCode.
+  - OpenCode **must** call `claude` for Claude models, but can run everything else as an OpenCode subagent.
+  - Codex drives only OpenAI models natively. Same story for the Gemini CLI.
+- **Which provider or route** (e.g. `via OpenCode Zen`, `via Z.ai Coding Plan`, `via OpenRouter`). Prefer coding-plan routes over generic `openrouter/` or `opencode/` when you have entitlements — they are cheaper or uncapped.
 - **Model-specific knobs** (e.g. `"max" thinking`, `"xhigh" variant`).
-- **Backups** — list fallbacks so a failed primary can be swapped automatically.
-- **OpenCode server attach** — point MBOT at a running `opencode serve` instance instead of spawning a fresh local opencode per agent. Add a line like `Attach OpenCode to seamus:4096 with password hunter2` (global, applies to every OpenCode agent in the run) or `via attach seamus:4096` on a single agent line (overrides for that agent only). MBOT translates this into `opencode run --attach http://… --password … --dir . …`. **Path-prefix requirement:** the remote server must see the project at the *same absolute path* as the host — i.e. the container's home directory has to match the host's home directory prefix (e.g. host `/home/colin/proj/foo` → remote also resolves `/home/colin/proj/foo`). If your remote runs in a container, bind-mount or symlink so `$HOME` matches. Without this, `--file .tmp/...` and `--dir .` resolve to the wrong place on the remote and the run fails. Falls back to local opencode if the remote isn't reachable.
+- **Backups** — list fallbacks so a failed primary swaps automatically.
+- **OpenCode server attach** — point MBOT at a running `opencode serve` instance instead of spawning a fresh local OpenCode per agent. Add a global line like `Attach OpenCode to seamus:4096 with password hunter2` (applies to every OpenCode agent in the run) or `via attach seamus:4096` on a single agent line (overrides for that agent only). MBOT translates this into `opencode run --attach http://… --password … --dir . …`.
 
-Profiles are just prose — MBOT reads them naturally and translates them into the right CLI/subagent invocations. No JSON schema, no YAML, no tooling required.
+  **Path-prefix requirement:** the remote server must see the project at the *same absolute path* as the host. The container's home directory has to match the host's home directory prefix (host `/home/colin/proj/foo` → remote also resolves `/home/colin/proj/foo`). When the remote runs in a container, bind-mount or symlink so `$HOME` matches. Without this, `--file .tmp/...` and `--dir .` resolve to the wrong place on the remote and the run fails. Falls back to local OpenCode when the remote is not reachable.
 
-### Overriding per-run
+Profiles are prose. MBOT reads them naturally and translates them into the right CLI or subagent invocations. No JSON schema, no YAML, no tooling required.
 
-- `[agents]` on `/colin:review` / `/colin:ultra-review` (positional, e.g. `gpt gemini kimi`) → overrides the profile for that run only.
-- `--agents opus gpt gemini` on `/colin:critique` → same idea.
-- `--profile X` in a prompt → forces profile `X.md`.
-- `--dry-run` in a prompt → MBOT reports its execution plan instead of launching anything. Useful for verifying a new profile.
+### Overriding per run
+
+- `[agents]` on `/colin:review` or `/colin:ultra-review` (positional, e.g. `gpt gemini kimi`) overrides the profile for that run only.
+- `--agents opus gpt gemini` on `/colin:critique` does the same.
+- `--profile X` in a prompt forces profile `X.md`.
+- `--dry-run` in a prompt makes MBOT report its execution plan instead of launching anything. Useful for verifying a new profile.
 
 ### MBOT subagent registry
 
-The `.claude/agents/colin-mbot-*.md` files register each model as a callable subagent (read-only — `write: false`). They're how OpenCode-hosted MBOT runs actually dispatch to a specific model. You normally don't invoke them directly, but you reference them by their short name in profiles and in `[agents]` overrides.
+The `.claude/agents/colin-mbot-*.md` files register each model as a callable subagent (read-only — `write: false`). They are how OpenCode-hosted MBOT runs dispatch to a specific model. You normally do not invoke them directly, but you reference them by short name in profiles and `[agents]` overrides.
 
 | Agent | Model |
 |---|---|
 | `colin-mbot-opus` | Anthropic Claude Opus 4.6 |
 | `colin-mbot-sonnet` | Anthropic Claude Sonnet 4.6 |
 | `colin-mbot-gpt` | OpenAI GPT 5.4 |
-| `colin-mbot-gpt-zen` | GPT 5.4 via OpenCode Zen |
+| `colin-mbot-gpt-zen` | GPT 5.4 through OpenCode Zen |
 | `colin-mbot-gpt-codex` | OpenAI GPT 5.3 Codex |
-| `colin-mbot-gpt-codex-zen` | GPT 5.3 Codex via OpenCode Zen |
+| `colin-mbot-gpt-codex-zen` | GPT 5.3 Codex through OpenCode Zen |
 | `colin-mbot-gemini-pro` | Gemini 3.1 Pro (OpenRouter) |
-| `colin-mbot-gemini-pro-zen` | Gemini 3.1 Pro via OpenCode Zen |
+| `colin-mbot-gemini-pro-zen` | Gemini 3.1 Pro through OpenCode Zen |
 | `colin-mbot-grok` | xAI Grok 4.20 |
 | `colin-mbot-kimi` | Moonshot Kimi K2.6 |
 | `colin-mbot-qwen` | Alibaba Qwen 3.6 Plus |
 | `colin-mbot-glm` | Zhipu GLM 5.1 |
 | `colin-mbot-mimo` | Xiaomi MiMo V2 Pro |
 | `colin-mbot-minimax` | MiniMax M2.5 |
+| `colin-mbot-deepseek` | DeepSeek |
 | `colin-mbot-big-pickle` | Big Pickle (OpenCode) |
 
-Add your own by dropping a new `colin-mbot-<name>.md` in `.claude/agents/` with `mode: subagent`, the desired `model:`, and `tools: { write: false }`.
-
----
+Add your own by dropping a new `colin-mbot-<NAME>.md` into `.claude/agents/` with `mode: subagent`, the desired `model:`, and `tools: { write: false }`.
 
 ## Typical flows
 
-- **Shipping a change:** make edits → `/colin:review` → `/colin:commit-and-push` → (on feedback) `/colin:fix-comments` → (on red CI) `/colin:fix-pipeline`.
-- **Planning a feature:** `/agent-sops:pdd` → `/colin:finalize-spec` → `/colin:critique --summary` → `/agent-sops:code-task-generator`.
-- **Important merge:** `/colin:ultra-review --no-post` → review the output → `post` if it looks right. Use `--re-review` on subsequent pushes.
-- **Picking up someone else's context:** ask them to run `/colin:handoff` and commit the resulting markdown.
+- **Shipping a change.** Make edits → `/colin:review` → `/colin:commit-and-push` → on feedback `/colin:fix-comments` → on red CI `/colin:fix-pipeline`.
+- **Planning a feature.** `/agent-sops:pdd` → `/colin:finalize-spec` → `/colin:critique --summary` → `/agent-sops:code-task-generator`.
+- **Important merge.** `/colin:ultra-review --no-post` → review the output → `post` if it looks right. Use `--re-review` on subsequent pushes.
+- **Picking up someone else's context.** Ask them to run `/colin:handoff` and commit the resulting Markdown.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
