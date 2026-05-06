@@ -23,6 +23,8 @@
       "Bash(cup *)",
       "Bash(glab *)",
       "Bash(gh *)",
+      "Bash(opencode *)",
+      "Bash(occtl *)",
       "Read",
       "Edit",
       "Write",
@@ -86,6 +88,7 @@
         "proxy.golang.org",
         "api.osv.dev",
         "gitlab.bss-llc.com",
+        "api.clickup.com",
         "*.coderabbit.ai",
         "sentry.io",
         "*.posthog.com"
