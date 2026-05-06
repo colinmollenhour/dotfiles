@@ -15,6 +15,11 @@
       "Bash(git fetch:*)",
       "Bash(git pull:*)",
       "Bash(git push:*)",
+      "Bash(git worktree:*)",
+      "Bash(git -C:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
       "Bash(cup *)",
       "Bash(glab *)",
       "Bash(gh *)",
@@ -43,7 +48,8 @@
       "Read(.env.development)",
       "Read(.env.production)",
       "Read(.env.test)"
-    ]
+    ],
+    "defaultMode": "auto"
   },
   "sandbox": {
     "enabled": true,
@@ -80,10 +86,17 @@
         "proxy.golang.org",
         "api.osv.dev",
         "gitlab.bss-llc.com",
-        "*.coderabbit.ai"
+        "*.coderabbit.ai",
+        "sentry.io",
+        "*.posthog.com"
       ]
     }
   },
   "skipDangerousModePermissionPrompt": true,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "skipAutoPermissionPrompt": true,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  }
 }
