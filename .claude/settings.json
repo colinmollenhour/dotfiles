@@ -48,6 +48,14 @@
   "sandbox": {
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
+    "excludedCommands": [
+      "cr",
+      "occtl",
+      "opencode",
+      "glab",
+      "gh",
+      "cup"
+    ],
     "network": {
       "allowedDomains": [
         "registry.npmjs.org",
@@ -71,7 +79,8 @@
         "security.ubuntu.com",
         "proxy.golang.org",
         "api.osv.dev",
-        "gitlab.bss-llc.com"
+        "gitlab.bss-llc.com",
+        "*.coderabbit.ai"
       ]
     }
   },
