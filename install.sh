@@ -29,6 +29,7 @@ DO_ALL=false
 DRY_RUN=false
 NO_INPUT=false
 QUIET=false
+WITH_OPUS=false
 
 cd "$SCRIPT_DIR"
 
@@ -78,6 +79,39 @@ copy_dir_contents() {
   cp -Rf "$src/." "$dest/"
 }
 
+copy_agent_files() {
+  local src="$1"
+  local dest="$2"
+  local exclude_mbot="${3:-false}"
+  local item base
+
+  if [[ ! -d "$src" ]]; then
+    warn "Skipping missing directory: $src"
+    return
+  fi
+
+  if [[ "$DRY_RUN" == true ]]; then
+    if [[ "$exclude_mbot" == true ]]; then
+      dry_run_msg "copy $src/ into $dest/ excluding colin-mbot-*.md"
+    elif [[ "$WITH_OPUS" == true ]]; then
+      dry_run_msg "copy $src/ into $dest/"
+    else
+      dry_run_msg "copy $src/ into $dest/ excluding colin-mbot-opus.md"
+    fi
+    return
+  fi
+
+  mkdir -p "$dest"
+  shopt -s nullglob
+  for item in "$src"/*; do
+    base="$(basename "$item")"
+    [[ "$exclude_mbot" == true && "$base" == colin-mbot-*.md ]] && continue
+    [[ "$WITH_OPUS" == false && "$base" == "colin-mbot-opus.md" ]] && continue
+    cp -Rf "$item" "$dest/"
+  done
+  shopt -u nullglob
+}
+
 copy_claude_home() {
   local src=".claude"
   local dest="$HOME/.claude"
@@ -89,7 +123,7 @@ copy_claude_home() {
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "copy .claude/ into $dest/ excluding .claude/worktrees"
+    dry_run_msg "copy .claude/ into $dest/ excluding .claude/worktrees and colin-mbot-*.md"
     return
   fi
 
@@ -98,6 +132,10 @@ copy_claude_home() {
   for item in "$src"/*; do
     base="$(basename "$item")"
     [[ "$base" == "worktrees" ]] && continue
+    if [[ "$base" == "agents" ]]; then
+      copy_agent_files "$item" "$dest/agents" true
+      continue
+    fi
     cp -Rf "$item" "$dest/"
   done
   shopt -u nullglob
@@ -129,6 +167,14 @@ append_file() {
   printf '%s\n' "$@" >> "$path"
 }
 
+bashrc_sources_colin() {
+  [[ -f "$HOME/.bashrc" ]] && grep -qF 'source ~/.bashrc.colin' "$HOME/.bashrc"
+}
+
+gitconfig_includes_colin() {
+  [[ -f "$HOME/.gitconfig" ]] && grep -qF 'path = ~/.gitconfig.colin' "$HOME/.gitconfig"
+}
+
 show_help() {
   cat << EOF
 Install Colin's dotfiles and AI agent configuration.
@@ -151,6 +197,7 @@ OPTIONS
       --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
+      --with-opus    Include colin-mbot-opus.md when installing OpenCode agents
       --no-input     Disable prompts; requires at least one install option
   -q, --quiet        Print only warnings and errors
   -h, --help         Show this help message
@@ -212,7 +259,7 @@ update_bashrc() {
 
   local bashrc="$HOME/.bashrc"
 
-  if [[ -f "$bashrc" ]] && grep -qF 'source ~/.bashrc.colin' "$bashrc"; then
+  if bashrc_sources_colin; then
     log "~/.bashrc already sources ~/.bashrc.colin"
     return
   fi
@@ -251,7 +298,7 @@ update_gitconfig() {
   local gitconfig="$HOME/.gitconfig"
   local tmp
 
-  if [[ -f "$gitconfig" ]] && grep -qF 'path = ~/.gitconfig.colin' "$gitconfig"; then
+  if gitconfig_includes_colin; then
     log "~/.gitconfig already includes ~/.gitconfig.colin"
     return
   fi
@@ -407,7 +454,7 @@ install_agents() {
   copy_dir_contents ".claude/commands" "$HOME/.opencode/commands"
   copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
   install_command_skills
-  copy_dir_contents ".claude/agents" "$HOME/.opencode/agents"
+  copy_agent_files ".claude/agents" "$HOME/.opencode/agents"
 
   if [[ "$DRY_RUN" == true ]]; then
     dry_run_msg "create $HOME/.gemini/antigravity/skills"
@@ -445,11 +492,15 @@ interactive_install() {
     install_dotfiles
   fi
 
-  if prompt_yes_no "Update ~/.bashrc to source ~/.bashrc.colin"; then
+  if bashrc_sources_colin; then
+    log "~/.bashrc already sources ~/.bashrc.colin"
+  elif prompt_yes_no "Update ~/.bashrc to source ~/.bashrc.colin"; then
     update_bashrc
   fi
 
-  if prompt_yes_no "Update ~/.gitconfig to include ~/.gitconfig.colin"; then
+  if gitconfig_includes_colin; then
+    log "~/.gitconfig already includes ~/.gitconfig.colin"
+  elif prompt_yes_no "Update ~/.gitconfig to include ~/.gitconfig.colin"; then
     update_gitconfig
   fi
 
@@ -496,6 +547,10 @@ parse_args() {
         ;;
       --agents)
         DO_AGENTS=true
+        shift
+        ;;
+      --with-opus)
+        WITH_OPUS=true
         shift
         ;;
       -i|--interactive)
