@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Grok 4.3
+description: Many brain, one task with Deepseek V4 Pro
 mode: subagent
-model: openrouter/x-ai/grok-4.3
+model: openrouter/deepseek/deepseek-v4-pro
 tools:
   write: false
   edit: false

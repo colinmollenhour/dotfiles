@@ -1,7 +1,7 @@
 ---
 name: many-brain-one-task
 description: Run the same task with multiple agents simultaneously. Good for reviews, critiques, comparing models. Abbreviated as "MBOT"
-allowed-tools: Bash(bun *)
+allowed-tools: Bash(bun *), Bash(cr *)
 ---
 
 # Many Brain One Task
@@ -202,6 +202,25 @@ Other harnesses may be invoked via a shell command directly:
 - `codex exec -c model="gpt-5.4" --ephemeral "PROMPT_HERE"`
 - `codex review -c model="gpt-5.4" --base <branch> > ./.codex-review.txt 2>&1`
 - `gemini --model gemini-3.1-flash-lite-preview --prompt "PROMPT_HERE"`
+
+#### Running CodeRabbit
+
+If the user or profile specifies **CodeRabbit**, **Coderabbit**, or `cr` as a participating agent/model, invoke the authenticated CodeRabbit CLI directly instead of routing it through OpenCode or Claude. Assume `cr` is already installed and authenticated. Do not attempt login, token setup, or recovery; if `cr` exits non-zero, abort that CodeRabbit participant, record the error in the MBOT summary, and continue with other participants/backups as usual.
+
+Use `cr --agent` with an explicit base when possible:
+
+```bash
+cr --agent --base-commit <sha> --config <extra-file.txt> > .tmp/mbot/results/coderabbit.ndjson
+```
+
+Guidelines:
+
+- Prefer `--base-commit <sha>` for review tasks. Resolve `<sha>` from the intended comparison base, e.g. merge-base with the target branch, the PR/MR base commit, or a user-specified SHA. If the task is not diff/review-shaped and there is no meaningful base commit, omit `--base-commit` only if the CodeRabbit CLI supports the requested mode.
+- Use `--config <path>` when the MBOT prompt needs extra instructions. Write a small config/instructions file inside the project `.tmp/` directory and pass that path. If no extra instructions are needed, omit `--config`.
+- Capture stdout to a `.ndjson` result file. CodeRabbit emits NDJSON status and completion records such as `review_context`, `status`, and `complete`.
+- Treat a final `{"type":"complete","status":"review_completed","findings":N}` record as successful completion. Summarize `findings` and include any review output records that contain actual findings/comments. Ignore transient `status` records except for diagnostics.
+- Do not parse CodeRabbit output as OpenCode assistant text. It is CLI/NDJSON output and should be summarized separately alongside the other agents.
+- If `cr` fails, include the command, exit status, and stderr path or excerpt in the final MBOT summary; do not retry authentication.
 
 It may be helpful to instruct the agent to use markers to help parse the output for the "Gather and summarize" step at the end.
 
