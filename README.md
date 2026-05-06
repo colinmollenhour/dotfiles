@@ -137,6 +137,70 @@ In Git-diff mode (when the target is a rev spec rather than a PR or MR) the comm
 | `--no-post` | Same as `/colin:review`. |
 | `--no-summary` | Skip both the per-model and per-role comparison tables. |
 
+##### How ultra-review fans out across MBOT
+
+Buckets run **sequentially** to bound cost. Within each bucket, the three roles invoke MBOT **in parallel**, and each MBOT call fans out to **N models in parallel** — so a single bucket pass produces `3 × N` reviewer threads with the same diff but different role focus prompts.
+
+```mermaid
+flowchart TD
+    User([User: /colin:ultra-review &lt;arg?&gt;])
+
+    subgraph UR["ultra-review command"]
+        Resolve[Resolve input<br/>PR / MR / git diff<br/>capture head+base SHAs]
+        Triage[Triage &amp; bucket<br/>git diff --stat → exclude generated/lock/vendor<br/>K = ⌈T/4000⌉ buckets, directory-aware packing]
+        Roles[Role selection<br/>bugs · runtime · craft<br/>--roles=csv override]
+        Ctx[Gather context<br/>AGENTS.md, diff summary,<br/>ClickUp/Intercom/Sentry, prior comments]
+    end
+
+    BucketLoop{{"For each bucket (SEQUENTIAL)"}}
+
+    subgraph Pass["Per-bucket pass: 3 roles in PARALLEL"]
+        direction LR
+        MBOTbugs["MBOT(role=bugs)<br/>focus: correctness + security"]
+        MBOTrun["MBOT(role=runtime)<br/>focus: perf + deps + deploy"]
+        MBOTcraft["MBOT(role=craft)<br/>focus: quality + simpler + tests"]
+    end
+
+    subgraph MBOT["many-brain-one-task (per invocation)"]
+        direction TB
+        Profile[Load profile<br/>profile=code-review → models list]
+        Guard[Pre-launch guard<br/>Claude host? → Agent tool / claude CLI<br/>OpenCode host? → colin-mbot-* subagents<br/>CodeRabbit? → cr CLI]
+        Assemble["assemble-prompts.ts<br/>bucket.md + role-X.md → role.full.md"]
+
+        subgraph Fanout["Fan out in PARALLEL"]
+            direction LR
+            A1[Opus<br/>Agent tool]
+            A2[GPT<br/>occtl run / run-opencode.ts]
+            A3[Gemini<br/>occtl run / run-opencode.ts]
+            A4[GLM/Qwen/Kimi<br/>backups]
+            A5[CodeRabbit<br/>cr --agent --base-commit]
+        end
+
+        Gather[Gather &amp; summarize<br/>tagged ISSUE blocks per agent+role]
+    end
+
+    Validate[Validate &amp; dedupe<br/>across agent × role × bucket<br/>verify suggestion blocks]
+    Summary[Build comparison tables<br/>per-agent: found/validated/unique/composite<br/>per-role: validated, unique-to-role]
+    Post[Post inline comments<br/>header: AI Ultra Review · Commit · Role · Flagged by]
+    Label[Apply :Reviewed-By-AI-Ultra]
+
+    User --> Resolve --> Triage --> Roles --> Ctx --> BucketLoop
+    BucketLoop --> Pass
+    MBOTbugs -.invokes.-> MBOT
+    MBOTrun -.invokes.-> MBOT
+    MBOTcraft -.invokes.-> MBOT
+    Profile --> Guard --> Assemble --> Fanout --> Gather
+    Pass --> BucketLoop
+    BucketLoop -->|all buckets done| Validate --> Summary --> Post --> Label
+
+    classDef parallel fill:#dbeafe,stroke:#1e40af,color:#000
+    classDef sequential fill:#fee2e2,stroke:#991b1b,color:#000
+    classDef mbot fill:#dcfce7,stroke:#166534,color:#000
+    class Pass,Fanout parallel
+    class BucketLoop sequential
+    class MBOT,Profile,Guard,Assemble,Gather mbot
+```
+
 **`/colin:critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.
 
 | Flag | Effect |
