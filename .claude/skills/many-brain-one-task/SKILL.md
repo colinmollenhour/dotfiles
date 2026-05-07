@@ -237,16 +237,17 @@ gemini --model gemini-3.1-flash-lite-preview --prompt "PROMPT_HERE"
 If the profile or prompt names CodeRabbit / Coderabbit / `cr` as a participant, invoke the authenticated CodeRabbit CLI directly — do **not** route through OpenCode or Claude. Assume `cr` is already installed and authenticated; do not attempt login or token recovery. If `cr` exits non-zero, abort that participant, record the error in the summary, and continue with backups.
 
 ```bash
-cr --agent --base-commit <sha> --config <extra-file.txt> > .tmp/mbot/results/coderabbit.ndjson
+cr --plain --base-commit <sha> --config <extra-file.txt> > .tmp/mbot/results/coderabbit.txt
 ```
 
 Guidelines:
 
 - Prefer `--base-commit <sha>` for review tasks. Resolve `<sha>` from the intended comparison base (merge-base with target branch, the PR/MR base commit, or a user-specified SHA). Omit `--base-commit` only if the task is not diff/review-shaped and the CLI supports the requested mode.
 - Use `--config <path>` when the prompt needs extra instructions. Write a small instructions file inside the project `.tmp/` and pass that path. Omit if not needed.
-- Capture stdout to `.ndjson`. CodeRabbit emits NDJSON status and completion records (`review_context`, `status`, `complete`).
-- Treat a final `{"type":"complete","status":"review_completed","findings":N}` record as success. Summarize `findings` and include any review records that contain actual findings/comments. Ignore transient `status` records except for diagnostics.
-- Do **not** parse CodeRabbit output as OpenCode assistant text. It is CLI/NDJSON output and should be summarized separately alongside the other agents.
+- Use `--plain` instead of `--agent` and capture stdout to `.txt`. MBOT consumes CodeRabbit as another reviewer, so the plain text report is usually easier and the structured event stream is not needed.
+- When running `cr` from Claude Code, run it unsandboxed. In the sandbox, CodeRabbit can hang indefinitely after printing `Connecting to review service` and never reach normal setup/review output. If you see that stall, stop waiting and rerun the same command with sandbox disabled.
+- Treat a completed plain text review as success when it reaches the normal review phases, e.g. `Connecting to review service`, `Setting up`, `Summarizing`, and then emits findings or a no-findings report. Include the plain text findings/comments in the aggregate MBOT summary.
+- Do **not** parse CodeRabbit output as OpenCode assistant text. It is CLI output and should be summarized separately alongside the other agents.
 - On failure, include the command, exit status, and stderr path/excerpt in the final summary; do not retry authentication.
 
 ## Step 5: Gather and summarize
