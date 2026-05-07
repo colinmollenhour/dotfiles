@@ -41,7 +41,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.osv.dev)",
       "WebFetch(domain:registry.npmjs.org)",
-      "WebFetch(domain:gitlab.bss-llc.com)"
+      "WebFetch(domain:gitlab.bss-llc.com)",
+      "WebFetch(domain:chatgpt.com)",
+      "WebFetch(domain:ab.chatgpt.com)"
     ],
     "deny": [
       "Read(~/.ssh/**)",
