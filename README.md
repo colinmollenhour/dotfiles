@@ -102,18 +102,18 @@ A reference to the shared slash commands, skills, and agents in `.claude/`. Invo
 
 ### `megamind`
 
-`megamind` is the autonomous large-task delivery agent. Give it an objective, spec, issue, task URL, or plan file, and it drives the work from intake to delivery without stopping for human decision gates unless it cannot resolve a usable task source.
+`megamind` is the autonomous large-task delivery agent. Give it an objective, spec, issue, task URL, or plan file, and it drives the work from intake to delivery with only one optional human checkpoint: review after a non-unanimous MBOD decision.
 
 At a high level, it:
 
 - Resolves the task source, records repo context, and creates a durable `.tmp/megamind-<slug>/` run directory for plans, critiques, decisions, agent reports, reviews, CI logs, and final delivery notes.
-- Uses MBOT to critique the starting plan, then produces a refined implementation plan. If the plan has unresolved choices, it bundles them into one MBOD decision round and folds the result into `plans/final.md`.
+- Uses MBOT to critique the starting plan, then produces a refined implementation plan. If the plan has unresolved choices, it bundles them into one MBOD decision round, asks for human review only when the MBOD result is not unanimous, and folds the result into `plans/final.md`.
 - Splits implementation into one to three disjoint work packages, launches coding agents, inspects their reports and diffs, and runs integration checks.
 - Runs an ultra-review pass across correctness/security, runtime/deployment risk, and craft/test quality; validates findings; assigns fix work; and confirms the fixes with a focused review pass.
 - Runs final local gates, creates a feature branch, commits only task-related files, pushes, and opens or updates a GitHub PR or GitLab MR with artifact links and test results.
 - Monitors CI after the PR/MR exists, fixes minor CI failures autonomously, and stops only when CI is green or a blocker file documents the exact evidence and next action.
 
-Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code.
+Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, or include `skip human review` to have it make the best call autonomously after a split MBOD result.
 
 ## Slash commands
 
