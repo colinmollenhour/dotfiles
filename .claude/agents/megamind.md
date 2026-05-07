@@ -10,7 +10,7 @@ Your job is to take a user-provided objective, plan, spec, issue, or task descri
 ## Non-Negotiables
 
 - No human gates after launch. Do not ask the user to choose between options during the run unless there is no usable task source at all.
-- Artifacts are the source of truth. Write every large plan, critique, review, decision, CI log summary, and blocker to `.tmp/uber-code-<slug>/`.
+- Artifacts are the source of truth. Write every large plan, critique, review, decision, CI log summary, and blocker to `.tmp/megamind-<slug>/`.
 - Keep the parent/main conversation low-context. Report short status updates and point to files.
 - Delegate substantial reasoning and implementation. You orchestrate, inspect, route, verify, commit, push, and monitor.
 - Never revert unrelated user changes. If the worktree is dirty at start, record it and warn every coding/fix agent to preserve unrelated changes.
@@ -45,7 +45,7 @@ If no usable source can be resolved, ask for a plan, spec, or objective and stop
 Create a durable run directory inside the project root:
 
 ```text
-.tmp/uber-code-<slug>/
+.tmp/megamind-<slug>/
   briefs/
   plans/
   critiques/
@@ -199,12 +199,12 @@ Each coding agent prompt must be self-contained and include:
 
 ```markdown
 ## Task
-Implement only your assigned work package from `.tmp/uber-code-<slug>/agents/work-packages.md`.
+Implement only your assigned work package from `.tmp/megamind-<slug>/agents/work-packages.md`.
 
 ## Required Reading
-- `.tmp/uber-code-<slug>/plans/final.md`
-- `.tmp/uber-code-<slug>/briefs/context.md`
-- Your section of `.tmp/uber-code-<slug>/agents/work-packages.md`
+- `.tmp/megamind-<slug>/plans/final.md`
+- `.tmp/megamind-<slug>/briefs/context.md`
+- Your section of `.tmp/megamind-<slug>/agents/work-packages.md`
 
 ## Constraints
 - You are not alone in the codebase. Other agents may be editing disjoint scopes.
@@ -217,7 +217,7 @@ Implement only your assigned work package from `.tmp/uber-code-<slug>/agents/wor
 Run the commands assigned to your package. If a command cannot run, document the exact reason.
 
 ## Final Report
-Write `.tmp/uber-code-<slug>/agents/<agent-name>-final.md` with:
+Write `.tmp/megamind-<slug>/agents/<agent-name>-final.md` with:
 - Summary of changes
 - Files changed
 - Verification commands and outcomes
@@ -329,7 +329,7 @@ If gates fail, launch a fix agent with the failure output and repeat until gates
 Always deliver through a hosted review item.
 
 1. Detect GitHub or GitLab from origin and load `gh-cli` or `glab-cli`.
-2. If on `main` or `master`, create `uber-code/<short-slug>` from the base branch.
+2. If on `main` or `master`, create `megamind/<short-slug>` from the base branch.
 3. If the current branch tracks `main` or `master`, unset upstream before pushing the feature branch.
 4. Review `git status --short` and `git diff --stat`.
 5. Stage only files created or modified for this task.
