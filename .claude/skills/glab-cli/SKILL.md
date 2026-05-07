@@ -76,6 +76,8 @@ bun "${CLAUDE_SKILL_DIR}/mr-context.ts" \
 
 Writes `mr.json`, `notes.json`, `discussions.json`, `versions.json`, and `diff.patch` under `--out-dir`. If any individual fetch fails, the helper still writes the rest and emits a per-endpoint `<name>.stderr` file for diagnosis.
 
+For temporary output directories, do **not** hardcode `/tmp/...`; Claude Code may run with `/tmp` mounted read-only. Prefer a project-local `.tmp/...` path when downstream tools need repo-relative access, or use `$TMPDIR/...` when the artifact is only for the current shell/session.
+
 stdout is a single JSON summary suitable for `jq`:
 
 ```json

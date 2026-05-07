@@ -159,3 +159,4 @@ Preferred sequence:
 - Prefer `--output json` plus `jq` over parsing human-readable output
 - Use `projects/:fullpath/...` instead of hardcoding URL-encoded project paths
 - Re-fetch after mutations when you need confirmation
+- Do not hardcode `/tmp/...` for helper output. Use project-local `.tmp/...` when later tools need repo-relative files, or `$TMPDIR/...` for shell-local scratch data; `/tmp` can be read-only in Claude Code.
