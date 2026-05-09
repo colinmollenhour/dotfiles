@@ -1,6 +1,6 @@
 ---
 name: docs-writer
-description: Use whenever writing or editing user-facing technical documentation, including READMEs, tutorials, how-to guides, API references, conceptual explanations, release notes, changelogs, troubleshooting pages, error messages, and any prose that helps users accomplish something with a technical product. Triggers on requests like "write docs", "document this", "improve the docs", "write a README", "write a tutorial", "write a guide", "API reference", "release notes", or "troubleshooting". Do not use for marketing copy, internal design docs, or academic writing.
+description: 'Write or edit user-facing technical docs: READMEs, guides, tutorials, API refs, changelogs, release notes, troubleshooting.'
 ---
 
 # Docs writer

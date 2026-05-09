@@ -1,6 +1,6 @@
 ---
 name: cli-design
-description: Design, implement, and review command-line interfaces with human-first UX, scriptability, conventional flags, help text, output, errors, interactivity, configuration, and distribution. Use when building CLI tools, reviewing command behavior, choosing args/flags/subcommands, or improving terminal UX.
+description: 'Design, implement, or review CLI UX: args, flags, help, output, errors, config, interactivity, and distribution.'
 ---
 
 # CLI Design

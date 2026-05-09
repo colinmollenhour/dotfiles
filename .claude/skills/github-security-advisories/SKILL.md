@@ -1,6 +1,6 @@
 ---
 name: github-security-advisories
-description: Manage GitHub Security Advisory workflows from vulnerability report to private fork patch. Use when validating security reports, preparing GHSA fields, creating advisory fixes, committing patches, or pushing to GHSA private forks. Triggers include GHSA, GitHub Security Advisory, HackerOne report, vulnerability report, private fork, CVE, CVSS, security advisory draft.
+description: 'Manage GitHub Security Advisories: validate reports, draft GHSA/CVE/CVSS fields, patch private forks.'
 ---
 
 # GitHub Security Advisories

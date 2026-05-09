@@ -1,6 +1,6 @@
 ---
 name: clickup-tasks
-description: Create and update ClickUp tasks with proper formatting, task types, custom fields, and assignment. Use when the user wants to create a task, bug, feature, or ticket in ClickUp, or when they mention Sprint planning or task tracking.
+description: 'Create or update ClickUp tasks, bugs, features, sprint items, fields, formatting, and assignments.'
 ---
 
 # ClickUp Tasks (Create & Update)

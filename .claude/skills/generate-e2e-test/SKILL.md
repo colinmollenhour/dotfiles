@@ -1,6 +1,6 @@
 ---
 name: generate-e2e-test
-description: Generate an end-to-end test for a given feature or user story. Use when the user asks to create E2E tests, automate workflows, test user flows, or convert manual workflows into Playwright tests. Leverages Playwright MCP to perform the workflow interactively before generating test code.
+description: 'Generate Playwright E2E tests from user stories or manual workflows; explore flow interactively before writing code.'
 argument-hint: Write/paste your workflow description here along with hints about where to write the code.
 allowed-tools: mcp__Playwright_browser_click, mcp__Playwright_browser_console_messages, mcp__Playwright_browser_drag, mcp__Playwright_browser_evaluate, mcp__Playwright_browser_file_upload, mcp__Playwright_browser_fill_form, mcp__Playwright_browser_handle_dialog, mcp__Playwright_browser_hover, mcp__Playwright_browser_navigate, mcp__Playwright_browser_navigate_back, mcp__Playwright_browser_network_requests, mcp__Playwright_browser_press_key, mcp__Playwright_browser_resize, mcp__Playwright_browser_select_option, mcp__Playwright_browser_snapshot, mcp__Playwright_browser_take_screenshot, mcp__Playwright_browser_type, mcp__Playwright_browser_wait_for, mcp__Playwright_browser_mouse_click_xy, mcp__Playwright_browser_mouse_drag_xy, mcp__Playwright_browser_mouse_move_xy, mcp__Playwright_browser_verify_element_visible, mcp__Playwright_browser_verify_text_visible, mcp__Playwright_browser_verify_value, Read, Write, Edit, Grep, Glob, Bash, TodoWrite
 ---

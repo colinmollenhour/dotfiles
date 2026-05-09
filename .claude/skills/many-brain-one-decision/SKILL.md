@@ -1,6 +1,6 @@
 ---
 name: many-brain-one-decision
-description: Coordinate a multi-round debate among MBOT agents with distinct personalities to make a decision. Use when the user asks to decide, choose, compare options, debate tradeoffs, converge on an outcome, or invokes MBOD / many-brain-one-decision.
+description: 'Run a multi-agent debate to compare options and converge on a decision.'
 allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *)
 ---
 

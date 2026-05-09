@@ -1,6 +1,6 @@
 ---
 name: "Drizzle ORM"
-description: "TypeScript-first ORM patterns for PostgreSQL, MySQL, and SQLite. Use when writing database schemas, queries, migrations, relations, or transactions with Drizzle ORM."
+description: 'Use Drizzle ORM for TypeScript schemas, queries, migrations, relations, and transactions.'
 ---
 
 # Drizzle ORM

@@ -1,6 +1,6 @@
 ---
 name: glab-cli
-description: Use the GitLab CLI for GitLab repository operations including merge requests, discussions, pipelines, notes, labels, and raw API calls. Use when the user gives a GitLab URL or asks to view, create, update, comment on, or inspect GitLab state from the terminal with `glab`.
+description: 'Use glab for GitLab MRs, issues, discussions, pipelines, notes, labels, and raw API tasks.'
 ---
 
 # GitLab CLI

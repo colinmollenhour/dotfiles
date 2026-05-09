@@ -1,6 +1,6 @@
 ---
 name: nuxt-ui
-description: Use when implementing or debugging UI features with Nuxt UI components, designing forms, tables, modals, or any user interface work - fetches current documentation to ensure accurate component APIs
+description: 'Build or debug UI with Nuxt UI components, forms, tables, modals, and current docs.'
 ---
 
 # Nuxt UI Skill

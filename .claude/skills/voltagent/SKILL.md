@@ -1,6 +1,6 @@
 ---
 name: "VoltAgent Development"
-description: "Create and configure VoltAgent AI agents with tools, memory, hooks, and sub-agents. Use when building AI agents, adding agent tools, configuring VoltAgent memory, creating multi-agent workflows, or debugging VoltAgent integrations."
+description: 'Create or configure VoltAgent agents with tools, memory, hooks, sub-agents, and workflows.'
 ---
 
 # VoltAgent Development

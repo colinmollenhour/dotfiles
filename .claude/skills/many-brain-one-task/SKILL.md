@@ -1,6 +1,6 @@
 ---
 name: many-brain-one-task
-description: Run the same task with multiple agents simultaneously. Good for reviews, critiques, comparing models. Abbreviated as "MBOT"
+description: 'Run the same task with multiple agents for reviews, critiques, or model comparison.'
 allowed-tools: Bash(bun *), Bash(cr *)
 ---
 

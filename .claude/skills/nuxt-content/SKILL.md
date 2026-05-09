@@ -1,6 +1,6 @@
 ---
 name: nuxt-content
-description: Author Markdown content files for Nuxt Content using MDC syntax. Use when creating or editing .md files in content/ directories, writing documentation, blog posts, or any content that uses Vue components in Markdown. Triggers on content authoring, MDC syntax, Nuxt Content files.
+description: 'Author or edit Nuxt Content Markdown using MDC syntax and Vue components.'
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 

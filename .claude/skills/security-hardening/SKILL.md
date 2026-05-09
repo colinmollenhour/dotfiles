@@ -1,6 +1,6 @@
 ---
 name: security-hardening
-description: Review code for application-level security hardening issues beyond framework checklists. Focuses on abuse prevention, API protection, business logic exploitation, rate limiting, input validation, and early request rejection. Use when auditing code for security, reviewing endpoints for abuse potential, or checking application resilience to real-world attacks.
+description: 'Audit app security beyond checklists: abuse prevention, API protection, business logic, rate limits, validation.'
 allowed-tools: Read, Grep, Glob, LS, WebFetch, WebSearch, Task
 ---
 

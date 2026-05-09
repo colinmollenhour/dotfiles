@@ -1,6 +1,6 @@
 ---
 name: gh-cli
-description: Use the GitHub CLI for GitHub repository operations including pull requests, issues, comments, workflow runs, labels, and raw API calls. Use when the user gives a GitHub URL or asks to view, create, update, comment on, or inspect GitHub state from the terminal with `gh`.
+description: 'Use gh for GitHub PRs, issues, runs, releases, comments, checks, labels, and raw API tasks.'
 ---
 
 # GitHub CLI
