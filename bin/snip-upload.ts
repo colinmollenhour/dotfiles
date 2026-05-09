@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
