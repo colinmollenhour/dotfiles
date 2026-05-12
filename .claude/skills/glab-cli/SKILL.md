@@ -37,6 +37,33 @@ Use `glab api` when a high-level command does not expose the needed operation or
 - For JSON request bodies, send them through `--input -` with `Content-Type: application/json`
 - Re-fetch the resource after mutation when confirmation matters
 
+#### Pagination Is Mandatory For Comments
+
+**Warning: GitLab discussion and note APIs are paginated. Missing a page means missing review comments. This has caused unresolved MR comments to be falsely reported as resolved.**
+
+When inspecting MR/issue comments, discussions, or notes, do **not** rely on a single default `glab api` response. Always do one of the following:
+
+- Request a high `per_page` value, usually `?per_page=100`, when the result set is known to fit in one page
+- Follow pagination headers and fetch every page when more than 100 items may exist
+- Fetch user-provided note URLs directly by note ID, even if a discussion listing did not show them
+
+Safe patterns:
+
+```bash
+glab api 'projects/:fullpath/merge_requests/19/discussions?per_page=100&page=1'
+glab api 'projects/:fullpath/merge_requests/19/notes?per_page=100&page=1'
+glab api 'projects/:fullpath/merge_requests/19/notes/160554'
+```
+
+Before declaring "no unresolved comments", explicitly filter the complete paged result set for unresolved resolvable discussions:
+
+```bash
+glab api 'projects/:fullpath/merge_requests/19/discussions?per_page=100&page=1' \
+  | jq '.[] | select(.resolvable == true and .resolved == false)'
+```
+
+If there may be more than one page, repeat for subsequent pages or use a helper/script that follows `X-Next-Page`. Never state that all comments are resolved until pagination has been accounted for.
+
 ### Step 4: Avoid interactive flows
 
 Always pass explicit flags instead of relying on prompts.
@@ -54,7 +81,7 @@ Always pass explicit flags instead of relying on prompts.
 
 - Resolve the open MR for the current branch
 - Fetch MR state, author, diffs, and version SHAs
-- Fetch the full MR context (metadata + notes + discussions + versions + diff) in one call — see [Bundled helpers](#bundled-helpers)
+- Fetch the full MR context (metadata + **all paged notes/discussions** + versions + diff) in one call — see [Bundled helpers](#bundled-helpers)
 - Create or update an MR
 - Post MR notes or inline diff comments
 - Add labels to an MR
