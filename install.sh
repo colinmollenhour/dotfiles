@@ -82,7 +82,6 @@ copy_dir_contents() {
 copy_agent_files() {
   local src="$1"
   local dest="$2"
-  local exclude_mbot="${3:-false}"
   local item base
 
   if [[ ! -d "$src" ]]; then
@@ -91,9 +90,7 @@ copy_agent_files() {
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    if [[ "$exclude_mbot" == true ]]; then
-      dry_run_msg "copy $src/ into $dest/ excluding colin-mbot-*.md"
-    elif [[ "$WITH_OPUS" == true ]]; then
+    if [[ "$WITH_OPUS" == true ]]; then
       dry_run_msg "copy $src/ into $dest/"
     else
       dry_run_msg "copy $src/ into $dest/ excluding colin-mbot-opus.md"
@@ -105,7 +102,6 @@ copy_agent_files() {
   shopt -s nullglob
   for item in "$src"/*; do
     base="$(basename "$item")"
-    [[ "$exclude_mbot" == true && "$base" == colin-mbot-*.md ]] && continue
     [[ "$WITH_OPUS" == false && "$base" == "colin-mbot-opus.md" ]] && continue
     cp -Rf "$item" "$dest/"
   done
@@ -123,7 +119,7 @@ copy_claude_home() {
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "copy .claude/ into $dest/ excluding .claude/worktrees and colin-mbot-*.md"
+    dry_run_msg "copy .claude/ into $dest/ excluding .claude/worktrees"
     return
   fi
 
@@ -133,7 +129,7 @@ copy_claude_home() {
     base="$(basename "$item")"
     [[ "$base" == "worktrees" ]] && continue
     if [[ "$base" == "agents" ]]; then
-      copy_agent_files "$item" "$dest/agents" true
+      copy_agent_files "$item" "$dest/agents"
       continue
     fi
     cp -Rf "$item" "$dest/"
@@ -197,7 +193,7 @@ OPTIONS
       --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
-      --with-opus    Include colin-mbot-opus.md when installing OpenCode agents
+      --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (no to avoid accidental usage)
       --no-input     Disable prompts; requires at least one install option
   -q, --quiet        Print only warnings and errors
   -h, --help         Show this help message
@@ -454,7 +450,12 @@ install_agents() {
   copy_dir_contents ".claude/commands" "$HOME/.opencode/commands"
   copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
   install_command_skills
-  copy_agent_files ".claude/agents" "$HOME/.opencode/agents"
+  copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
+  if [[ "$DRY_RUN" == true ]]; then
+    dry_run_msg "copy .claude/agents/megamind.md into $HOME/.opencode/agents/"
+  else
+    cp -f ".claude/agents/megamind.md" "$HOME/.opencode/agents/"
+  fi
 
   if [[ "$DRY_RUN" == true ]]; then
     dry_run_msg "create $HOME/.gemini/antigravity/skills"

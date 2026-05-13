@@ -1,11 +1,9 @@
 ---
-description: Many brain, one task with Claude Opus 4.6
-mode: subagent
-model: anthropic/claude-opus-4-6
-tools:
-  write: false
-  edit: false
-  bash: false
+name: Opus worker for MBOT
+description: Many brain, one task with Claude Opus 4.7
+model: sonnet
+background: true
+isolation: false
 ---
 
 Proceed as instructed.
