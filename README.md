@@ -49,6 +49,14 @@ cd ~/.dotfiles
 ./install.sh --help
 ```
 
+**First-time install on an existing system** — if destination files already exist the script will skip them and warn, to avoid clobbering files you may have edited. Pass `--force` to overwrite them all:
+
+```bash
+./install.sh --all --force
+```
+
+Subsequent runs are safe without `--force`: the script tracks which files it installed and their hashes, so it only updates files it owns that haven't been manually changed.
+
 After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, and tools. The same content lives at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2).
 
 ## What gets installed
@@ -57,12 +65,14 @@ After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, 
 
 | File | Behavior |
 |---|---|
-| `.bashrc.colin` | Sourced from `.bashrc` (non-clobbering) |
-| `.gitconfig.colin`, `.gitignore.global`, `.gitattributes.global` | Included from `.gitconfig` (non-clobbering) |
-| `.tmux.conf`, `.config/tmux-powerline/config.sh` | Replace existing files |
-| `.vimrc` | Replaces existing file |
-| `.config/delta/themes.gitconfig` | Replaces existing file |
-| `.config/starship.toml` | Replaces existing file |
+| `.bashrc.colin` | Sourced from `.bashrc` (non-clobbering append) |
+| `.gitconfig.colin`, `.gitignore.global`, `.gitattributes.global` | Included from `.gitconfig` (non-clobbering append) |
+| `.tmux.conf`, `.vimrc`, `.config/starship.toml`, etc. | Installed and tracked — updated on future runs unless you've edited them locally |
+
+The installer tracks every file it owns in `~/.local/share/colin-dotfiles/manifest`. On each run it:
+
+- **Skips** any destination file you've edited since the last install and warns you (use `--force` to overwrite anyway).
+- **Deletes** installed files whose source was removed from the repo, but only if you haven't modified them locally.
 
 ### Claude Code config
 

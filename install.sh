@@ -96,12 +96,17 @@ save_manifest() {
   mv -f "$tmp" "$MANIFEST_FILE"
 }
 
-# Returns 0 if dest can be safely overwritten; prints warning and returns 1 if user-modified
+# Returns 0 if dest can be safely overwritten; prints warning and returns 1 otherwise.
+# Untracked existing files are treated as potentially manual and require --force.
 can_overwrite() {
   local dest="$1"
   [[ -f "$dest" ]] || return 0
   local tracked="${MANIFEST_HASH[$dest]:-}"
-  [[ -z "$tracked" ]] && return 0
+  if [[ -z "$tracked" ]]; then
+    [[ "$FORCE" == true ]] && return 0
+    warn "Skipping untracked existing file (use --force to overwrite on first run): $dest"
+    return 1
+  fi
   local current
   current="$(file_hash "$dest")"
   [[ "$current" == "$tracked" ]] && return 0
