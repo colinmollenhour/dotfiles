@@ -134,7 +134,7 @@ bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/run-opencode.ts" \
   -- "Participate in the decision debate exactly as instructed."
 ```
 
-When the host is OpenCode and the selected debater is Claude-backed, use the `claude` CLI first:
+When the host is OpenCode and the selected debater is Claude-backed, use the `claude` CLI first (load the `claude-cli` skill for complete flag reference):
 
 ```bash
 claude --agent general \

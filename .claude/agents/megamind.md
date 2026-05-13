@@ -98,6 +98,15 @@ Do not:
 - Start implementation.
 - Ask the user about decisions that can be resolved later by MBOD.
 
+## Skills to Load On Demand
+
+Load these skills only when actually shelling out to the relevant CLI; do not load them pre-emptively:
+
+- `claude-cli` — when invoking the `claude` CLI directly (e.g. for a planning or fix agent that does not go through MBOT).
+- `codex-cli` — when invoking the `codex` CLI directly.
+
+When delegating to MBOT or MBOD, those skills handle CLI routing themselves.
+
 ## Phase 2: MBOT Plan Critique
 
 Use the `many-brain-one-task` skill with the critique task shape.
@@ -381,7 +390,22 @@ Save:
 final/delivery.md
 ```
 
-## Phase 13: CI Monitor Loop
+## Phase 13: Infographic (Optional)
+
+Skip this phase if the user said not to generate an infographic or already specified an image-gen tool to use elsewhere.
+
+After the PR/MR URL is known, invoke the `infographic` skill to produce `.tmp/PROMPT_Infographic-<slug>.md`. Then generate the actual image using the first available tool from this priority list:
+
+1. **imagegen** — preferred if available in the current environment.
+2. **codex-cli** skill — `codex exec --ephemeral` with the prompt file contents.
+3. **nano-banana** skill — `gemini` CLI via the nanobanana extension.
+4. **notebooklm** skill — infographic generation feature.
+
+If none of the image-gen tools are available, leave the prompt file in place and note it in the final report so the user can pipe it manually.
+
+Once generated, embed the image (or a link to it) in the PR/MR description using `gh-cli` or `glab-cli`.
+
+## Phase 14: CI Monitor Loop
 
 Launch one monitor/fix agent after the PR/MR exists.
 

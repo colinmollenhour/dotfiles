@@ -24,17 +24,15 @@ Load `<profile>.md` from this skill's directory. If missing, fall back to `defau
 
 ### Built-in defaults
 
-Preferred host: OpenCode.
-
-- Primary models:
+Primary models:
   - Opus (via Claude CLI)
   - GPT (via OpenCode)
   - Gemini (via OpenCode)
-- Backup models (via OpenCode): GLM, Qwen, MiMo, Kimi, Grok.
+Backup models (via OpenCode): MiMo, GLM, Qwen, Kimi, Grok.
 
 ## Step 2: Pick the harness for each participant
 
-The host harness (the one running this skill) limits which models can run as native subagents. For everything else, shell out. The user's profile may override these rules (e.g. "Use the codex CLI for OpenAI models" forces a specific CLI even when another mechanism is available) — profile rules win.
+The host harness (you, the one running this skill right now) limits which models can run as native subagents. For everything else, shell out. The user's profile may override these rules (e.g. "Use the codex CLI for OpenAI models" forces a specific CLI even when another mechanism is available) — profile rules win.
 
 ### Routing matrix
 
@@ -103,6 +101,8 @@ Launch all participants in parallel. If one fails to start, skip it, note it in 
 It may help to instruct each agent to wrap findings in markers (e.g. `<<<ISSUE>>>...<<<END>>>`) so the gather/summarize step can parse output reliably.
 
 ### Claude (Opus / Sonnet / Haiku)
+
+Load the `claude-cli` skill for complete flag reference. Summary:
 
 Both Claude Code and OpenCode hosts run Claude models via the same path: shell out to the `claude` CLI (or, when the host is Claude Code, prefer the native `Agent` tool which uses the same backend).
 
@@ -216,9 +216,11 @@ Both exit `0` on success, `1` on empty/no-text response or generic failure, `2` 
 
 ### codex
 
+Load the `codex-cli` skill for complete flag reference. Quick reference:
+
 ```bash
-codex exec -c model="gpt-5.4" --ephemeral "PROMPT_HERE"
-codex review -c model="gpt-5.4" --base <branch> > ./.codex-review.txt 2>&1
+codex exec --ephemeral "PROMPT_HERE"
+codex review --base <branch> > ./.codex-review.txt 2>&1
 ```
 
 Caveats:
