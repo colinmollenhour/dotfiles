@@ -30,6 +30,12 @@ DRY_RUN=false
 NO_INPUT=false
 QUIET=false
 WITH_OPUS=false
+FORCE=false
+
+MANIFEST_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/colin-dotfiles/manifest"
+declare -A MANIFEST_HASH=()   # dest_abs → hash of dest at last install
+declare -A MANIFEST_SRC=()    # dest_abs → src relative to SCRIPT_DIR
+declare -A ACTIVE_DESTS=()    # dest_abs → 1 (visited this run)
 
 cd "$SCRIPT_DIR"
 
@@ -61,78 +67,184 @@ ensure_repo_file() {
   [[ -e "$path" ]] || die "Required repository file is missing: $path"
 }
 
-copy_dir_contents() {
-  local src="$1"
-  local dest="$2"
+# --- Manifest tracking ---
 
+file_hash() {
+  sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+}
+
+load_manifest() {
+  MANIFEST_HASH=()
+  MANIFEST_SRC=()
+  [[ -f "$MANIFEST_FILE" ]] || return 0
+  local hash src dest
+  while IFS=$'\t' read -r hash src dest; do
+    [[ -n "$hash" && -n "$dest" ]] || continue
+    MANIFEST_HASH["$dest"]="$hash"
+    MANIFEST_SRC["$dest"]="$src"
+  done < "$MANIFEST_FILE"
+}
+
+save_manifest() {
+  [[ "$DRY_RUN" == true ]] && return
+  mkdir -p "$(dirname "$MANIFEST_FILE")"
+  local dest tmp
+  tmp="$(mktemp "$(dirname "$MANIFEST_FILE")/manifest.XXXXXX")"
+  for dest in "${!MANIFEST_HASH[@]}"; do
+    printf '%s\t%s\t%s\n' "${MANIFEST_HASH[$dest]}" "${MANIFEST_SRC[$dest]:-}" "$dest"
+  done > "$tmp"
+  mv -f "$tmp" "$MANIFEST_FILE"
+}
+
+# Returns 0 if dest can be safely overwritten; prints warning and returns 1 if user-modified
+can_overwrite() {
+  local dest="$1"
+  [[ -f "$dest" ]] || return 0
+  local tracked="${MANIFEST_HASH[$dest]:-}"
+  [[ -z "$tracked" ]] && return 0
+  local current
+  current="$(file_hash "$dest")"
+  [[ "$current" == "$tracked" ]] && return 0
+  if [[ "$FORCE" == true ]]; then
+    warn "Force-overwriting manually modified: $dest"
+    return 0
+  fi
+  warn "Skipping manually modified file (use --force to overwrite): $dest"
+  return 1
+}
+
+# Install src_abs → dest, recording src_rel in the manifest
+install_file() {
+  local src_rel="$1" src_abs="$2" dest="$3"
+  ACTIVE_DESTS["$dest"]=1
+  if [[ "$DRY_RUN" == true ]]; then
+    can_overwrite "$dest" && dry_run_msg "install $src_rel → $dest"
+    return 0
+  fi
+  can_overwrite "$dest" || return 0
+  mkdir -p "$(dirname "$dest")"
+  cp -f "$src_abs" "$dest"
+  MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
+  MANIFEST_SRC["$dest"]="$src_rel"
+}
+
+# Move a pre-rendered tmpfile → dest, recording src_rel in the manifest; always removes tmpfile
+install_rendered() {
+  local src_rel="$1" tmpfile="$2" dest="$3"
+  ACTIVE_DESTS["$dest"]=1
+  if [[ "$DRY_RUN" == true ]]; then
+    [[ -n "$tmpfile" ]] && rm -f "$tmpfile"
+    can_overwrite "$dest" && dry_run_msg "render $src_rel → $dest"
+    return 0
+  fi
+  if ! can_overwrite "$dest"; then
+    rm -f "$tmpfile"
+    return 0
+  fi
+  mkdir -p "$(dirname "$dest")"
+  mv -f "$tmpfile" "$dest"
+  MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
+  MANIFEST_SRC["$dest"]="$src_rel"
+}
+
+# Recursively install all files under src_abs into dest_dir, tracking each in the manifest
+install_dir_files() {
+  local src_abs="$1" dest_dir="$2"
+  local item base src_rel
+  if [[ ! -d "$src_abs" ]]; then
+    warn "Skipping missing directory: $src_abs"
+    return
+  fi
+  shopt -s nullglob
+  for item in "$src_abs"/*; do
+    base="$(basename "$item")"
+    if [[ -d "$item" ]]; then
+      install_dir_files "$item" "$dest_dir/$base"
+    elif [[ -f "$item" ]]; then
+      src_rel="${item#$SCRIPT_DIR/}"
+      install_file "$src_rel" "$item" "$dest_dir/$base"
+    fi
+  done
+  shopt -u nullglob
+}
+
+# Delete installed files whose source was removed from the repo (if still unmodified)
+cleanup_deleted() {
+  local dest src_path current_hash n_removed=0 n_modified=0
+  for dest in "${!MANIFEST_HASH[@]}"; do
+    [[ -v ACTIVE_DESTS[$dest] ]] && continue
+    src_path="${MANIFEST_SRC[$dest]:-}"
+    [[ -n "$src_path" && -e "$SCRIPT_DIR/$src_path" ]] && continue  # source still exists
+    if [[ ! -f "$dest" ]]; then
+      unset "MANIFEST_HASH[$dest]" "MANIFEST_SRC[$dest]"
+      continue
+    fi
+    current_hash="$(file_hash "$dest")"
+    if [[ "$current_hash" == "${MANIFEST_HASH[$dest]}" ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "delete $dest (source removed, file unmodified)"
+      else
+        rm -f "$dest"
+        log "Deleted $dest (source removed from dotfiles)"
+        unset "MANIFEST_HASH[$dest]" "MANIFEST_SRC[$dest]"
+      fi
+      n_removed=$((n_removed + 1))
+    else
+      warn "Not deleting manually modified orphan: $dest"
+      warn "  Its source ($src_path) was removed from dotfiles. Delete manually if no longer needed."
+      n_modified=$((n_modified + 1))
+    fi
+  done
+  [[ $n_removed -gt 0 ]] && log "Deleted $n_removed orphaned file(s) whose sources were removed"
+  [[ $n_modified -gt 0 ]] && warn "$n_modified orphaned file(s) skipped (manually modified)"
+}
+
+# --- Copy helpers ---
+
+copy_dir_contents() {
+  local src="$1" dest="$2"
   if [[ ! -d "$src" ]]; then
     warn "Skipping missing directory: $src"
     return
   fi
-
-  if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "copy $src/ into $dest/"
-    return
-  fi
-
-  mkdir -p "$dest"
-  cp -Rf "$src/." "$dest/"
+  install_dir_files "$SCRIPT_DIR/$src" "$dest"
 }
 
 copy_agent_files() {
-  local src="$1"
-  local dest="$2"
-  local item base
-
+  local src="$1" dest="$2"
+  local item base src_rel
   if [[ ! -d "$src" ]]; then
     warn "Skipping missing directory: $src"
     return
   fi
-
-  if [[ "$DRY_RUN" == true ]]; then
-    if [[ "$WITH_OPUS" == true ]]; then
-      dry_run_msg "copy $src/ into $dest/"
-    else
-      dry_run_msg "copy $src/ into $dest/ excluding colin-mbot-opus.md"
-    fi
-    return
-  fi
-
-  mkdir -p "$dest"
   shopt -s nullglob
   for item in "$src"/*; do
     base="$(basename "$item")"
     [[ "$WITH_OPUS" == false && "$base" == "colin-mbot-opus.md" ]] && continue
-    cp -Rf "$item" "$dest/"
+    src_rel="$item"  # already relative to SCRIPT_DIR
+    install_file "$src_rel" "$SCRIPT_DIR/$item" "$dest/$base"
   done
   shopt -u nullglob
 }
 
 copy_claude_home() {
-  local src=".claude"
-  local dest="$HOME/.claude"
+  local src=".claude" dest="$HOME/.claude"
   local item base
-
   if [[ ! -d "$src" ]]; then
     warn "Skipping missing directory: $src"
     return
   fi
-
-  if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "copy .claude/ into $dest/ excluding .claude/worktrees"
-    return
-  fi
-
-  mkdir -p "$dest"
   shopt -s nullglob
   for item in "$src"/*; do
     base="$(basename "$item")"
     [[ "$base" == "worktrees" ]] && continue
     if [[ "$base" == "agents" ]]; then
       copy_agent_files "$item" "$dest/agents"
-      continue
+    elif [[ -d "$item" ]]; then
+      install_dir_files "$SCRIPT_DIR/$item" "$dest/$base"
+    elif [[ -f "$item" ]]; then
+      install_file "$item" "$SCRIPT_DIR/$item" "$dest/$base"
     fi
-    cp -Rf "$item" "$dest/"
   done
   shopt -u nullglob
 }
@@ -193,6 +305,7 @@ OPTIONS
       --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
+  -f, --force        Overwrite files that were manually modified since last install
       --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (no to avoid accidental usage)
       --no-input     Disable prompts; requires at least one install option
   -q, --quiet        Print only warnings and errors
@@ -241,11 +354,14 @@ install_dotfiles() {
     log "Installing $dotfile"
 
     if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "render $src to $dest"
+      ACTIVE_DESTS["$dest"]=1
+      can_overwrite "$dest" && dry_run_msg "render $src → $dest"
     else
-      mkdir -p "$(dirname "$dest")"
+      local tmp
+      tmp="$(mktemp)"
       INSTALL_REPO_HEAD="$install_repo_head" INSTALL_DATE="$install_date" \
-        envsubst '$INSTALL_REPO_HEAD:$INSTALL_DATE' < "$src" > "$dest"
+        envsubst '$INSTALL_REPO_HEAD:$INSTALL_DATE' < "$src" > "$tmp"
+      install_rendered "$src" "$tmp" "$dest"
     fi
   done
 }
@@ -356,12 +472,19 @@ install_command_skills() {
 
     count=$((count + 1))
 
+    local skill_md="$skill_dir/SKILL.md"
+    local openai_yaml="$skill_dir/agents/openai.yaml"
+
     if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "generate command skill $skill_name in $skill_dir"
+      ACTIVE_DESTS["$skill_md"]=1
+      ACTIVE_DESTS["$openai_yaml"]=1
+      can_overwrite "$skill_md" && dry_run_msg "generate command skill $skill_name in $skill_dir"
       continue
     fi
 
     mkdir -p "$skill_dir/agents"
+    local tmp
+    tmp="$(mktemp)"
     awk -v skill_name="$skill_name" '
       BEGIN { frontmatter = 0; inserted = 0 }
       NR == 1 && $0 == "---" {
@@ -386,8 +509,13 @@ install_command_skills() {
         inserted = 1
       }
       { print }
-    ' "$command_file" > "$skill_dir/SKILL.md"
-    printf 'policy:\n  allow_implicit_invocation: false\n' > "$skill_dir/agents/openai.yaml"
+    ' "$command_file" > "$tmp"
+    install_rendered "$command_file" "$tmp" "$skill_md"
+    # openai.yaml is always the same two lines; write and track it directly
+    printf 'policy:\n  allow_implicit_invocation: false\n' > "$openai_yaml"
+    MANIFEST_HASH["$openai_yaml"]="$(file_hash "$openai_yaml")"
+    MANIFEST_SRC["$openai_yaml"]="$command_file"
+    ACTIVE_DESTS["$openai_yaml"]=1
   done < <(find "$commands_dir" -type f -name '*.md' | sort)
 
   if [[ "$DRY_RUN" == true ]]; then
@@ -423,6 +551,8 @@ install_agents() {
         tmp="$(mktemp)"
         jq '. + {statusLine: {type: "command", command: "bash ~/.claude/statusline/statusline.sh"}}' \
           "$claude_settings" > "$tmp" && mv "$tmp" "$claude_settings"
+        # Re-record hash after jq mutation so the file doesn't look manually modified next run
+        MANIFEST_HASH["$claude_settings"]="$(file_hash "$claude_settings")"
         log "Added statusLine to ~/.claude/settings.json"
       fi
     else
@@ -451,11 +581,7 @@ install_agents() {
   copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
   install_command_skills
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
-  if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "copy .claude/agents/megamind.md into $HOME/.opencode/agents/"
-  else
-    cp -f ".claude/agents/megamind.md" "$HOME/.opencode/agents/"
-  fi
+  install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
 
   if [[ "$DRY_RUN" == true ]]; then
     dry_run_msg "create $HOME/.gemini/antigravity/skills"
@@ -562,6 +688,10 @@ parse_args() {
         DRY_RUN=true
         shift
         ;;
+      -f|--force)
+        FORCE=true
+        shift
+        ;;
       --no-input)
         NO_INPUT=true
         shift
@@ -624,7 +754,10 @@ run_install() {
 
 main() {
   parse_args "$@"
+  load_manifest
   run_install
+  cleanup_deleted
+  save_manifest
 
   if [[ "$DRY_RUN" == true ]]; then
     log ""
