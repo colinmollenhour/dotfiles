@@ -390,20 +390,61 @@ Save:
 final/delivery.md
 ```
 
-## Phase 13: Infographic (Optional)
+## Phase 13: Educational Delivery Note
 
-Skip this phase if the user said not to generate an infographic or already specified an image-gen tool to use elsewhere.
+After the PR/MR URL is known, load the `educational-brief` skill and launch one educational synthesis sub-agent. This preserves the parent/main conversation context while still producing a useful teaching artifact for reviewers and future agents.
 
-After the PR/MR URL is known, invoke the `infographic` skill to produce `.tmp/PROMPT_Infographic-<slug>.md`. Then generate the actual image using the first available tool from this priority list:
+Provide the skill and sub-agent with the run directory, PR/MR URL, base branch, head branch, and grounded evidence:
 
-1. **imagegen** — preferred if available in the current environment.
-2. **codex-cli** skill — `codex exec --ephemeral` with the prompt file contents.
-3. **nano-banana** skill — `gemini` CLI via the nanobanana extension.
-4. **notebooklm** skill — infographic generation feature.
+- PR/MR URL and number/IID
+- Base branch and head branch
+- `briefs/request.md`
+- `briefs/context.md`
+- `plans/original.md`
+- `critiques/mbot-critique.md`
+- `plans/second-draft.md`
+- `decisions/*.md`, if any exist
+- `plans/final.md`
+- `agents/work-packages.md`
+- `agents/*-final.md`
+- `final/integration-check.md`
+- `reviews/validated-findings.md`
+- `fixes/*-final.md`, if any exist
+- `reviews/fixed-review.md`
+- `final/local-gates.md`
+- `final/delivery.md`
+- `git diff --stat <base>...HEAD`
+- Relevant changed-file diffs or file excerpts needed to explain the final architecture
 
-If none of the image-gen tools are available, leave the prompt file in place and note it in the final report so the user can pipe it manually.
+The skill/sub-agent must write:
 
-Once generated, embed the image (or a link to it) in the PR/MR description using `gh-cli` or `glab-cli`.
+```text
+final/educational-material.md
+```
+
+The appendix format, grounding rules, section requirements, Mermaid guidance, and density expectations are owned by the skill. Do not inline or reinvent those instructions in Megamind.
+
+After the sub-agent writes `final/educational-material.md`, Megamind must validate it before posting:
+
+1. Read `final/educational-material.md`.
+2. Spot-check each substantive claim against run artifacts, changed files, diffs, local gate output, or PR/MR metadata.
+3. Correct or remove claims that are ungrounded, overstated, stale, or unsupported.
+4. Ensure Mermaid diagrams match the actual code/configuration structure.
+5. Write:
+
+```text
+final/educational-validation.md
+```
+
+`final/educational-validation.md` must list checked claim groups, corrections made, and any residual uncertainty.
+
+Append the validated educational material to the PR/MR description using `gh-cli` or `glab-cli` under this heading:
+
+```markdown
+## Megamind Educational Appendix
+```
+
+If the PR/MR platform update fails because of permissions or API errors, write the exact attempted command and error excerpt to `final/educational-validation.md` and continue to CI monitoring.
 
 ## Phase 14: CI Monitor Loop
 
@@ -458,6 +499,7 @@ Keep the final response concise:
 - Commit SHA(s)
 - Local gates summary
 - Artifact directory path
+- Educational appendix status
 - Remaining blocker, if one exists
 
 Do not paste long critiques, reviews, decisions, or CI logs into chat. Point to artifact files.
