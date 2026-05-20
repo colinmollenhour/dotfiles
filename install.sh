@@ -97,18 +97,24 @@ save_manifest() {
 }
 
 # Returns 0 if dest can be safely overwritten; prints warning and returns 1 otherwise.
-# Untracked existing files are treated as potentially manual and require --force.
+# Untracked existing files are treated as potentially manual and require --force,
+# unless they already match the file being installed. Matching files are safe to
+# adopt into the manifest so repeated installs do not keep warning about them.
 can_overwrite() {
   local dest="$1"
+  local candidate="${2:-}"
   [[ -f "$dest" ]] || return 0
   local tracked="${MANIFEST_HASH[$dest]:-}"
+  local current
+  current="$(file_hash "$dest")"
   if [[ -z "$tracked" ]]; then
+    if [[ -n "$candidate" && -f "$candidate" && "$current" == "$(file_hash "$candidate")" ]]; then
+      return 0
+    fi
     [[ "$FORCE" == true ]] && return 0
     warn "Skipping untracked existing file (use --force to overwrite on first run): $dest"
     return 1
   fi
-  local current
-  current="$(file_hash "$dest")"
   [[ "$current" == "$tracked" ]] && return 0
   if [[ "$FORCE" == true ]]; then
     warn "Force-overwriting manually modified: $dest"
@@ -123,10 +129,10 @@ install_file() {
   local src_rel="$1" src_abs="$2" dest="$3"
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
-    can_overwrite "$dest" && dry_run_msg "install $src_rel → $dest"
+    can_overwrite "$dest" "$src_abs" && dry_run_msg "install $src_rel → $dest"
     return 0
   fi
-  can_overwrite "$dest" || return 0
+  can_overwrite "$dest" "$src_abs" || return 0
   mkdir -p "$(dirname "$dest")"
   cp -f "$src_abs" "$dest"
   MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
@@ -138,11 +144,11 @@ install_rendered() {
   local src_rel="$1" tmpfile="$2" dest="$3"
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
+    can_overwrite "$dest" "$tmpfile" && dry_run_msg "render $src_rel → $dest"
     [[ -n "$tmpfile" ]] && rm -f "$tmpfile"
-    can_overwrite "$dest" && dry_run_msg "render $src_rel → $dest"
     return 0
   fi
-  if ! can_overwrite "$dest"; then
+  if ! can_overwrite "$dest" "$tmpfile"; then
     rm -f "$tmpfile"
     return 0
   fi
@@ -202,6 +208,7 @@ cleanup_deleted() {
   done
   [[ $n_removed -gt 0 ]] && log "Deleted $n_removed orphaned file(s) whose sources were removed"
   [[ $n_modified -gt 0 ]] && warn "$n_modified orphaned file(s) skipped (manually modified)"
+  return 0
 }
 
 # --- Copy helpers ---
