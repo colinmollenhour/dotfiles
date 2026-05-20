@@ -67,7 +67,7 @@ What will hurt the system in production beyond pure correctness.
 
 Is this code maintainable and is it verifying the right things?
 
-- Quality: complexity, duplication, dead code, adherence to `AGENTS.md` and surrounding conventions
+- Quality: complexity, duplication, dead code, adherence to applicable instruction files (`AGENTS.md` / `CLAUDE.md`) and surrounding conventions
 - Simplification: premature abstraction, speculative generality, over-engineered configuration, changes that bundle unrelated work, refactors that expand scope beyond their stated goal
 - Test quality: coverage ROI for changed behavior, tests asserting implementation instead of behavior, flakiness risks (timing, ordering, shared state), missing failure-path tests, mocks that diverge from real behavior
 
@@ -175,9 +175,10 @@ Buckets: <K> (single bucket up to 5000 lines; otherwise ~3000 per bucket via K=�
 ### Step 5: Gather Context
 
 Launch context gathering in parallel:
-1. Find all relevant `AGENTS.md` files:
-   - The repo-root `AGENTS.md`, if present
-   - Any `AGENTS.md` in directories containing reviewed files or their parents
+1. Find all relevant instruction files:
+   - The repo-root `AGENTS.md` or `CLAUDE.md`, if present
+   - Any `AGENTS.md` or `CLAUDE.md` in directories containing reviewed files or their parents
+   - De-duplicate instruction files before adding them to prompts. Resolve each candidate's real path when possible, compare device/inode when available, and fall back to a content hash. If `AGENTS.md` and `CLAUDE.md` are the same file through a symlink, hardlink, copied path alias, or identical file contents, include exactly one copy and mention the aliases in that copy's heading.
 2. Summarize the diff/PR/MR
 3. If `--re-review`, gather prior comments and the incremental diff
 4. Gather external context from URLs in the title, description, or linked tasks/issues when the matching MCP is available
@@ -200,7 +201,7 @@ Each per-role MBOT invocation runs the full agent list (e.g. 3 agents), so threa
 Give each agent in each role:
 - **Only the current bucket's diff** as the primary review target
 - A one-line summary of the other buckets' scopes (top-level dirs + line counts) so agents know what they are *not* seeing in this pass — instruct them not to flag issues that would require cross-bucket context they don't have
-- Relevant `AGENTS.md` context (for files in the current bucket and their parents)
+- Relevant de-duplicated instruction-file context (`AGENTS.md` / `CLAUDE.md`, for files in the current bucket and their parents)
 - Any external context
 - The role's focus prompt from the [Role Library](#role-library) as the primary directive
 - Instruction: "Tag each issue with both your agent name AND the role name (e.g. `agent=Opus 4.6, role=security`)"
@@ -209,12 +210,12 @@ Give each agent in each role:
 
 Review focus across all roles:
 - Only the changed code (not unrelated files)
-- `AGENTS.md` compliance for applicable paths only
+- Instruction-file compliance for applicable paths only
 
 Only flag high-signal issues:
 - Objective runtime bugs or regressions
 - Clear security issues
-- Exact `AGENTS.md` violations you can quote directly
+- Exact instruction-file violations you can quote directly
 - Role-specific issues with concrete, demonstrable impact
 
 Do not flag:
@@ -291,7 +292,7 @@ Post a single summary comment:
 ```text
 > **AI Ultra Review** · Commit: <sha> · Roles: <csv> · Models: <csv>
 
-No issues found. Checked for bugs and AGENTS.md compliance across <N> role(s): <csv>.
+No issues found. Checked for bugs and instruction-file compliance across <N> role(s): <csv>.
 ```
 
 In re-review mode, say `No new issues found in the latest changes.` instead. Keep the `Commit: <sha>` segment in the header so the next re-review can diff from this point.
@@ -317,7 +318,7 @@ Comment rules:
 - `<agent-name(s)>` lists every agent that flagged this issue (deduplicated across roles).
 
 - Use exactly one comment per unique issue
-- Include links or citations when referring to source material such as `AGENTS.md`
+- Include links or citations when referring to source material such as `AGENTS.md` or `CLAUDE.md`
 - For self-contained fixes of up to 5 lines, include a committable suggestion block following the loaded platform skill's Committable Suggestion Blocks rules. The block's line count MUST equal the lines being replaced at the comment's anchor — on GitLab, multi-line replacements REQUIRE the explicit `` ```suggestion:-N+M `` modifier (a bare `` ```suggestion `` only ever replaces one line, regardless of body size). Do not emit a suggestion block if the replacement range cannot be determined precisely.
 - If the fix is not self-contained, or the suggestion-block rules above can't be satisfied, describe the fix and include a copyable prompt instead of a suggestion block
 
