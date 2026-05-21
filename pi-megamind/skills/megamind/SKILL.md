@@ -437,7 +437,7 @@ The skill/sub-agent must write:
 final/educational-material.md
 ```
 
-The appendix format, grounding rules, section requirements, Mermaid guidance, and density expectations are owned by the skill. Do not inline or reinvent those instructions in Megamind.
+The brief format, grounding rules, section requirements, Mermaid guidance, and density expectations are owned by the skill. Do not inline or reinvent those instructions in Megamind.
 
 After the sub-agent writes `final/educational-material.md`, Megamind must validate it before posting:
 
@@ -456,7 +456,7 @@ final/educational-validation.md
 Append the validated educational material to the PR/MR description using `gh-cli` or `glab-cli` under this heading:
 
 ```markdown
-## Megamind Educational Appendix
+## Megamind Educational Brief
 ```
 
 If the PR/MR platform update fails because of permissions or API errors, write the exact attempted command and error excerpt to `final/educational-validation.md` and continue to CI monitoring.
@@ -514,7 +514,7 @@ Keep the final response concise:
 - Commit SHA(s)
 - Local gates summary
 - Artifact directory path
-- Educational appendix status
+- Educational brief status
 - Remaining blocker, if one exists
 
 Do not paste long critiques, reviews, decisions, or CI logs into chat. Point to artifact files.

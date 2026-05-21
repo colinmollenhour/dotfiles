@@ -121,7 +121,7 @@ At a high level, it:
 - Splits implementation into one to three disjoint work packages, launches coding agents, inspects their reports and diffs, and runs integration checks.
 - Runs an ultra-review pass across correctness/security, runtime/deployment risk, and craft/test quality; validates findings; assigns fix work; and confirms the fixes with a focused review pass.
 - Runs final local gates, creates a feature branch, commits only task-related files, pushes, and opens or updates a GitHub PR or GitLab MR with artifact links and test results.
-- Launches an educational synthesis sub-agent after the PR/MR exists, validates its claims against Megamind artifacts and diffs, then appends a dense journey/design/architecture/lessons appendix to the PR/MR.
+- Launches an educational synthesis sub-agent after the PR/MR exists, validates its claims against Megamind artifacts and diffs, then appends a dense journey/design/architecture/lessons brief to the PR/MR.
 - Monitors CI after the PR/MR exists, fixes minor CI failures autonomously, and stops only when CI is green or a blocker file documents the exact evidence and next action.
 
 Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, or include `skip human review` to have it make the best call autonomously after a split MBOD result.

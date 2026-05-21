@@ -7,7 +7,7 @@ Pi package for the Megamind autonomous delivery workflow and supporting multi-ag
 - `skills/megamind/` — Megamind autonomous delivery workflow.
 - `skills/many-brain-one-task/` — MBOT multi-model fan-out skill plus helper scripts.
 - `skills/many-brain-one-decision/` — MBOD moderated multi-agent decision workflow.
-- `skills/educational-brief/` — grounded educational appendix synthesis.
+- `skills/educational-brief/` — grounded educational brief synthesis.
 - `skills/gh-cli/`, `skills/glab-cli/` — hosted PR/MR and CI platform operations.
 - `skills/claude-cli/`, `skills/codex-cli/` — CLI routing references used by MBOT/MBOD.
 - `prompts/megamind.md` — Pi slash prompt for `/megamind`.
@@ -72,7 +72,7 @@ flowchart TD
     Fix --> UltraReview
     Fixes -->|"No"| Gates["Run final local gates"]
     Gates --> Delivery["Commit, push branch, and open or update PR/MR"]
-    Delivery --> Education["Generate and validate educational appendix"]
+    Delivery --> Education["Generate and validate educational brief"]
     Education --> CI["Monitor CI and fix minor failures"]
     CI --> Done{"Green CI or documented blocker"}
 ```
