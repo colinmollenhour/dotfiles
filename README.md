@@ -126,6 +126,49 @@ At a high level, it:
 
 Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, or include `skip human review` to have it make the best call autonomously after a split MBOD result.
 
+```mermaid
+flowchart TD
+    Request["User request: objective, spec, issue, or plan"] --> Intake["Resolve source and create .tmp/megamind run directory"]
+    Intake --> Context["Capture repo context, dirty state, base branch, and local gates"]
+    Context --> Critique["MBOT critique: contradictions, gaps, naming, and design risks"]
+    Critique --> Plan["Planner writes second draft and readiness status"]
+    Plan --> Decision{"Unresolved decisions?"}
+    Decision -->|"Yes"| MBOD["MBOD debate chooses direction"]
+    MBOD --> ReviewGate{"MBOD unanimous?"}
+    ReviewGate -->|"No, unless skipped"| Human["Ask one human review question"]
+    ReviewGate -->|"Yes"| FinalPlan["Write final implementation plan"]
+    Human --> FinalPlan
+    Decision -->|"No"| FinalPlan
+    FinalPlan --> Split["Split into one to three disjoint work packages"]
+    Split --> Agents["Pi subagents or pi --print workers implement assigned scopes"]
+    Agents --> Integrate["Inspect diffs, reports, and cheap integration checks"]
+    Integrate --> UltraReview["Ultra review: bugs, runtime, and craft"]
+    UltraReview --> Fixes{"Validated findings?"}
+    Fixes -->|"Yes"| Fix["Route targeted fix agents and verify fixes"]
+    Fix --> UltraReview
+    Fixes -->|"No"| Gates["Run final local gates"]
+    Gates --> Delivery["Commit, push branch, and open or update PR/MR"]
+    Delivery --> Education["Generate and validate educational brief"]
+    Education --> CI["Monitor CI and fix minor failures"]
+    CI --> Done{"Green CI or documented blocker"}
+```
+
+### Pi package
+
+This repo also includes `pi-megamind/`, a draft Pi package that bundles Megamind as a Pi skill plus a `/megamind` prompt template. Try it without installing permanently:
+
+```bash
+pi -e ./pi-megamind
+```
+
+Or install it from this checkout:
+
+```bash
+pi install ./pi-megamind
+```
+
+The package defaults MBOT/MBOD delegation to Pi-backed participants and prefers the lightweight `pi-fast-subagent` extension when available.
+
 ## Slash commands
 
 ### `colin-*` — day-to-day dev workflow (name-spaced to avoid conflicts)
