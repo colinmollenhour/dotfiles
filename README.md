@@ -140,7 +140,7 @@ flowchart TD
     Human --> FinalPlan
     Decision -->|"No"| FinalPlan
     FinalPlan --> Split["Split into one to three disjoint work packages"]
-    Split --> Agents["Pi subagents or pi --print workers implement assigned scopes"]
+    Split --> Agents["Delegated coding agents implement assigned scopes"]
     Agents --> Integrate["Inspect diffs, reports, and cheap integration checks"]
     Integrate --> UltraReview["Ultra review: bugs, runtime, and craft"]
     UltraReview --> Fixes{"Validated findings?"}
