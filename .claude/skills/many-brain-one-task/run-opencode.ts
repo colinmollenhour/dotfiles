@@ -20,12 +20,13 @@
  *     -- "Perform the code review exactly as instructed."
  *
  * Required: --model, --file, trailing `--`, and a short message (positional).
+ * Optional: --no-session-fallback disables occtl fallback for debugging JSON streaming.
  * See SKILL.md "How to run" for the full option list and the why.
  */
 
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { mkdirSync, writeFileSync } from "node:fs"
-import { dirname } from "node:path"
+import { dirname, resolve } from "node:path"
 import { parseArgs } from "node:util"
 
 interface Values {
@@ -42,6 +43,7 @@ interface Values {
   thinking?: boolean
   agent?: string
   "timeout-ms"?: string
+  "no-session-fallback"?: boolean
 }
 
 const { values, positionals } = parseArgs({
@@ -61,6 +63,7 @@ const { values, positionals } = parseArgs({
     thinking: { type: "boolean", default: false },
     agent: { type: "string" },
     "timeout-ms": { type: "string", default: "0" },
+    "no-session-fallback": { type: "boolean", default: false },
   },
 }) as { values: Values; positionals: string[] }
 
@@ -84,11 +87,11 @@ if (values.title) args.push("--title", values.title)
 for (const f of values.file) args.push("--file", f)
 
 if (values.attach) {
-  // Attach mode: `--dir .` required so the remote session opens in the
-  // current project, not the server's CWD. Password optional — opencode
-  // falls back to OPENCODE_SERVER_PASSWORD when the flag is absent.
+  // Attach mode needs an absolute directory. Relative paths can resolve on the
+  // attached server side (for example as /home/colin) instead of the caller's
+  // project/worktree, which makes agents load the wrong context.
   args.push("--attach", values.attach)
-  args.push("--dir", values.dir ?? ".")
+  args.push("--dir", values.dir ? resolve(values.dir) : process.cwd())
   if (values.password) args.push("--password", values.password)
 } else {
   // Local spawn: auto-approve tool prompts so the run is fully headless.
@@ -111,6 +114,36 @@ const spawnEnv = { ...process.env }
 if (!spawnEnv.XDG_STATE_HOME) {
   spawnEnv.XDG_STATE_HOME = "/tmp/opencode-state"
   mkdirSync(spawnEnv.XDG_STATE_HOME, { recursive: true })
+}
+
+function normalizeAttachForOcctl(attach?: string): string | undefined {
+  if (!attach) return undefined
+  try {
+    const url = new URL(attach)
+    return `${url.hostname}${url.port ? `:${url.port}` : ""}`
+  } catch {
+    return attach.replace(/^https?:\/\//, "").replace(/\/$/, "")
+  }
+}
+
+function fetchSessionText(sessionIds: string[]): string {
+  const attach = normalizeAttachForOcctl(values.attach)
+  for (const sessionId of sessionIds) {
+    const occtlArgs = ["last", sessionId, "--role", "assistant", "--text-only"]
+    if (attach) occtlArgs.push("--attach", attach)
+
+    const res = spawnSync("occtl", occtlArgs, {
+      encoding: "utf8",
+      env: spawnEnv,
+      maxBuffer: 10 * 1024 * 1024,
+    })
+
+    const text = res.stdout.trim()
+    if (res.status === 0 && text && text !== "No messages in session.") {
+      return text
+    }
+  }
+  return ""
 }
 
 const child = spawn("opencode", args, { stdio: ["ignore", "pipe", "pipe"], env: spawnEnv })
@@ -167,6 +200,13 @@ child.on("close", (code) => {
   if (timedOut) {
     exitCode = 124
     stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: opencode timed out after ${timeoutMs}ms.\nmodel: ${values.model}${sessionIdList.length ? `\nsession_ids: ${sessionIdList.join(",")}` : ""}\nstdout_bytes: ${Buffer.byteLength(stdoutBuf)}\nstderr_bytes: ${Buffer.byteLength(stderrBuf)}\n`
+  }
+
+  if (exitCode === 0 && values.format === "json" && output.trim() === "" && sessionIdList.length && !values["no-session-fallback"]) {
+    // In attach mode some OpenCode builds only stream lifecycle/tool events to
+    // stdout (for example `step_start`) and persist the final assistant text in
+    // the session. Treat that as a transport quirk, not a provider failure.
+    output = fetchSessionText(sessionIdList)
   }
 
   if (exitCode === 0 && values.format === "json" && output.trim() === "") {
