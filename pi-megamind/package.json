@@ -1,0 +1,25 @@
+{
+  "name": "pi-megamind",
+  "version": "0.1.0",
+  "description": "Pi package for Megamind autonomous delivery workflow and supporting multi-agent skills.",
+  "private": true,
+  "keywords": [
+    "pi-package",
+    "pi",
+    "megamind",
+    "agent-skills",
+    "multi-agent"
+  ],
+  "license": "MIT",
+  "pi": {
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
