@@ -22,7 +22,7 @@ Trigger on phrases like:
 - "Visual / one-pager / explainer / TL;DR graphic for the change"
 - "Create a graphic to attach to the merge request"
 - "Distill this work into an infographic"
-- Explicit: `/infographic` or `/colin:infographic` (slash commands), or any user mention of "the infographic skill"
+- Explicit: `/infographic` or `/colin-infographic` (slash commands), or any user mention of "the infographic skill"
 
 Do NOT trigger when the user asks for the actual image (defer to image-generation tools or skills like `nano-banana`).
 

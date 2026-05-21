@@ -255,7 +255,7 @@ If integration is clearly broken, send targeted fix instructions to the responsi
 
 ## Phase 8: Ultra Review
 
-Use the `many-brain-one-task` skill with the ultra-review pattern from `/colin:ultra-review`.
+Use the `many-brain-one-task` skill with the ultra-review pattern from `/colin-ultra-review`.
 
 Review the implementation diff against the base branch. Use the three roles:
 

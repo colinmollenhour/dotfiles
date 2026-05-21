@@ -8,7 +8,7 @@ argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [
 
 Review a GitHub pull request, GitLab merge request, or arbitrary git diff using **multiple models × three focused roles**. Each role is a consolidated reviewer persona — `bugs` (correctness + security), `runtime` (performance + deps + deploy safety), and `craft` (quality + simplification + tests). All three roles run by default; each role runs against every model. All findings are merged and deduplicated at the end.
 
-This is the "ultra" variant of `/colin:review`. It is expected to be more expensive than regular review — budget accordingly.
+This is the "ultra" variant of `/colin-review`. It is expected to be more expensive than regular review — budget accordingly.
 
 For GitHub reviews, load the `gh-cli` skill after resolving the platform. For GitLab reviews, load the `glab-cli` skill. Use those skills for PR/MR resolution, API fallbacks, inline comment posting, labels, and platform-specific link details.
 
@@ -46,7 +46,7 @@ Use the **Many Brain One Task (MBOT)** skill with task type `code-review`.
 
 ## Role Library
 
-Three consolidated reviewer personas. Each role bundles related concerns so that three parallel role passes cover the full space of what a good code review checks. All roles review ONLY the changed code (not the full codebase) and follow the same "high-signal only" bar as regular `/colin:review`.
+Three consolidated reviewer personas. Each role bundles related concerns so that three parallel role passes cover the full space of what a good code review checks. All roles review ONLY the changed code (not the full codebase) and follow the same "high-signal only" bar as regular `/colin-review`.
 
 ### `bugs` — correctness + security
 
@@ -90,7 +90,7 @@ If `--roles=<csv>` is provided, use exactly those roles from `{bugs, runtime, cr
 If `--re-review` is active, review only the new changes since the last ultra-review.
 
 - Skip the normal "already commented" stop condition
-- Gather prior review comments and extract the last reviewed commit SHA from the most recent **`**AI Ultra Review**`** header (format: `· Commit: <sha>`). Do NOT parse `**AI Code Review**` headers — ultra-review keeps its own history independent from `/colin:review`.
+- Gather prior review comments and extract the last reviewed commit SHA from the most recent **`**AI Ultra Review**`** header (format: `· Commit: <sha>`). Do NOT parse `**AI Code Review**` headers — ultra-review keeps its own history independent from `/colin-review`.
 - If no prior ultra-review header with a SHA is found, fall back to the earliest reviewed version/SHA available from the platform
 - Compute the incremental diff between the last reviewed SHA and the current HEAD of the PR/MR branch
 - Re-run role selection against the incremental diff (roles may differ from the first ultra-review)
@@ -332,7 +332,7 @@ Unless `--no-summary` is active, post the model & role comparison summary as a s
 
 Skip this step in git diff mode.
 
-After comments are posted, or after the user confirms posting from `--no-post` mode, apply the `:Reviewed-By-AI-Ultra` label (distinct from the `:Reviewed-By-AI` label used by `/colin:review`).
+After comments are posted, or after the user confirms posting from `--no-post` mode, apply the `:Reviewed-By-AI-Ultra` label (distinct from the `:Reviewed-By-AI` label used by `/colin-review`).
 
 Use the loaded platform CLI skill for the exact label command.
 
@@ -343,4 +343,4 @@ If the user cancels in `--no-post` mode, do not apply the label.
 - Dependencies: `gh`, `glab`, `jq`, `git`
 - Create a todo list before starting
 - When linking to code, use the canonical URL and line-range rules from the loaded platform CLI skill
-- Ultra-review and `/colin:review` maintain independent comment histories on the same PR/MR — running both is supported and produces two distinct comment streams
+- Ultra-review and `/colin-review` maintain independent comment histories on the same PR/MR — running both is supported and produces two distinct comment streams

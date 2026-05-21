@@ -8,9 +8,9 @@ argument-hint: "[scope: path | 'whole repo' (default)] [agents] [--roles=csv] [-
 
 Audit the **current state** of the project for production readiness using **multiple models × three focused roles**. Each role is a consolidated reviewer persona — `hardening` (security + resiliency), `operability` (observability + deployment + config + performance + dependencies), and `stewardship` (docs + tests + code quality). All three roles run by default; each role runs against every model. All findings are merged, deduplicated, and presented grouped by **severity**.
 
-This is the audit counterpart to `/colin:ultra-review`. Where ultra-review scrutinizes a *diff*, ultra-audit scrutinizes the *repo as it stands*. It is expected to be expensive — budget accordingly.
+This is the audit counterpart to `/colin-ultra-review`. Where ultra-review scrutinizes a *diff*, ultra-audit scrutinizes the *repo as it stands*. It is expected to be expensive — budget accordingly.
 
-Unlike `/colin:critique` and `/colin:ultra-review`, agents in this command **are encouraged to explore the codebase** — read configs, CI files, docs, manifests, dependency files, and source — because the target is the running system, not a localized change.
+Unlike `/colin-critique` and `/colin-ultra-review`, agents in this command **are encouraged to explore the codebase** — read configs, CI files, docs, manifests, dependency files, and source — because the target is the running system, not a localized change.
 
 ## Input Resolution
 

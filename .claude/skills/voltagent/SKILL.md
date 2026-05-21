@@ -1,5 +1,5 @@
 ---
-name: "VoltAgent Development"
+name: voltagent
 description: 'Create or configure VoltAgent agents with tools, memory, hooks, sub-agents, and workflows.'
 ---
 

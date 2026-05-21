@@ -537,6 +537,42 @@ install_command_skills() {
   fi
 }
 
+cleanup_legacy_namespaced_agent_dirs() {
+  local legacy_dirs=(
+    "$HOME/.agents/skills/agent-sops"
+    "$HOME/.agents/skills/colin"
+    "$HOME/.agents/skills/foobar"
+    "$HOME/.claude/commands/agent-sops"
+    "$HOME/.claude/commands/colin"
+    "$HOME/.opencode/commands/agent-sops"
+    "$HOME/.opencode/commands/colin"
+  )
+  local existing=() dir
+
+  for dir in "${legacy_dirs[@]}"; do
+    [[ -e "$dir" ]] && existing+=("$dir")
+  done
+
+  [[ ${#existing[@]} -gt 0 ]] || return 0
+
+  if [[ "$DO_ALL" == true && "$FORCE" == true ]]; then
+    :
+  elif ! prompt_yes_no "Remove old namespaced agent/command directories (${existing[*]})"; then
+    warn "Skipping old namespaced agent/command directories. Re-run with --all --force to remove automatically."
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" == true ]]; then
+    for dir in "${existing[@]}"; do
+      dry_run_msg "remove legacy namespaced directory $dir"
+    done
+    return 0
+  fi
+
+  rm -rf -- "${existing[@]}"
+  log "Removed old namespaced agent/command directories"
+}
+
 install_agents() {
   section "Installing AI agent files"
 
@@ -592,6 +628,7 @@ install_agents() {
   copy_dir_contents ".claude/commands" "$HOME/.opencode/commands"
   copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
   install_command_skills
+  cleanup_legacy_namespaced_agent_dirs
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
   install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
 

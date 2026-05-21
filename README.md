@@ -4,9 +4,9 @@ Personal dotfiles plus a batteries-included Claude Code config for shipping soft
 
 ## Highlights
 
-- **Multi-model code review.** `/colin:review` and `/colin:ultra-review` fan out across as many models as you configure, dedupe findings, and post inline comments on GitHub PRs or GitLab MRs.
-- **Spec critique and group decisions.** `/colin:critique` and the MBOD debate skill stress-test plans before you write code.
-- **Production-readiness audit.** `/colin:ultra-audit` runs three roles (hardening, operability, stewardship) against the current repo state, grouped by severity.
+- **Multi-model code review.** `/colin-review` and `/colin-ultra-review` fan out across as many models as you configure, dedupe findings, and post inline comments on GitHub PRs or GitLab MRs.
+- **Spec critique and group decisions.** `/colin-critique` and the MBOD debate skill stress-test plans before you write code.
+- **Production-readiness audit.** `/colin-ultra-audit` runs three roles (hardening, operability, stewardship) against the current repo state, grouped by severity.
 - **Boring shell quality of life.** Sensible Bash, Git, tmux, Vim, Delta, and [Starship](https://starship.rs/) configs with non-clobbering installs for `.bashrc` and `.gitconfig`.
 - **Yours to configure.** Models, harnesses, and providers come from plain-prose Markdown profiles you own.
 
@@ -100,7 +100,7 @@ Drop this into your `settings.json` to auto-install on every dev container:
 
 # AI tools reference
 
-A reference to the shared slash commands, skills, and agents in `.claude/`. Invoke slash commands directly (`/colin:review` for Claude Code, `/colin/review` for OpenCode). Skills load automatically when relevant or you can name them in a prompt.
+A reference to the shared slash commands, skills, and agents in `.claude/`. Invoke slash commands directly (`/colin-review` for Claude Code, `/colin/review` for OpenCode). Skills load automatically when relevant or you can name them in a prompt.
 
 ## Concepts
 
@@ -128,24 +128,24 @@ Use `megamind` for long-running work where the desired output is not just code, 
 
 ## Slash commands
 
-### `colin:*` — day-to-day dev workflow
+### `colin-*` — day-to-day dev workflow (name-spaced to avoid conflicts)
 
 #### Shipping
 
 | Command | Use it when… |
 |---|---|
-| `/colin:commit-and-push` | You're done with changes. Commits, pushes, opens or updates a GitHub PR or GitLab MR. |
-| `/colin:fix-comments` | Address open review comments on the current branch's PR or MR. Posts fixes, rebuttals, and a summary. |
-| `/colin:fix-pipeline` | Diagnose and fix a failing GitHub Actions or GitLab CI pipeline on the current branch. |
-| `/colin:fix-conflicts` | Resolve Git merge conflicts intelligently, preserving intent from both sides. |
-| `/colin:squash-merge [branch]` | Squash-merge a branch onto trunk with one clean commit **per author**, each AI-summarized. |
-| `/colin:git-cleanup` | Delete local branches that have been merged remotely (including squash-merges). |
+| `/colin-commit-and-push` | You're done with changes. Commits, pushes, opens or updates a GitHub PR or GitLab MR. |
+| `/colin-fix-comments` | Address open review comments on the current branch's PR or MR. Posts fixes, rebuttals, and a summary. |
+| `/colin-fix-pipeline` | Diagnose and fix a failing GitHub Actions or GitLab CI pipeline on the current branch. |
+| `/colin-fix-conflicts` | Resolve Git merge conflicts intelligently, preserving intent from both sides. |
+| `/colin-squash-merge [branch]` | Squash-merge a branch onto trunk with one clean commit **per author**, each AI-summarized. |
+| `/colin-git-cleanup` | Delete local branches that have been merged remotely (including squash-merges). |
 
 #### Reviewing
 
 Both review commands resolve the target the same way. Pass no argument to review the open PR or MR for your current branch. Otherwise the target accepts: a PR or MR URL or number, `last N commits`, `whole repo`, `branch NAME`, or a Git rev spec like `SHA..SHA`.
 
-**`/colin:review [target] [agents] [flags]`** — standard multi-model review. Triages, buckets large diffs (≤ 5,000 lines runs as a single pass; otherwise ~3,000-line buckets grouped by top-level directory), runs MBOT agents on each bucket, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label.
+**`/colin-review [target] [agents] [flags]`** — standard multi-model review. Triages, buckets large diffs (≤ 5,000 lines runs as a single pass; otherwise ~3,000-line buckets grouped by top-level directory), runs MBOT agents on each bucket, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label.
 
 | Flag | Effect |
 |---|---|
@@ -156,14 +156,14 @@ Both review commands resolve the target the same way. Pass no argument to review
 
 In Git-diff mode (when the target is a rev spec rather than a PR or MR) the command always behaves as `--no-post` — nothing is posted, just displayed.
 
-**`/colin:ultra-review [target] [agents] [flags]`** — the heavyweight variant. Runs **3 roles × N models** per bucket in parallel: `bugs` (correctness and security), `runtime` (performance, dependencies, deploy safety), and `craft` (quality, simplification, test quality). Expensive — reserve for important merges. Uses a separate `:Reviewed-By-AI-Ultra` label and a separate `**AI Ultra Review**` comment history, so it can run alongside `/colin:review` on the same PR.
+**`/colin-ultra-review [target] [agents] [flags]`** — the heavyweight variant. Runs **3 roles × N models** per bucket in parallel: `bugs` (correctness and security), `runtime` (performance, dependencies, deploy safety), and `craft` (quality, simplification, test quality). Expensive — reserve for important merges. Uses a separate `:Reviewed-By-AI-Ultra` label and a separate `**AI Ultra Review**` comment history, so it can run alongside `/colin-review` on the same PR.
 
 | Flag | Effect |
 |---|---|
 | `[agents]` (positional) | Model list for this run. Overrides the MBOT profile. |
 | `--roles=bugs,runtime,craft` | Restrict to specific roles. Default is all three. |
 | `--re-review` | Only review commits since the last `**AI Ultra Review**` comment. |
-| `--no-post` | Same as `/colin:review`. |
+| `--no-post` | Same as `/colin-review`. |
 | `--no-summary` | Skip both the per-model and per-role comparison tables. |
 
 ##### How ultra-review fans out across MBOT
@@ -172,7 +172,7 @@ Buckets run **sequentially** to bound cost. Within each bucket, the three roles 
 
 ```mermaid
 flowchart TD
-    User([User: /colin:ultra-review &lt;arg?&gt;])
+    User([User: /colin-ultra-review &lt;arg?&gt;])
 
     subgraph UR["ultra-review command"]
         Resolve[Resolve input<br/>PR / MR / git diff<br/>capture head+base SHAs]
@@ -230,14 +230,14 @@ flowchart TD
     class MBOT,Profile,Guard,Assemble,Gather mbot
 ```
 
-**`/colin:critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.
+**`/colin-critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.
 
 | Flag | Effect |
 |---|---|
 | `--agents opus gpt …` | Override the MBOT `critique` profile for this run. |
 | `--summary` | Include a per-model comparison table (found, validated, unique, accuracy, composite score). |
 
-**`/colin:ultra-audit [scope] [agents] [flags]`** — production-readiness audit of the **current repo state**, not a diff. Runs **3 roles × N models** per module bucket: `hardening` (security and resiliency), `operability` (observability, deployment, config, performance, dependencies), and `stewardship` (docs, tests, code quality). Findings merge and group by severity (`Blocker`, `High`, `Medium`, `Low`). Display only — no PR comments, no labels. Expensive — reserve for pre-launch or quarterly checkups.
+**`/colin-ultra-audit [scope] [agents] [flags]`** — production-readiness audit of the **current repo state**, not a diff. Runs **3 roles × N models** per module bucket: `hardening` (security and resiliency), `operability` (observability, deployment, config, performance, dependencies), and `stewardship` (docs, tests, code quality). Findings merge and group by severity (`Blocker`, `High`, `Medium`, `Low`). Display only — no PR comments, no labels. Expensive — reserve for pre-launch or quarterly checkups.
 
 | Flag | Effect |
 |---|---|
@@ -251,21 +251,21 @@ flowchart TD
 
 | Command | Use it when… |
 |---|---|
-| `/colin:finalize-spec` | Augment the current plan with the senior-SWE planning sections needed before implementation. |
-| `/colin:feature-export <FEATURE>` | Generate a portable implementation guide for moving a feature to a sibling repo. |
-| `/colin:handoff [PATH]` | Dump the current session context into a portable Markdown handoff doc. No tool calls, just context. |
-| `/colin:progress` | Audit the in-scope task and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
+| `/colin-finalize-spec` | Augment the current plan with the senior-SWE planning sections needed before implementation. |
+| `/colin-feature-export <FEATURE>` | Generate a portable implementation guide for moving a feature to a sibling repo. |
+| `/colin-handoff [PATH]` | Dump the current session context into a portable Markdown handoff doc. No tool calls, just context. |
+| `/colin-progress` | Audit the in-scope task and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
 
 ### `agent-sops:*` — heavier structured workflows
 
 | Command | Use it when… |
 |---|---|
-| `/agent-sops:help` | Short overview of the SOPs and when to use each. |
-| `/agent-sops:pdd` | Prompt-Driven Development — turn a rough idea into a full design doc with an implementation plan. |
-| `/agent-sops:code-task-generator` | Convert rough descriptions or PDD plans into structured code-task files (Amazon format). |
-| `/agent-sops:code-assist` | Interactive TDD coach — explore, plan, code, commit loop. |
-| `/agent-sops:codebase-summary` | Generate `AGENTS.md`, `README.md`, or `CONTRIBUTING.md` for a repo. |
-| `/agent-sops:eval` | Plan, generate, and run evaluations for AI agents with the Strands Evals SDK. |
+| `/agent-sops-help` | Short overview of the SOPs and when to use each. |
+| `/agent-sops-pdd` | Prompt-Driven Development — turn a rough idea into a full design doc with an implementation plan. |
+| `/agent-sops-code-task-generator` | Convert rough descriptions or PDD plans into structured code-task files (Amazon format). |
+| `/agent-sops-code-assist` | Interactive TDD coach — explore, plan, code, commit loop. |
+| `/agent-sops-codebase-summary` | Generate `AGENTS.md`, `README.md`, or `CONTRIBUTING.md` for a repo. |
+| `/agent-sops-eval` | Plan, generate, and run evaluations for AI agents with the Strands Evals SDK. |
 
 ### Other
 
@@ -286,7 +286,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 ### Code generation and review
 
-- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare or merge results. Powers `/colin:review`, `/colin:critique`, `/colin:ultra-review`, and `/colin:ultra-audit`. Configurable — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
+- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare or merge results. Powers `/colin-review`, `/colin-critique`, `/colin-ultra-review`, and `/colin-ultra-audit`. Configurable — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
 - **`many-brain-one-decision`** (MBOD) — Coordinate a multi-round debate across MBOT agents with distinct personalities until they converge on a decision or hit the configured round limit. Use it for prompts like "decide which option is best", "debate this tradeoff", or "propose a solution to this problem".
 - **`educational-brief`** — Creates grounded journey/design/architecture/lessons briefs for delivered PRs, MRs, branches, features, or agent runs.
 - **`generate-e2e-test`** — Drives Playwright MCP through a workflow, then generates the E2E test code.
@@ -400,8 +400,8 @@ Profiles are prose. MBOT reads them naturally and translates them into the right
 
 ### Overriding per run
 
-- `[agents]` on `/colin:review` or `/colin:ultra-review` (positional, e.g. `gpt gemini kimi`) overrides the profile for that run only.
-- `--agents opus gpt gemini` on `/colin:critique` does the same.
+- `[agents]` on `/colin-review` or `/colin-ultra-review` (positional, e.g. `gpt gemini kimi`) overrides the profile for that run only.
+- `--agents opus gpt gemini` on `/colin-critique` does the same.
 - `--profile X` in a prompt forces profile `X.md`.
 - `--dry-run` in a prompt makes MBOT report its execution plan instead of launching anything. Useful for verifying a new profile.
 
@@ -432,10 +432,10 @@ Add your own by dropping a new `colin-mbot-<NAME>.md` into `.claude/agents/` wit
 
 ## Typical flows
 
-- **Shipping a change.** Make edits → `/colin:review` → `/colin:commit-and-push` → on feedback `/colin:fix-comments` → on red CI `/colin:fix-pipeline`.
-- **Planning a feature.** `/agent-sops:pdd` → `/colin:finalize-spec` → `/colin:critique --summary` → `/agent-sops:code-task-generator`.
-- **Important merge.** `/colin:ultra-review --no-post` → review the output → `post` if it looks right. Use `--re-review` on subsequent pushes.
-- **Picking up someone else's context.** Ask them to run `/colin:handoff` and commit the resulting Markdown.
+- **Shipping a change.** Make edits → `/colin-review` → `/colin-commit-and-push` → on feedback `/colin-fix-comments` → on red CI `/colin-fix-pipeline`.
+- **Planning a feature.** `/agent-sops-pdd` → `/colin-finalize-spec` → `/colin-critique --summary` → `/agent-sops-code-task-generator`.
+- **Important merge.** `/colin-ultra-review --no-post` → review the output → `post` if it looks right. Use `--re-review` on subsequent pushes.
+- **Picking up someone else's context.** Ask them to run `/colin-handoff` and commit the resulting Markdown.
 
 ## License
 

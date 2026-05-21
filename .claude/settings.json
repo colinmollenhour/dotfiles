@@ -37,7 +37,7 @@
       "LS",
       "WebSearch",
       "TodoWrite",
-      "Skill(colin:commit-and-push)",
+      "Skill(colin-commit-and-push)",
       "WebFetch(domain:proxy.golang.org)",
       "WebFetch(domain:0.0.0.0)",
       "WebFetch(domain:api.github.com)",

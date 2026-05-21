@@ -1,5 +1,5 @@
 ---
-name: "Drizzle ORM"
+name: drizzle-orm
 description: 'Use Drizzle ORM for TypeScript schemas, queries, migrations, relations, and transactions.'
 ---
 
