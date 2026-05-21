@@ -116,6 +116,13 @@ can_overwrite() {
     return 1
   fi
   [[ "$current" == "$tracked" ]] && return 0
+  # If the user changed the file and later changed it back to match what this
+  # install would write, it is no longer meaningfully modified. Allow the
+  # install to proceed so the manifest hash is refreshed to the current repo
+  # content and future runs stop warning about a stale tracked hash.
+  if [[ -n "$candidate" && -f "$candidate" && "$current" == "$(file_hash "$candidate")" ]]; then
+    return 0
+  fi
   if [[ "$FORCE" == true ]]; then
     warn "Force-overwriting manually modified: $dest"
     return 0
