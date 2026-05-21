@@ -517,6 +517,7 @@ Keep the final response concise:
 - Commit SHA(s)
 - Local gates summary
 - Artifact directory path
+- Estimated total time worked: compute from the run directory's oldest artifact timestamp to newest artifact timestamp when possible, falling back to `final/ledger.md` timestamps or current `date` if filesystem birth times are unavailable
 - Educational brief status
 - Remaining blocker, if one exists
 
