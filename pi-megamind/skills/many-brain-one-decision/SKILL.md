@@ -92,6 +92,8 @@ pi --print --model anthropic/claude-sonnet-4:high < .tmp/many-brain-one-decision
 
 A Pi-backed debater is successful when the command exits `0`, produces non-empty output, and the final block is parseable or repairable by the normal MBOD schema-repair path.
 
+When a Pi-backed debater profile names a model but not an exact id, resolve it with `pi --list-models <specific-query>`. Keep the query narrow: use `pi --list-models gpt-5.5` for "GPT 5.5" instead of broad `gpt`, and `pi --list-models glm-5.1` for "GLM 5.1". Prefer exact provider/model ids and coding-plan or first-party routes over generic OpenRouter unless explicitly requested.
+
 #### Preflight: prefer `occtl run` over `run-opencode.ts`
 
 Before launching any OpenCode-backed debater from a non-OpenCode host, decide the invocation method once and reuse it for every round (cache as `OPENCODE_VIA=occtl` or `OPENCODE_VIA=run-opencode-ts`):

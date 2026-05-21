@@ -338,13 +338,16 @@ Do not commit yet.
 
 Run a final review pass focused only on prior validated findings and the fixes made for them.
 
-Save:
+Save each pass with a numbered filename starting at 1 so no review output is overwritten:
 
 ```text
-reviews/fixed-review.md
+reviews/fixed-review-1.md
+reviews/fixed-review-2.md
 ```
 
-If prior findings remain unresolved, repeat the fix phase once. If they still remain, write:
+Also update or create `reviews/fixed-review.md` as a short latest-pass pointer or copy for convenience.
+
+If prior findings remain unresolved, repeat the fix phase once and write the next numbered fixed-review file. If they still remain, write:
 
 ```text
 final/review-blocker.md
@@ -392,7 +395,7 @@ The PR/MR body must include:
 
 - Summary
 - Test plan with exact command outcomes
-- Links or paths to `plans/final.md`, `reviews/validated-findings.md`, `reviews/fixed-review.md`, and `final/local-gates.md`
+- Links or paths to `plans/final.md`, `reviews/validated-findings.md`, latest `reviews/fixed-review-N.md`, and `final/local-gates.md`
 - AI attribution header:
 
 ```text
@@ -425,7 +428,7 @@ Provide the skill and sub-agent with the run directory, PR/MR URL, base branch, 
 - `final/integration-check.md`
 - `reviews/validated-findings.md`
 - `fixes/*-final.md`, if any exist
-- `reviews/fixed-review.md`
+- latest `reviews/fixed-review-N.md`
 - `final/local-gates.md`
 - `final/delivery.md`
 - `git diff --stat <base>...HEAD`

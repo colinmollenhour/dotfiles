@@ -72,6 +72,10 @@ pi --print --model anthropic/claude-sonnet-4:high < .tmp/<run-id>/<participant>.
 
 Treat a Pi-backed run as successful when the command exits `0` and the output file contains non-whitespace assistant text. If it exits non-zero or produces no text, record stderr/output and substitute a backup participant when one is configured.
 
+#### Resolving Pi model names
+
+Use `pi --list-models <specific-query>` when a Pi profile names a model but not the exact model id. Keep the query as narrow as the user's wording allows so good matches are not truncated. Examples: use `pi --list-models gpt-5.5` for "GPT 5.5" (not `gpt`), `pi --list-models glm-5.1` for "GLM 5.1", and `pi --list-models sonnet` for "Sonnet". Prefer the exact provider/model id returned by Pi; if several providers match, prefer coding-plan or first-party routes over generic OpenRouter unless the profile explicitly says OpenRouter.
+
 ### OpenCode server attach (optional)
 
 Profiles may include an attach directive instructing every OpenCode invocation to attach to a running server instead of spawning a fresh one. This is much faster and avoids reloading provider config on every call. Parse the directive **here**, before invocation, because it changes how every OpenCode call below is shaped.
