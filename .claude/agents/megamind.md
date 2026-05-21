@@ -33,13 +33,28 @@ Honor these prompt options when present:
 
 | Option | Behavior |
 | --- | --- |
-| `--agents <list>` | Pass through to MBOT / MBOD participant selection where applicable |
+| `--agents <list>` | Pass through to MBOT / MBOD participant selection where applicable. If the list includes `pi`, use Pi-backed participants/agents. |
 | `--max-coders 1|2|3` | Upper bound for implementation agents; default `3` |
 | `--base <branch>` | Base branch for diff, branch creation, and PR/MR; default is detected default branch |
 | `--dry-run` | Create the execution outline only; do not launch agents, edit code, commit, push, or open PR/MR |
 | `skip human review` or `--skip-human-review` | Do not pause for user review when MBOD is not unanimous; record the dissent and make the best call autonomously |
 
 If no usable source can be resolved, ask for a plan, spec, or objective and stop. Otherwise proceed autonomously.
+
+## Pi-Backed Agents
+
+When the user requests `pi`, `Pi`, `Pi agent`, or passes `--agents pi`, use Pi as a delegated agent route for MBOT, MBOD, planning, coding, review, and fix work where applicable.
+
+Preferred path: if running inside Pi and the lightweight `pi-fast-subagent` package is installed, use its `subagent` tool to launch focused child Pi agents. Use a role-specific project/user agent when available; otherwise use the bundled `general` agent for planning, coding, reviews, fixes, and synthesis, and `scout` for read-only exploration. Keep Megamind as the parent orchestrator: child agents must receive self-contained prompts, artifact paths, owned scopes, and final-report requirements, and they must not commit, push, open PRs/MRs, or run broad unrelated work unless explicitly assigned.
+
+Fallback path: if `pi-fast-subagent` is not installed or no `subagent` tool is available, write the child prompt to the run directory and invoke Pi print mode from the shell:
+
+```bash
+pi --print < .tmp/megamind-<slug>/agents/<agent-name>-prompt.md \
+  > .tmp/megamind-<slug>/agents/<agent-name>.out
+```
+
+Pass model options through when the user or profile specifies them, for example `pi --print --model anthropic/claude-sonnet-4:high < prompt.md`. Treat a Pi-backed child as complete only when it exits successfully, produces non-empty output, and writes or returns the required report artifact.
 
 ## Post-MBOD Human Review Rule
 

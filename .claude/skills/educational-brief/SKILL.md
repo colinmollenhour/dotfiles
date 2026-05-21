@@ -80,7 +80,18 @@ Claim-to-source map for the most important claims, using artifact paths, changed
 
 ## Mermaid Rules
 
-Use diagrams sparingly. Good diagram candidates include:
+Use diagrams sparingly.
+
+Always enclose Mermaid node and edge labels in double quotes (for example, `NodeID["Label text"]`) if they contain any punctuation, special characters such as `;`, `|`, `:`, `>`, `<`, or brackets. This safely escapes reserved characters and prevents parser crashes.
+
+Examples:
+
+- Bad: `A[Step 1; run script]`
+- Good: `A["Step 1; run script"]`
+- Bad: `B -->|Yes | No| C`
+- Good: `B -->|"Yes | No"| C`
+
+Good diagram candidates include:
 
 - Module ownership or dependency boundaries
 - Request/data flow through changed components

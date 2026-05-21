@@ -1,7 +1,7 @@
 ---
 name: many-brain-one-task
 description: 'Run the same task with multiple agents for reviews, critiques, or model comparison.'
-allowed-tools: Bash(bun *), Bash(cr *)
+allowed-tools: Bash(bun *), Bash(cr *), Bash(pi *)
 ---
 
 # Many Brain One Task
@@ -38,6 +38,8 @@ The host harness (you, the one running this skill right now) limits which models
 
 | Host        | Model family             | Mechanism                                                                                                  |
 |-------------|--------------------------|------------------------------------------------------------------------------------------------------------|
+| Pi          | `pi` agent requested      | Prefer the `pi-fast-subagent` package `subagent` tool when it is available; otherwise shell out with `pi --print` using the prepared prompt file. See [Pi](#pi). |
+| Pi          | any other model family    | Follow the profile's requested CLI/harness. If unspecified in the Pi package, use Pi itself as the participant. |
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
 | Claude Code | non-Claude               | `occtl run` (preferred); `run-opencode.ts` fallback.                                                       |
 | OpenCode    | Claude (Opus/Sonnet/Haiku) | `claude` CLI — the **only** path. See [Claude](#claude-opus--sonnet--haiku). Do not use `colin-mbot-*` subagents for Claude. |
@@ -46,6 +48,29 @@ The host harness (you, the one running this skill right now) limits which models
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
 When OpenCode is the host and dispatching to a `colin-mbot-*` subagent, **only** use agents whose names start with `colin-mbot-`. Do not pick other agents.
+
+When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
+
+
+### Pi
+
+Use this route when the user asks for `pi` as a participant, when a profile names Pi, or when running the Pi package default profile.
+
+Preferred path, when the lightweight `pi-fast-subagent` package is installed in the current Pi session: use its `subagent` tool and launch a focused child agent with the prepared prompt file as the task context. Prefer a role-specific project/user agent when available; otherwise use the bundled `general` agent, or `scout` for read-only exploration. For parallel batches, call `subagent` with `tasks: [...]` when available and save each returned result under `.tmp/<run-id>/results/`.
+
+Fallback path, when `pi-fast-subagent` is not installed or no `subagent` tool is available: shell out to Pi print mode with the prompt file on stdin. Keep the prompt file inside the project `.tmp/` directory.
+
+```bash
+pi --print < .tmp/<run-id>/<participant>.md > .tmp/<run-id>/results/<participant>.out
+```
+
+You may pass model options when the profile specifies them:
+
+```bash
+pi --print --model anthropic/claude-sonnet-4:high < .tmp/<run-id>/<participant>.md > .tmp/<run-id>/results/pi-sonnet.out
+```
+
+Treat a Pi-backed run as successful when the command exits `0` and the output file contains non-whitespace assistant text. If it exits non-zero or produces no text, record stderr/output and substitute a backup participant when one is configured.
 
 ### OpenCode server attach (optional)
 

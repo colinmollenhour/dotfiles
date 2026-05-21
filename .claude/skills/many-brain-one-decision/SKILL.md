@@ -1,7 +1,7 @@
 ---
 name: many-brain-one-decision
 description: 'Run a multi-agent debate to compare options and converge on a decision.'
-allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *)
+allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *), Bash(pi *)
 ---
 
 # Many Brain One Decision
@@ -60,12 +60,37 @@ Default agents:
 
 Route debaters according to the current host harness. From a non-OpenCode host (e.g. Claude Code), prefer `occtl run` to drive OpenCode-backed debaters; the sibling MBOT `run-opencode.ts` helper is the fallback when occtl is unavailable.
 
+If the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, select a Pi-backed debater. In the Pi package, Pi-backed debaters are the default unless the user or profile names specific non-Pi agents.
+
 | Current host | Selected debater | Preferred route |
 |---|---|---|
+| Pi | Pi-backed debater | Prefer the `pi-fast-subagent` package `subagent` tool when available; otherwise run `pi --print < prompt.md` and save stdout as that debater's result. |
+| Pi | Other debater | Follow the selected profile route. If unspecified in the Pi package, use Pi-backed debaters by default. |
 | OpenCode | OpenCode-backed MBOT agent | Use the `Task` tool with the matching `colin-mbot-*` `subagent_type`. |
 | OpenCode | Claude-backed debater | Use the `claude` CLI first so usage can stay on the Claude Max plan. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if the CLI does not work or the user explicitly requests OpenCode-routed Claude. |
 | Claude Code | Claude-backed debater | Use Claude Code's native Agent tool when available; fallback to the `claude` CLI. |
 | Claude Code | OpenCode-backed MBOT agent | Use **`occtl run`** when the preflight succeeds; otherwise fall back to the sibling MBOT `run-opencode.ts` helper. Claude Code does not expose `colin-mbot-*` subagents directly. |
+
+
+#### Pi debaters
+
+Preferred path, when the `pi-fast-subagent` package is installed in the current Pi session: use its `subagent` tool to launch each debater as a focused child Pi agent. Give each child the round prompt file, fixed personality, and instruction to return the required `BEGIN_MBOD_JSON` block. Use foreground or background/parallel runs according to the package's available tool surface, but save each final result under the round's `results/` directory.
+
+Fallback path, when `pi-fast-subagent` is not installed or no `subagent` tool is available: invoke Pi print mode with the round prompt on stdin.
+
+```bash
+pi --print < .tmp/many-brain-one-decision/<slug>/round-1/pi-pragmatic-operator.md \
+  > .tmp/many-brain-one-decision/<slug>/round-1/results/pi-pragmatic-operator.out
+```
+
+If the profile pins a model or thinking level, pass it through to `pi`:
+
+```bash
+pi --print --model anthropic/claude-sonnet-4:high < .tmp/many-brain-one-decision/<slug>/round-1/pi-pragmatic-operator.md \
+  > .tmp/many-brain-one-decision/<slug>/round-1/results/pi-sonnet-pragmatic-operator.out
+```
+
+A Pi-backed debater is successful when the command exits `0`, produces non-empty output, and the final block is parseable or repairable by the normal MBOD schema-repair path.
 
 #### Preflight: prefer `occtl run` over `run-opencode.ts`
 
@@ -84,6 +109,7 @@ Do not use non-MBOT subagents for debaters. If the host exposes `colin-mbot-*`, 
 
 Before launching any debater, check the selected model family against the current host harness:
 
+- If the selected debater is Pi-backed, use the Pi debater route regardless of the current host. Prefer `pi-fast-subagent` when available in Pi; otherwise shell out with `pi --print < prompt.md`.
 - If the current host is OpenCode and the selected model is Claude-family (Opus, Sonnet, Haiku), **do not** use a `colin-mbot-*` subagent. Shell out through the `claude` CLI instead.
 - If the current host is OpenCode and the selected model is non-Claude, use the matching `colin-mbot-*` subagent.
 - If the current host is Claude Code and the selected model is Claude-family, use Claude Code's native Agent tool when available; fallback to the `claude` CLI.
