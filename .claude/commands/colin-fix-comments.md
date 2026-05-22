@@ -9,7 +9,12 @@ User Comments: $ARGUMENTS
 ---
 
 1. Inspect the git remotes with `git remote -v` and if this is a Github project load the `gh-cli` skill and if it's a Gitlab project load the `glab-cli` skill.
-2. Inspect the unresolved comments on the Pull Request or Merge Request. Evaluate each comment's validity and either push a fix, post a rebuttal comment, or post a question if clarification or a decision is needed from the original author. If there is already an unanswered question, then skip that conversation thread. If you push a fix for a conversation, mark it resolved. Every posted rebuttal or question must start with a self-identifying header on its own line, followed by a blank line, followed by the reply body:
+2. Identify every open reviewer comment on the Pull Request or Merge Request and evaluate each one. **Do not filter only on resolvable / unresolved threads** — review-summary notes that block the MR/PR are frequently non-resolvable, and dropping them is the most common failure mode of this workflow. The scope must cover:
+
+   - **GitLab**: every unresolved inline discussion (paginate `glab api 'projects/:fullpath/merge_requests/<iid>/discussions?per_page=100'` until `X-Next-Page` is empty), **plus** every non-system note posted by the same author within ~10 seconds before a `system: true` note whose body is `"requested changes"` / `"approved"` / `"approval removed"`. Those system notes are review-submission markers, and the cluster of non-system notes that precedes one is that review's body — including any non-resolvable summary note. Also cross-check `glab api 'projects/:fullpath/merge_requests/<iid>/reviewers'` for any reviewer in `state == "requested_changes"`.
+   - **GitHub**: every open inline review comment (`gh api repos/:owner/:repo/pulls/<n>/comments`), **plus** the body of every review with `state == "CHANGES_REQUESTED"` that has not been superseded by a later `APPROVED` review (`gh api repos/:owner/:repo/pulls/<n>/reviews`), **plus** any actionable issue comment on the PR (`gh api repos/:owner/:repo/issues/<n>/comments`).
+
+   For each in-scope comment, either push a fix, post a rebuttal comment, or post a question if clarification or a decision is needed from the original author. If there is already an unanswered question on the thread, skip it. If you push a fix that resolves a resolvable thread, mark it resolved. Every posted rebuttal or question must start with a self-identifying header on its own line, followed by a blank line, followed by the reply body:
 
    ```text
    > **AI Review Response** · Commit: <sha> · By: <harness> with <model>
