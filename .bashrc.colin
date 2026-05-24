@@ -345,6 +345,7 @@ alias lt='npx localtunnel'
 alias share-file='npx remote-share-cli'
 alias share-dir='npx share-cli'
 alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgutz/vpsbench/master/vpsbench)'
+alias fix-x='eval "$(tmux showenv -s DISPLAY)"'
 
 # Override claude defaults
 claude=$(which claude 2>/dev/null)
