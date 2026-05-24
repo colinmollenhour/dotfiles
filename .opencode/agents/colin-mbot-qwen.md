@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Qwen 3.6 Plus
+description: Many brain, one task with Qwen 3.7 Max
 mode: subagent
-model: openrouter/qwen/qwen3.6-plus
+model: openrouter/qwen/qwen3.7-max
 tools:
   write: false
   edit: false
