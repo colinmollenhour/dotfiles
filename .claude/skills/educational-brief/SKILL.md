@@ -104,6 +104,24 @@ Avoid diagrams for:
 - Cosmetic summaries already clear from bullets
 - Structures not visible in the diff or artifacts
 
+## Mermaid Lint
+
+After writing the brief, if it contains any ```` ```mermaid ```` blocks, lint the file with `maid` and fix every reported error before considering the brief complete. Skip this step only when the brief has no Mermaid diagrams.
+
+Command:
+
+```bash
+npx -y @probelabs/maid --strict <output-path>
+```
+
+- Exit `0` means no errors and the brief is ready.
+- Exit `1` means there are errors; the tool prints file path, line, column, an error code (e.g. `FL-STRICT-LABEL-QUOTES-REQUIRED`, `FL-LINK-MISSING`), and a hint. Edit the brief to fix each one, then rerun until exit `0`.
+- `--strict` enforces the quoted-label rule above; do not drop it.
+- If the network blocks the npx fetch, fall back to `npx -y @probelabs/maid <output-path>` (no `--strict`) so the structural errors are still caught; note the missing strict pass in the validation note.
+- Use `--format json` if you need machine-readable output to drive automated fix loops.
+
+Do not "fix" by deleting a diagram unless the diagram was ornamental to begin with; a real architecture/flow diagram with a syntax error should be repaired, not removed.
+
 ## Validation Handoff
 
 The orchestrating agent, not this synthesis pass, owns final grounding validation before posting or publishing. Make that validation easy by ensuring the `Evidence` section maps claims to sources.
