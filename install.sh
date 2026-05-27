@@ -465,7 +465,9 @@ update_gitconfig() {
 
 install_command_skills() {
   local commands_dir=".claude/commands"
-  local skills_dir="$HOME/.agents/skills"
+  local skills_dir="${1:-$HOME/.agents/skills}"
+  local label="${2:-Claude command skills}"
+  local include_openai_yaml="${3:-true}"
   local command_file rel command_path command_name command_subdir command_namespace skill_name skill_dir
   local count=0
 
@@ -496,12 +498,16 @@ install_command_skills() {
 
     if [[ "$DRY_RUN" == true ]]; then
       ACTIVE_DESTS["$skill_md"]=1
-      ACTIVE_DESTS["$openai_yaml"]=1
+      [[ "$include_openai_yaml" == true ]] && ACTIVE_DESTS["$openai_yaml"]=1
       can_overwrite "$skill_md" && dry_run_msg "generate command skill $skill_name in $skill_dir"
       continue
     fi
 
-    mkdir -p "$skill_dir/agents"
+    if [[ "$include_openai_yaml" == true ]]; then
+      mkdir -p "$skill_dir/agents"
+    else
+      mkdir -p "$skill_dir"
+    fi
     local tmp
     tmp="$(mktemp)"
     awk -v skill_name="$skill_name" '
@@ -530,17 +536,19 @@ install_command_skills() {
       { print }
     ' "$command_file" > "$tmp"
     install_rendered "$command_file" "$tmp" "$skill_md"
-    # openai.yaml is always the same two lines; write and track it directly
-    printf 'policy:\n  allow_implicit_invocation: false\n' > "$openai_yaml"
-    MANIFEST_HASH["$openai_yaml"]="$(file_hash "$openai_yaml")"
-    MANIFEST_SRC["$openai_yaml"]="$command_file"
-    ACTIVE_DESTS["$openai_yaml"]=1
+    if [[ "$include_openai_yaml" == true ]]; then
+      # openai.yaml is always the same two lines; write and track it directly
+      printf 'policy:\n  allow_implicit_invocation: false\n' > "$openai_yaml"
+      MANIFEST_HASH["$openai_yaml"]="$(file_hash "$openai_yaml")"
+      MANIFEST_SRC["$openai_yaml"]="$command_file"
+      ACTIVE_DESTS["$openai_yaml"]=1
+    fi
   done < <(find "$commands_dir" -type f -name '*.md' | sort)
 
   if [[ "$DRY_RUN" == true ]]; then
-    log "Would install $count Claude command skills in $skills_dir"
+    log "Would install $count $label in $skills_dir"
   else
-    log "Installed $count Claude command skills in $skills_dir"
+    log "Installed $count $label in $skills_dir"
   fi
 }
 
@@ -634,22 +642,29 @@ install_agents() {
 
   copy_dir_contents ".claude/commands" "$HOME/.opencode/commands"
   copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
-  install_command_skills
+  install_command_skills "$HOME/.agents/skills" "Claude command skills" true
   cleanup_legacy_namespaced_agent_dirs
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
   install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
 
-  if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.gemini/antigravity/skills"
-  else
-    mkdir -p "$HOME/.gemini/antigravity/skills"
+  # Migrate gemini to antigravity "agy" cli
+  if [[ -d "$HOME/.gemini/antigravity/skills" && ! -d "$HOME/.gemini/antigravity-cli/skills" ]]; then
+    mkdir -p $HOME/.gemini/antigravity-cli
+    mv "$HOME/.gemini/antigravity/skills" "$HOME/.gemini/antigravity-cli/skills"
   fi
-  copy_dir_contents ".claude/skills" "$HOME/.gemini/antigravity/skills"
+    
+  if [[ "$DRY_RUN" == true ]]; then
+    dry_run_msg "create $HOME/.gemini/antigravity-cli/skills"
+  else
+    mkdir -p "$HOME/.gemini/antigravity-cli/skills"
+  fi
+  copy_dir_contents ".claude/skills" "$HOME/.gemini/antigravity-cli/skills"
+  install_command_skills "$HOME/.gemini/antigravity-cli/skills" "Claude command skills as agy skills" false
 
   if [[ "$DRY_RUN" == true ]]; then
-    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity"
+    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity-cli"
   else
-    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity"
+    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity-cli"
   fi
 }
 
