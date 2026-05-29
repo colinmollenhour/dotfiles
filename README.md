@@ -4,7 +4,7 @@ Personal dotfiles plus a batteries-included Claude Code config for shipping soft
 
 ## Highlights
 
-- **Multi-model code review.** `/colin-review` and `/colin-ultra-review` fan out across as many models as you configure, dedupe findings, and post inline comments on GitHub PRs or GitLab MRs.
+- **Code review workflows.** `/colin-review` runs a focused single-agent review, while `/colin-ultra-review` fans out across MBOT models and roles, dedupes findings, and posts inline comments on GitHub PRs or GitLab MRs.
 - **Spec critique and group decisions.** `/colin-critique` and the MBOD debate skill stress-test plans before you write code.
 - **Production-readiness audit.** `/colin-ultra-audit` runs three roles (hardening, operability, stewardship) against the current repo state, grouped by severity.
 - **Boring shell quality of life.** Sensible Bash, Git, tmux, Vim, Delta, and [Starship](https://starship.rs/) configs with non-clobbering installs for `.bashrc` and `.gitconfig`.
@@ -188,14 +188,13 @@ The package defaults MBOT/MBOD delegation to Pi-backed participants and prefers 
 
 Both review commands resolve the target the same way. Pass no argument to review the open PR or MR for your current branch. Otherwise the target accepts: a PR or MR URL or number, `last N commits`, `whole repo`, `branch NAME`, or a Git rev spec like `SHA..SHA`.
 
-**`/colin-review [target] [agents] [flags]`** — standard multi-model review. Triages, buckets large diffs (≤ 5,000 lines runs as a single pass; otherwise ~3,000-line buckets grouped by top-level directory), runs MBOT agents on each bucket, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label.
+**`/colin-review [target] [flags]`** — standard single-agent review. Triages, buckets large diffs (≤ 5,000 lines runs as a single pass; otherwise ~3,000-line buckets grouped by top-level directory), reviews each bucket directly, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label. It does not use MBOT or `colin-mbot-*` agents; use `/colin-ultra-review` for multi-model fan-out.
 
 | Flag | Effect |
 |---|---|
-| `[agents]` (positional) | Model list for this run. Overrides the MBOT profile (e.g. `opus gpt gemini`). |
 | `--re-review` | Only review commits since the last `**AI Code Review**` comment on the PR or MR. |
 | `--no-post` | Print comments to the terminal and wait for `post`, `drop issue 3`, `edit issue 2 to …`, or `cancel` instead of auto-posting. |
-| `--no-summary` | Skip the per-model comparison summary comment. |
+| `--no-summary` | Skip the review summary comment. |
 
 In Git-diff mode (when the target is a rev spec rather than a PR or MR) the command always behaves as `--no-post` — nothing is posted, just displayed.
 
@@ -329,7 +328,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 ### Code generation and review
 
-- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare or merge results. Powers `/colin-review`, `/colin-critique`, `/colin-ultra-review`, and `/colin-ultra-audit`. Configurable — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
+- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare or merge results. Powers `/colin-critique`, `/colin-ultra-review`, and `/colin-ultra-audit`. Configurable — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
 - **`many-brain-one-decision`** (MBOD) — Coordinate a multi-round debate across MBOT agents with distinct personalities until they converge on a decision or hit the configured round limit. Use it for prompts like "decide which option is best", "debate this tradeoff", or "propose a solution to this problem".
 - **`educational-brief`** — Creates grounded journey/design/architecture/lessons briefs for delivered PRs, MRs, branches, features, or agent runs.
 - **`generate-e2e-test`** — Drives Playwright MCP through a workflow, then generates the E2E test code.
@@ -443,7 +442,7 @@ Profiles are prose. MBOT reads them naturally and translates them into the right
 
 ### Overriding per run
 
-- `[agents]` on `/colin-review` or `/colin-ultra-review` (positional, e.g. `gpt gemini kimi`) overrides the profile for that run only.
+- `[agents]` on `/colin-ultra-review` (positional, e.g. `gpt gemini kimi`) overrides the profile for that run only.
 - `--agents opus gpt gemini` on `/colin-critique` does the same.
 - `--profile X` in a prompt forces profile `X.md`.
 - `--dry-run` in a prompt makes MBOT report its execution plan instead of launching anything. Useful for verifying a new profile.

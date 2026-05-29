@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*), mcp__github_inline_comment__create_inline_comment
 description: Code review for GitHub PRs, GitLab MRs, or any git diff
-argument-hint: "[PR/MR number, URL, or git description] [agents] [--re-review] [--no-post] [--no-summary]"
+argument-hint: "[PR/MR number, URL, or git description] [--re-review] [--no-post] [--no-summary]"
 ---
 
 # Code Review
@@ -34,13 +34,15 @@ If an argument is provided, resolve it as follows:
 
 Resolve current-branch reviews using the appropriate platform CLI skill.
 
-## Review Agents
+## Review Execution
 
-Use the **Many Brain One Task (MBOT)** skill with task type `code-review`.
+Run this as a single standard review in the current agent context.
 
-- If the user names models, pass them through
-- Otherwise use MBOT defaults
-- Use MBOT display names in summaries and posted comments
+- Do **not** load or use the `many-brain-one-task` / MBOT skill
+- Do **not** launch any `colin-mbot-*` subagents
+- Do **not** fan out across multiple models or agents
+- If the user names models or agents, tell them that multi-model review is reserved for `/colin-ultra-review` and continue with this single-review workflow unless they ask to switch commands
+- Use `AI reviewer` as the reviewer attribution in summaries and posted comments
 
 ## Re-review Mode
 
@@ -138,9 +140,9 @@ Pass external summaries to review agents, but do not post them as comments.
 
 ### Step 4: Review the Changes
 
-Run one review pass per bucket. Bucket passes execute **sequentially** to bound total cost; within a pass, MBOT agents run in parallel.
+Run one review pass per bucket. Bucket passes execute **sequentially** to bound total cost.
 
-For each bucket, use MBOT to launch review agents in parallel. Give each agent:
+For each bucket, review the bucket directly in the current agent context. Use no MBOT skill and no `colin-mbot-*` subagents. Use:
 - **Only the current bucket's diff** as the primary review target
 - A one-line summary of the other buckets' scopes (top-level dirs + line counts) so agents know what they are *not* seeing in this pass — instruct them not to flag issues that would require cross-bucket context they don't have
 - Relevant `AGENTS.md` context (for files in the current bucket and their parents)
@@ -148,7 +150,7 @@ For each bucket, use MBOT to launch review agents in parallel. Give each agent:
 - In re-review mode: prior comments plus incremental diff as primary context
 - Instruction: "If you propose a literal patch as the fix, format it per the loaded platform skill's Committable Suggestion Blocks rules — the body's line count MUST equal the lines being replaced at the comment's anchor. On GitLab, multi-line replacements REQUIRE the explicit `` ```suggestion:-N+M `` range modifier. If you cannot be precise about the replacement range, return a prose description with a fenced ` ``` ` example block instead of a `` ```suggestion `` block."
 
-Each agent should return issues tagged with the agent name that found them.
+Return issues tagged with `AI reviewer`.
 
 Review focus:
 - `AGENTS.md` compliance for applicable paths only
@@ -169,27 +171,18 @@ If confidence is low, do not flag the issue.
 
 ### Step 5: Validate and Deduplicate
 
-For each issue across **all (agent × bucket) threads**, run a validation agent and keep only issues confirmed with high confidence.
+For each issue across all buckets, perform a validation pass in the current agent context and keep only issues confirmed with high confidence.
 
-- Merge duplicate issues across agents and buckets (same file:line and same root cause = one issue)
-- Preserve all agent attributions on merged issues
-- Keep full per-agent validation results unless `--no-summary` is active
+- Merge duplicate issues across buckets (same file:line and same root cause = one issue)
+- Preserve reviewer attribution on merged issues
+- Keep validation notes unless `--no-summary` is active
 - For any issue whose proposed fix includes a `` ```suggestion `` block, verify the block satisfies the platform skill's Committable Suggestion Blocks rules (line counts match the anchor range; on GitLab the `:-N+M` modifier is present when the replacement spans more than one line). If the block is malformed and cannot be corrected with high confidence, downgrade the fix to a prose description before posting.
 
-### Step 6: Model Comparison Summary
+### Step 6: Review Summary
 
 Skip this step if `--no-summary` is active.
 
-Metrics aggregate across all buckets. For each agent, compute:
-- **Found**: total issues flagged
-- **Validated**: issues surviving validation
-- **False Positives**: found minus validated
-- **Unique Finds**: validated issues found only by that agent
-- **Shared Finds**: validated issues also found by other agents
-- **Accuracy**: `validated / found`, or `—` when `found = 0`
-- **Composite Score**: `(2 x unique) + shared - (2 x false positives)`
-
-Use display names. Report best and worst model by composite score. If no model found any issue, state that there was no differentiation in this review.
+Summarize the total issues found, the issues kept after validation, any issues discarded as false positives, and the files/buckets reviewed. Do not include model comparisons.
 
 ### Step 7: Post or Display Results
 
@@ -246,7 +239,7 @@ Comment rules:
 - For self-contained fixes of up to 5 lines, include a committable suggestion block following the loaded platform skill's Committable Suggestion Blocks rules. The block's line count MUST equal the lines being replaced at the comment's anchor — on GitLab, multi-line replacements REQUIRE the explicit `` ```suggestion:-N+M `` modifier (a bare `` ```suggestion `` only ever replaces one line, regardless of body size). Do not emit a suggestion block if the replacement range cannot be determined precisely.
 - If the fix is not self-contained, or the suggestion-block rules above can't be satisfied, describe the fix and include a copyable prompt instead of a suggestion block
 
-Unless `--no-summary` is active, post the model comparison summary after all inline comments.
+Unless `--no-summary` is active, post the review summary after all inline comments.
 
 ### Step 8: Apply Review Label
 
