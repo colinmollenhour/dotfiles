@@ -23,6 +23,7 @@ imc
 .claude/worktrees
 .codex
 .opencode/package-lock.json
+.zed
 
 # bv (beads viewer) local config and caches
 .bv/
