@@ -39,6 +39,14 @@ declare -A ACTIVE_DESTS=()    # dest_abs → 1 (visited this run)
 
 cd "$SCRIPT_DIR"
 
+# --- Colors (disabled when stderr is not a TTY or NO_COLOR is set) ---
+if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'
+  C_CYAN=$'\033[36m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'
+else
+  C_RESET=''; C_BOLD=''; C_CYAN=''; C_GREEN=''; C_YELLOW=''
+fi
+
 log() {
   [[ "$QUIET" == true ]] && return
   printf '%s\n' "$*" >&2
@@ -220,6 +228,27 @@ merge_settings_json() {
     rm -f "$tmp"
     warn "Failed to merge $src_rel into $dest; left existing file unchanged"
   fi
+}
+
+# If the user has no statusLine configured, point them at the simple-statusline
+# plugin (this repo no longer ships a statusline of its own). Advisory only.
+suggest_statusline_if_missing() {
+  local claude_settings="$HOME/.claude/settings.json"
+  command -v jq >/dev/null 2>&1 || return 0
+  [[ -f "$claude_settings" ]] || return 0
+  # Already configured? Nothing to suggest.
+  jq -e '.statusLine != null' "$claude_settings" >/dev/null 2>&1 && return 0
+
+  log ""
+  log "${C_BOLD}${C_CYAN}╭─ No statusline configured in ~/.claude/settings.json${C_RESET}"
+  log "${C_CYAN}│${C_RESET}  Install the ${C_BOLD}simple-statusline${C_RESET} plugin for a clean two-line statusline"
+  log "${C_CYAN}│${C_RESET}  (model, git status, context usage, rate limits). In Claude Code run:"
+  log "${C_CYAN}│${C_RESET}"
+  log "${C_CYAN}│${C_RESET}    ${C_GREEN}/plugin marketplace add Postmodum37/simple-claude-code-statusline${C_RESET}"
+  log "${C_CYAN}│${C_RESET}    ${C_GREEN}/plugin install simple-statusline${C_RESET}"
+  log "${C_CYAN}│${C_RESET}    ${C_GREEN}/simple-statusline:setup${C_RESET}  ${C_YELLOW}(after restarting Claude Code)${C_RESET}"
+  log "${C_CYAN}│${C_RESET}"
+  log "${C_CYAN}╰─ Docs: https://github.com/Postmodum37/simple-claude-code-statusline#installation${C_RESET}"
 }
 
 # Recursively install all files under src_abs into dest_dir, tracking each in the manifest
@@ -710,6 +739,8 @@ install_agents() {
   else
     log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity-cli"
   fi
+
+  suggest_statusline_if_missing
 }
 
 prompt_yes_no() {
