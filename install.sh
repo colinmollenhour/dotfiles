@@ -165,6 +165,63 @@ install_rendered() {
   MANIFEST_SRC["$dest"]="$src_rel"
 }
 
+# Merge a JSON settings file rather than overwriting it. The repo file is the
+# baseline; the user's live file is layered on top with these rules:
+#   - repo scalars win (the baseline is authoritative for keys it ships)
+#   - the known permission/sandbox arrays are unioned, order-preserving, so
+#     neither the repo's nor the user's entries are ever lost
+#   - any key the user has that the repo does not ship (e.g. statusLine,
+#     enabledPlugins) is preserved untouched
+# Falls back to a plain install when jq is missing or the live file is
+# absent/empty/invalid. The merge is non-destructive, so it runs unconditionally
+# instead of going through can_overwrite (which would otherwise skip the file
+# forever once the user's live copy diverges from the baseline).
+merge_settings_json() {
+  local src_rel="$1" src_abs="$2" dest="$3"
+  ACTIVE_DESTS["$dest"]=1
+
+  if ! command -v jq >/dev/null 2>&1; then
+    warn "jq not found; installing $src_rel without merge"
+    install_file "$src_rel" "$src_abs" "$dest"
+    return
+  fi
+
+  # No usable existing file → just install the baseline.
+  if [[ ! -f "$dest" ]] || [[ "$(cat "$dest")" == "{}" ]] || ! jq -e . "$dest" >/dev/null 2>&1; then
+    install_file "$src_rel" "$src_abs" "$dest"
+    return
+  fi
+
+  if [[ "$DRY_RUN" == true ]]; then
+    dry_run_msg "merge $src_rel into $dest (repo scalars win, arrays unioned, your keys preserved)"
+    return
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  if jq -s '
+        def ou: reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end);
+        .[0] as $repo | .[1] as $live |
+        ($live * $repo)
+        | (if ($repo.permissions.allow or $live.permissions.allow)
+             then .permissions.allow = ((($repo.permissions.allow // []) + ($live.permissions.allow // [])) | ou) else . end)
+        | (if ($repo.permissions.deny or $live.permissions.deny)
+             then .permissions.deny = ((($repo.permissions.deny // []) + ($live.permissions.deny // [])) | ou) else . end)
+        | (if ($repo.sandbox.excludedCommands or $live.sandbox.excludedCommands)
+             then .sandbox.excludedCommands = ((($repo.sandbox.excludedCommands // []) + ($live.sandbox.excludedCommands // [])) | ou) else . end)
+        | (if ($repo.sandbox.network.allowedDomains or $live.sandbox.network.allowedDomains)
+             then .sandbox.network.allowedDomains = ((($repo.sandbox.network.allowedDomains // []) + ($live.sandbox.network.allowedDomains // [])) | ou) else . end)
+      ' "$src_abs" "$dest" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+    mv -f "$tmp" "$dest"
+    MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
+    MANIFEST_SRC["$dest"]="$src_rel"
+    log "Merged baseline $src_rel into $dest (your customizations preserved)"
+  else
+    rm -f "$tmp"
+    warn "Failed to merge $src_rel into $dest; left existing file unchanged"
+  fi
+}
+
 # Recursively install all files under src_abs into dest_dir, tracking each in the manifest
 install_dir_files() {
   local src_abs="$1" dest_dir="$2"
@@ -262,7 +319,11 @@ copy_claude_home() {
     elif [[ -d "$item" ]]; then
       install_dir_files "$SCRIPT_DIR/$item" "$dest/$base"
     elif [[ -f "$item" ]]; then
-      install_file "$item" "$SCRIPT_DIR/$item" "$dest/$base"
+      if [[ "$base" == "settings.json" || "$base" == "settings.local.json" ]]; then
+        merge_settings_json "$item" "$SCRIPT_DIR/$item" "$dest/$base"
+      else
+        install_file "$item" "$SCRIPT_DIR/$item" "$dest/$base"
+      fi
     fi
   done
   shopt -u nullglob
@@ -592,8 +653,6 @@ install_agents() {
   section "Installing AI agent files"
 
   local claude_settings="$HOME/.claude/settings.json"
-  local statusline_script="$HOME/.claude/statusline/statusline.sh"
-  local tmp
 
   if [[ -f "$claude_settings" ]] && [[ "$(cat "$claude_settings")" != "{}" ]]; then
     if [[ "$DRY_RUN" == true ]]; then
@@ -604,26 +663,11 @@ install_agents() {
     fi
   fi
 
+  # settings.json is merged (not overwritten) by copy_claude_home so any
+  # statusLine set by the simple-statusline plugin is preserved. Configure the
+  # statusline itself with `/simple-statusline:setup` (see
+  # https://github.com/Postmodum37/simple-claude-code-statusline).
   copy_claude_home
-
-  if [[ -f "$statusline_script" ]]; then
-    if command -v jq >/dev/null 2>&1; then
-      if [[ "$DRY_RUN" == true ]]; then
-        dry_run_msg "configure Claude statusLine in $claude_settings"
-      else
-        tmp="$(mktemp)"
-        jq '. + {statusLine: {type: "command", command: "bash ~/.claude/statusline/statusline.sh"}}' \
-          "$claude_settings" > "$tmp" && mv "$tmp" "$claude_settings"
-        # Re-record hash after jq mutation so the file doesn't look manually modified next run
-        MANIFEST_HASH["$claude_settings"]="$(file_hash "$claude_settings")"
-        log "Added statusLine to ~/.claude/settings.json"
-      fi
-    else
-      warn "jq not found; skipping statusLine injection into ~/.claude/settings.json"
-    fi
-  else
-    log "Skipping statusLine; no $statusline_script"
-  fi
 
   if [[ -d "$HOME/.config/opencode/command/colin" ]]; then
     if [[ "$DRY_RUN" == true ]]; then
