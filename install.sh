@@ -644,12 +644,8 @@ install_command_skills() {
 
 cleanup_legacy_namespaced_agent_dirs() {
   local legacy_dirs=(
-    "$HOME/.agents/skills/agent-sops"
     "$HOME/.agents/skills/colin"
-    "$HOME/.agents/skills/foobar"
-    "$HOME/.claude/commands/agent-sops"
     "$HOME/.claude/commands/colin"
-    "$HOME/.opencode/commands/agent-sops"
     "$HOME/.opencode/commands/colin"
   )
   local existing=() dir

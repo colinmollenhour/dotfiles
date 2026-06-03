@@ -298,17 +298,6 @@ flowchart TD
 | `/colin-handoff [PATH]` | Dump the current session context into a portable Markdown handoff doc. No tool calls, just context. |
 | `/colin-progress` | Audit the in-scope task and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
 
-### `agent-sops:*` — heavier structured workflows
-
-| Command | Use it when… |
-|---|---|
-| `/agent-sops-help` | Short overview of the SOPs and when to use each. |
-| `/agent-sops-pdd` | Prompt-Driven Development — turn a rough idea into a full design doc with an implementation plan. |
-| `/agent-sops-code-task-generator` | Convert rough descriptions or PDD plans into structured code-task files (Amazon format). |
-| `/agent-sops-code-assist` | Interactive TDD coach — explore, plan, code, commit loop. |
-| `/agent-sops-codebase-summary` | Generate `AGENTS.md`, `README.md`, or `CONTRIBUTING.md` for a repo. |
-| `/agent-sops-eval` | Plan, generate, and run evaluations for AI agents with the Strands Evals SDK. |
-
 ### Other
 
 | Command | Use it when… |
