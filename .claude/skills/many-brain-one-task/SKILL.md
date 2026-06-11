@@ -138,7 +138,7 @@ Both Claude Code and OpenCode hosts run Claude models via the same path: shell o
 **Claude Code host** — prefer the native `Agent` tool:
 
 ```ts
-Agent({ subagent_type: "general-purpose", model: "opus", description: "...", prompt: "..." })
+Agent({ subagent_type: "general-purpose", model: "opus", run_in_background: true, description: "...", prompt: "..." })
 ```
 
 If the `Agent` tool is unavailable, fall back to the `claude` CLI form below.

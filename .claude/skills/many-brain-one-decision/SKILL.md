@@ -68,7 +68,7 @@ If the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with cur
 | Pi | Other debater | Follow the selected profile route. If unspecified in the Pi package, use Pi-backed debaters by default. |
 | OpenCode | OpenCode-backed MBOT agent | Use the `Task` tool with the matching `colin-mbot-*` `subagent_type`. |
 | OpenCode | Claude-backed debater | Use the `claude` CLI first so usage can stay on the Claude Max plan. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if the CLI does not work or the user explicitly requests OpenCode-routed Claude. |
-| Claude Code | Claude-backed debater | Use Claude Code's native Agent tool when available; fallback to the `claude` CLI. |
+| Claude Code | Claude-backed debater | Use Claude Code's native Agent tool when available with `run_in_background: true`; fallback to the `claude` CLI. |
 | Claude Code | OpenCode-backed MBOT agent | Use **`occtl run`** when the preflight succeeds; otherwise fall back to the sibling MBOT `run-opencode.ts` helper. Claude Code does not expose `colin-mbot-*` subagents directly. |
 
 
@@ -114,7 +114,7 @@ Before launching any debater, check the selected model family against the curren
 - If the selected debater is Pi-backed, use the Pi debater route regardless of the current host. Prefer `pi-fast-subagent` when available in Pi; otherwise shell out with `pi --print < prompt.md`.
 - If the current host is OpenCode and the selected model is Claude-family (Opus, Sonnet, Haiku), **do not** use a `colin-mbot-*` subagent. Shell out through the `claude` CLI instead.
 - If the current host is OpenCode and the selected model is non-Claude, use the matching `colin-mbot-*` subagent.
-- If the current host is Claude Code and the selected model is Claude-family, use Claude Code's native Agent tool when available; fallback to the `claude` CLI.
+- If the current host is Claude Code and the selected model is Claude-family, use Claude Code's native Agent tool when available with `run_in_background: true`; fallback to the `claude` CLI.
 - If the current host is Claude Code and the selected model is non-Claude/OpenCode-backed, drive OpenCode with `occtl run` when available; fallback to the sibling MBOT `run-opencode.ts` helper.
 
 This guard overrides any generic `colin-mbot-*` mapping. In particular, never invoke Opus/Sonnet/Haiku as `colin-mbot-opus`, `colin-mbot-sonnet`, or similar from an OpenCode host unless the user explicitly requests OpenCode-routed Claude.
