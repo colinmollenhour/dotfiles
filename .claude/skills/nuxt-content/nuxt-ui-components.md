@@ -6,6 +6,8 @@ Source: <https://ui.nuxt.com/docs/typography>
 
 **Nesting rule:** every level of nesting adds one colon. A child of a `::` block opens with `:::`; a grandchild opens with `::::`. Open and close fences must match exactly.
 
+**Slot alignment rule:** for components with named slots (`UPageHero`, `UPageSection`, `UPageFeature`, `Card`, `Field`, `Callout` with `#title`, etc.), every `#slotname` line must sit in the same column as its parent `::` fence. Body content under each slot may be flush or indented +2 — only the directive line is constrained. See SKILL.md Core Rule 6.
+
 ## Accordion / AccordionItem
 
 Collapsible Q&A sections. AccordionItem props: `label`, `icon` (note: `label`, not `title`). The parent `accordion` accepts a YAML block with `defaultValue` (array of item indices to open by default).
@@ -276,6 +278,73 @@ Tabbed content panels. TabsItem props: `label`, `icon`.
 
 ::
 ````
+
+## Page* family (landing pages — Docus / Nuxt UI Pro)
+
+`UPageHero`, `UPageSection`, `UPageFeature` (and friends like `UPageHeader`, `UPageBody`, `UPageCard`, `UPageColumns`) are multi-slot landing-page components. They accept `#title`, `#description`, `#links`, `#features` named slots **or** the equivalent props via a YAML block — both forms work, pick by readability.
+
+**Slot form** — descriptions can contain markdown, child components nest naturally:
+
+```mdc
+::u-page-hero
+#title
+ShipStream Knowledge Base
+
+#description
+Your comprehensive guide.
+
+#links
+  :::u-button
+  ---
+  color: primary
+  size: xl
+  to: /getting-started
+  trailing-icon: i-lucide-arrow-right
+  ---
+  Get Started
+  :::
+::
+
+::u-page-section
+#title
+Browse by Topic
+
+#features
+  :::u-page-feature
+  ---
+  icon: i-lucide-rocket
+  to: /getting-started
+  ---
+  #title
+  Getting Started
+
+  #description
+  Set up your account and learn the fundamentals.
+  :::
+::
+```
+
+Note: `#title` / `#description` / `#features` / `#links` sit flush with `::u-page-hero` / `::u-page-section` (the parent fence). The `:::u-page-feature` children are indented +2 to visually mark structural nesting. Inside each `:::u-page-feature`, the inner `#title` / `#description` align with the `:::u-page-feature` fence at column 2.
+
+**Prop form** — descriptions are plain strings (no markdown), but the markup is much shorter:
+
+```mdc
+::u-page-section
+---
+title: Browse by Topic
+features:
+  - icon: i-lucide-rocket
+    to: /getting-started
+    title: Getting Started
+    description: Set up your account and learn the fundamentals.
+  - icon: i-lucide-truck
+    to: /shipping/orders
+    title: Shipping
+    description: Orders, shipments, and outbound operations.
+::
+```
+
+Use slot form when descriptions need real markdown (links, formatting, multi-paragraph). Use prop form when they're plain sentences.
 
 ## Prompt (coming soon)
 

@@ -28,6 +28,8 @@ These are the MDC rules most commonly violated. Get them right and everything el
 3. **Disambiguate inline components from following characters with empty props `{}`.** `:hello-world` is read as a component named `hello-world`. Write `:hello{}-world` to mean the component `hello` followed by `-world`. Same trick separates a component from punctuation when needed.
 4. **JSON/JS prop values are prefixed with `:` and wrapped in single quotes.** `{:items='["a","b"]'}` — the leading `:` marks it as an expression, and single quotes let the inside use standard JSON double quotes.
 5. **YAML props block replaces inline props for complex values.** Open the block with `---` on the line after the component opener, close with `---`, then put slot content below. Don't mix YAML block props with inline props on the same component.
+6. **Named slot directives (`#slotname`) must align with the parent `::` fence column.** The directive line itself is treated as part of the fence, not body content — any indentation mismatch reverts the parser and the directive leaks as literal text. Body content *under* each directive may be flush or indented; only the `#slot` line is constrained. This rule is invisible for default-slot-only components (no `#` lines exist), but bites hard on multi-slot components like Nuxt UI's `UPageHero`/`UPageSection`/`UPageFeature`. Enforced by `remark-mdc` (`dist/index.mjs:1702` checks `sectionIndentSize === initialPrefix`).
+7. **Every block component MUST have a matching closing fence on its own line.** A missing `::` does not raise a parse error or console warning — the parser silently consumes all subsequent content (including later headings, components, even the rest of the file) as the unclosed component's body. Symptoms: a page suddenly renders blank below some point, or a later component appears nested inside an earlier one. When debugging "where did the rest of my page go?", grep for unbalanced fences first. Self-closing components are not a thing in MDC; `::divider` still needs a `::` on the next line.
 
 ## Frontmatter
 
@@ -102,7 +104,7 @@ A three-level example:
 
 ### Named Slots
 
-Use `#slotname` to define named slots:
+Use `#slotname` to define named slots. **Each `#slotname` line must sit in the same column as its parent `::` fence** (see Core Rule 6).
 
 ```markdown
 ::card
@@ -399,6 +401,8 @@ Customize how standard Markdown elements render by creating components in `compo
 | `<img>` | `ProseImg` | Images |
 | `<table>` | `ProseTable` | Tables |
 
+**Plain-markdown lists nested inside MDC blocks introduce a new visual level.** When a project drives list styling with CSS counters scoped per nesting level (e.g., a `Steps` component that renders `1, 2, 3 → a, b, c → i, ii, iii`), a plain `1. 2. 3.` ordered list written *inside* a step body counts as one level deeper than its parent — it does NOT share the parent's depth. So a plain-markdown ordered list inside a level-2 step renders as visual level 3 (lower-roman, in the example cycle). The CSS selector that drives this (in projects following the ShipStream pattern) targets `.step-item > .steps-list > .step-item > .prose-ol-nested > li::before` — note the `.prose-ol-nested` segment, which is the marker that the plain-markdown list adds its own depth. Only relevant in projects with depth-sensitive list styling.
+
 ## Excerpts
 
 Use `<!--more-->` to define excerpt boundaries:
@@ -552,6 +556,21 @@ Then use in Markdown:
 Custom alert component content.
 ::
 ```
+
+### Name collisions with Nuxt UI prose components
+
+If the project uses Nuxt UI v4, several `Prose*` components are auto-registered globally (`ProseTip`, `ProseNote`, `ProseWarning`, `ProseCaution`, `ProseSteps`, etc. — see `nuxt-ui-components.md` for the full list). **Defining a custom component in `components/content/` with the same name as a Nuxt UI built-in works in `pnpm dev` but silently breaks in `pnpm build`.** Vite's dev resolver tolerates the duplicate registration and picks one at runtime; the production prerender bakes a frozen component map and emits the literal MDC tag (e.g., `<ProseTip>...</ProseTip>`) into the prerendered HTML, skipping rendering entirely.
+
+Two safe patterns:
+
+1. **Use a unique name** for the custom component (e.g., `OlSteps` instead of `Steps` to avoid `ProseSteps`). If the markdown source already uses the Nuxt UI tag name, rename in markdown too — or add an `mdc.components.map` entry in `nuxt.config.ts` to remap the tag (less preferred — silent indirection).
+2. **Delete the local wrapper** if it's just re-implementing Nuxt UI's behavior. The built-in is already registered; a duplicate adds nothing but risk.
+
+**Always verify in production builds, not just dev.** A component that renders correctly in `pnpm dev` may emit literal tags in `pnpm build`. Run a quick `curl localhost:3000/<page> | grep -c '<Prose'` to count any leaked tags after building.
+
+### Project-specific custom components
+
+Beyond the prose set and Nuxt UI's typography components, projects often add their own MDC components for domain-specific patterns (e.g., `::version-badge`, `::ol-steps`, `::pill-green`). When picking up an unfamiliar Nuxt Content project, list `app/components/content/` (or `components/content/`) before authoring — that directory is the ground truth for what custom MDC tags are available locally.
 
 ## Routing Best Practices
 
