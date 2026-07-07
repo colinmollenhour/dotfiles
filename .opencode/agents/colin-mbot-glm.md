@@ -1,7 +1,7 @@
 ---
 description: Many brain, one task with GLM
 mode: subagent
-model: zai-coding-plan/glm-5.1
+model: zai-coding-plan/glm-5.2
 tools:
   write: false
   edit: false
