@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Grok 4.3
+description: Many brain, one task with Grok 4.5
 mode: subagent
-model: openrouter/x-ai/grok-4.3
+model: openrouter/x-ai/grok-4.5
 tools:
   write: false
   edit: false

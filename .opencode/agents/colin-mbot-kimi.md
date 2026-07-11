@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Kimi K2.6
+description: Many brain, one task with Kimi K2.7 Code
 mode: subagent
-model: opencode/kimi-k2.6
+model: opencode/kimi-k2.7-code
 tools:
   write: false
   edit: false

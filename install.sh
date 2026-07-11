@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2026.05.03"
+VERSION="2026.07.11"
 
 DOTFILES=(
   ".bashrc.colin"
@@ -31,6 +31,7 @@ NO_INPUT=false
 QUIET=false
 WITH_OPUS=false
 FORCE=false
+CONFLICT_POLICY="ask"
 
 MANIFEST_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/colin-dotfiles/manifest"
 declare -A MANIFEST_HASH=()   # dest_abs → hash of dest at last install
@@ -81,6 +82,91 @@ file_hash() {
   sha256sum "$1" 2>/dev/null | cut -d' ' -f1
 }
 
+file_mtime() {
+  date -r "$1" '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || printf 'unknown'
+}
+
+show_file_diff() {
+  local dest="$1" candidate="$2"
+  if [[ -z "$candidate" || ! -f "$candidate" ]]; then
+    warn "No incoming file is available to diff against $dest"
+    return
+  fi
+
+  if command -v diff >/dev/null 2>&1; then
+    diff -u --label "$dest (existing)" --label "$dest (incoming)" "$dest" "$candidate" >&2 || true
+  else
+    warn "diff is not installed"
+  fi
+}
+
+backup_existing_file() {
+  local dest="$1" backup="$dest.bak" suffix=1
+  while [[ -e "$backup" || -L "$backup" ]]; do
+    backup="$dest.bak.$suffix"
+    suffix=$((suffix + 1))
+  done
+  if ! cp -p -- "$dest" "$backup"; then
+    warn "Could not back up $dest; existing file was left unchanged"
+    return 1
+  fi
+  log "Backed up $dest to $backup"
+}
+
+prompt_file_conflict() {
+  local reason="$1" dest="$2" candidate="$3" incoming_mtime_source="$4"
+
+  if [[ "$FORCE" == true || "$CONFLICT_POLICY" == "overwrite" ]]; then
+    warn "Overwriting $reason: $dest"
+    return 0
+  fi
+  if [[ "$CONFLICT_POLICY" == "keep" || "$NO_INPUT" == true || "$DRY_RUN" == true || ! -t 0 ]]; then
+    warn "Skipping $reason: $dest"
+    return 1
+  fi
+
+  printf '\nConflict: %s\n' "$dest" >&2
+  printf '  Existing file: %s\n' "$(file_mtime "$dest")" >&2
+  if [[ -n "$incoming_mtime_source" && -f "$incoming_mtime_source" ]]; then
+    printf '  Repository source: %s\n' "$(file_mtime "$incoming_mtime_source")" >&2
+  fi
+  printf '  Reason: %s\n' "$reason" >&2
+
+  local reply
+  while true; do
+    printf 'Choose [k]eep, [o]verwrite, [b]ack up and overwrite, [d]iff, keep [a]ll, overwrite a[l]l: ' >&2
+    IFS= read -r reply || reply="k"
+    case "$reply" in
+      ''|k|K|keep)
+        return 1
+        ;;
+      o|O|overwrite)
+        return 0
+        ;;
+      b|B|backup)
+        if backup_existing_file "$dest"; then
+          return 0
+        fi
+        return 1
+        ;;
+      d|D|diff)
+        show_file_diff "$dest" "$candidate"
+        ;;
+      a|A|keep-all)
+        CONFLICT_POLICY="keep"
+        return 1
+        ;;
+      l|L|overwrite-all)
+        CONFLICT_POLICY="overwrite"
+        return 0
+        ;;
+      *)
+        warn "Enter k, o, b, d, a, or l"
+        ;;
+    esac
+  done
+}
+
 load_manifest() {
   MANIFEST_HASH=()
   MANIFEST_SRC=()
@@ -104,13 +190,14 @@ save_manifest() {
   mv -f "$tmp" "$MANIFEST_FILE"
 }
 
-# Returns 0 if dest can be safely overwritten; prints warning and returns 1 otherwise.
-# Untracked existing files are treated as potentially manual and require --force,
-# unless they already match the file being installed. Matching files are safe to
-# adopt into the manifest so repeated installs do not keep warning about them.
+# Returns 0 if dest can be safely overwritten or the user approves it. Untracked
+# existing files are treated as potentially manual unless they already match the
+# incoming file. Interactive runs offer conflict actions; --no-input keeps the
+# existing file and --force overwrites it.
 can_overwrite() {
   local dest="$1"
   local candidate="${2:-}"
+  local incoming_mtime_source="${3:-$candidate}"
   [[ -f "$dest" ]] || return 0
   local tracked="${MANIFEST_HASH[$dest]:-}"
   local current
@@ -119,9 +206,8 @@ can_overwrite() {
     if [[ -n "$candidate" && -f "$candidate" && "$current" == "$(file_hash "$candidate")" ]]; then
       return 0
     fi
-    [[ "$FORCE" == true ]] && return 0
-    warn "Skipping untracked existing file (use --force to overwrite on first run): $dest"
-    return 1
+    prompt_file_conflict "untracked existing file" "$dest" "$candidate" "$incoming_mtime_source"
+    return
   fi
   [[ "$current" == "$tracked" ]] && return 0
   # If the user changed the file and later changed it back to match what this
@@ -131,12 +217,7 @@ can_overwrite() {
   if [[ -n "$candidate" && -f "$candidate" && "$current" == "$(file_hash "$candidate")" ]]; then
     return 0
   fi
-  if [[ "$FORCE" == true ]]; then
-    warn "Force-overwriting manually modified: $dest"
-    return 0
-  fi
-  warn "Skipping manually modified file (use --force to overwrite): $dest"
-  return 1
+  prompt_file_conflict "file modified since the last install" "$dest" "$candidate" "$incoming_mtime_source"
 }
 
 # Install src_abs → dest, recording src_rel in the manifest
@@ -149,7 +230,8 @@ install_file() {
   fi
   can_overwrite "$dest" "$src_abs" || return 0
   mkdir -p "$(dirname "$dest")"
-  cp -f "$src_abs" "$dest"
+  cp -f -- "$src_abs" "$dest"
+  touch -r "$src_abs" "$dest"
   MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
   MANIFEST_SRC["$dest"]="$src_rel"
 }
@@ -159,16 +241,17 @@ install_rendered() {
   local src_rel="$1" tmpfile="$2" dest="$3"
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
-    can_overwrite "$dest" "$tmpfile" && dry_run_msg "render $src_rel → $dest"
+    can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel" && dry_run_msg "render $src_rel → $dest"
     [[ -n "$tmpfile" ]] && rm -f "$tmpfile"
     return 0
   fi
-  if ! can_overwrite "$dest" "$tmpfile"; then
+  if ! can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel"; then
     rm -f "$tmpfile"
     return 0
   fi
   mkdir -p "$(dirname "$dest")"
   mv -f "$tmpfile" "$dest"
+  [[ -f "$SCRIPT_DIR/$src_rel" ]] && touch -r "$SCRIPT_DIR/$src_rel" "$dest"
   MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
   MANIFEST_SRC["$dest"]="$src_rel"
 }
@@ -414,12 +497,16 @@ OPTIONS
       --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
-  -f, --force        Overwrite files that were manually modified since last install
+  -f, --force        Overwrite conflicting files without prompting
       --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (no to avoid accidental usage)
-      --no-input     Disable prompts; requires at least one install option
+      --no-input     Disable prompts and keep conflicts; requires an install option
   -q, --quiet        Print only warnings and errors
   -h, --help         Show this help message
       --version      Show version and exit
+
+CONFLICTS
+  In a TTY, choose per file: keep, overwrite, back up, show a diff, keep all,
+  or overwrite all. Non-interactive runs keep conflicts unless --force is used.
 
 DOTFILES
 EOF
@@ -627,11 +714,11 @@ install_command_skills() {
     ' "$command_file" > "$tmp"
     install_rendered "$command_file" "$tmp" "$skill_md"
     if [[ "$include_openai_yaml" == true ]]; then
-      # openai.yaml is always the same two lines; write and track it directly
-      printf 'policy:\n  allow_implicit_invocation: false\n' > "$openai_yaml"
-      MANIFEST_HASH["$openai_yaml"]="$(file_hash "$openai_yaml")"
-      MANIFEST_SRC["$openai_yaml"]="$command_file"
-      ACTIVE_DESTS["$openai_yaml"]=1
+      # openai.yaml is always the same two lines, but still goes through the
+      # conflict checks so local changes are never overwritten silently.
+      tmp="$(mktemp)"
+      printf 'policy:\n  allow_implicit_invocation: false\n' > "$tmp"
+      install_rendered "$command_file" "$tmp" "$openai_yaml"
     fi
   done < <(find "$commands_dir" -type f -name '*.md' | sort)
 

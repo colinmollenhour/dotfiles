@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Big Pickle
+description: Many brain, one task with GPT 5.6 Terra
 mode: subagent
-model: opencode/big-pickle
+model: openai/gpt-5.6-terra
 tools:
   write: false
   edit: false

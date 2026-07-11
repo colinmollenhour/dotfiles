@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with MiniMax M2.5
+description: Many brain, one task with MiniMax M3
 mode: subagent
-model: opencode/minimax-m2.5-free
+model: opencode/minimax-m3
 tools:
   write: false
   edit: false

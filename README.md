@@ -49,13 +49,13 @@ cd ~/.dotfiles
 ./install.sh --help
 ```
 
-**First-time install on an existing system** — if destination files already exist the script will skip them and warn, to avoid clobbering files you may have edited. Pass `--force` to overwrite them all:
+**First-time install on an existing system** — if destination files already exist, an interactive run lets you keep, overwrite, back up, or diff each conflict. You can also keep or overwrite all remaining conflicts. Non-interactive runs skip conflicting files; pass `--force` to overwrite them all:
 
 ```bash
 ./install.sh --all --force
 ```
 
-Subsequent runs are safe without `--force`: the script tracks which files it installed and their hashes, so it only updates files it owns that haven't been manually changed.
+Subsequent runs are safe without `--force`: the script tracks which files it installed and their hashes, so it only updates files it owns that haven't been manually changed. Copied files retain the repository source's modification time, making a destination with a newer mtime an easy visual indicator that it was subsequently saved by a user; hashes remain the authoritative conflict check.
 
 After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, and tools. The same content lives at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2).
 
@@ -71,7 +71,8 @@ After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, 
 
 The installer tracks every file it owns in `~/.local/share/colin-dotfiles/manifest`. On each run it:
 
-- **Skips** any destination file you've edited since the last install and warns you (use `--force` to overwrite anyway).
+- **Prompts** on conflicts in a TTY, with options to keep, overwrite, back up, or view a unified diff.
+- **Skips** conflicting files in non-interactive runs and warns you (use `--force` to overwrite anyway).
 - **Deletes** installed files whose source was removed from the repo, but only if you haven't modified them locally.
 
 ### Claude Code config
@@ -435,24 +436,25 @@ Profiles are prose. MBOT reads them naturally and translates them into the right
 
 The `.claude/agents/colin-mbot-*.md` files register each model as a callable subagent (read-only — `write: false`). They are how OpenCode-hosted MBOT runs dispatch to a specific model. You normally do not invoke them directly, but you reference them by short name in profiles and `[agents]` overrides.
 
+Sorted roughly by capability:
+
 | Agent | Model |
 |---|---|
-| `colin-mbot-opus` | Anthropic Claude Opus 4.6 |
-| `colin-mbot-sonnet` | Anthropic Claude Sonnet 4.6 |
-| `colin-mbot-gpt` | OpenAI GPT 5.4 |
-| `colin-mbot-gpt-zen` | GPT 5.4 through OpenCode Zen |
-| `colin-mbot-gpt-codex` | OpenAI GPT 5.3 Codex |
-| `colin-mbot-gpt-codex-zen` | GPT 5.3 Codex through OpenCode Zen |
+| `colin-mbot-opus` | Anthropic Claude Opus 4.8 |
+| `colin-mbot-gpt` | OpenAI GPT 5.6 Sol |
+| `colin-mbot-gpt-zen` | GPT 5.6 Sol through OpenCode Zen |
+| `colin-mbot-gpt-terra` | OpenAI GPT 5.6 Terra |
+| `colin-mbot-gpt-terra-zen` | GPT 5.6 Terra through OpenCode Zen |
+| `colin-mbot-grok` | xAI Grok 4.5 |
+| `colin-mbot-sonnet` | Anthropic Claude Sonnet 5 |
+| `colin-mbot-glm` | Zhipu GLM 5.2 |
 | `colin-mbot-gemini-pro` | Gemini 3.1 Pro (OpenRouter) |
 | `colin-mbot-gemini-pro-zen` | Gemini 3.1 Pro through OpenCode Zen |
-| `colin-mbot-grok` | xAI Grok 4.20 |
-| `colin-mbot-kimi` | Moonshot Kimi K2.6 |
-| `colin-mbot-qwen` | Alibaba Qwen 3.6 Plus |
-| `colin-mbot-glm` | Zhipu GLM 5.1 |
+| `colin-mbot-qwen` | Alibaba Qwen 3.7 Max |
+| `colin-mbot-kimi` | Moonshot Kimi K2.7 Code |
 | `colin-mbot-mimo` | Xiaomi MiMo V2 Pro |
-| `colin-mbot-minimax` | MiniMax M2.5 |
-| `colin-mbot-deepseek` | DeepSeek |
-| `colin-mbot-big-pickle` | Big Pickle (OpenCode) |
+| `colin-mbot-deepseek` | DeepSeek v4 Pro |
+| `colin-mbot-minimax` | MiniMax M3 |
 
 Add your own by dropping a new `colin-mbot-<NAME>.md` into `.claude/agents/` with `mode: subagent`, the desired `model:`, and `tools: { write: false }`.
 
