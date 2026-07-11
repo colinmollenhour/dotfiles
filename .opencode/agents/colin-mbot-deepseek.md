@@ -1,5 +1,5 @@
 ---
-description: Many brain, one task with Deepseek V4 Pro
+description: Many brain, one task with Deepseek V4 Pro - only to be used by the MBOT skill
 mode: subagent
 model: openrouter/deepseek/deepseek-v4-pro
 tools:

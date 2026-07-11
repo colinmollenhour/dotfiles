@@ -1,5 +1,5 @@
 ---
-description: Many brain, one task with GLM
+description: Many brain, one task with GLM - only to be used by the MBOT skill
 mode: subagent
 model: zai-coding-plan/glm-5.2
 tools:

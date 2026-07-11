@@ -1,5 +1,5 @@
 ---
-description: Many brain, one task with MiniMax M3
+description: Many brain, one task with MiniMax M3 - only to be used by the MBOT skill
 mode: subagent
 model: opencode/minimax-m3
 tools:
