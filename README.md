@@ -298,12 +298,6 @@ flowchart TD
 | `/colin-handoff [PATH]` | Dump the current session context into a portable Markdown handoff doc. No tool calls, just context. |
 | `/colin-progress` | Audit the in-scope task and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
 
-### Other
-
-| Command | Use it when… |
-|---|---|
-| `/coolify` | Generate a `docker-compose.coolify.yml` for the current project using Coolify conventions and `SERVICE_*` secrets. |
-
 ## Skills
 
 Claude loads these automatically when a task matches, or you can reference them by name.
@@ -328,6 +322,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 ### Frameworks and stacks
 
+- **`coolify`** — Generate a `docker-compose.coolify.yml` for the current project using Coolify conventions and `SERVICE_*` secrets.
 - **`drizzle-orm`** — TypeScript-first ORM patterns for Postgres, MySQL, and SQLite: schemas, queries, migrations, relations.
 - **`nuxt-ui`** — Nuxt UI components. Fetches current docs from `ui.nuxt.com/llms.txt` so APIs are accurate.
 - **`nuxt-content`** — Author Markdown and MDC content files for Nuxt Content sites.
