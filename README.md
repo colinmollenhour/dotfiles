@@ -82,6 +82,7 @@ Slash commands, skills, agents, a status line, and worktree helpers install into
 ## Shell helpers
 
 - `colin-help` — list every alias, command, and tip.
+- `note [text]` — display a styled terminal sticky note, prompting for its contents when text is omitted.
 - `install-recommended`, `install-packages`, `update-packages` — package installers backed by `brew`, `npm`, `apt`, and raw `curl | bash`.
 - Fuzzy finders for files, Git branches, Docker containers, processes to stop, SSH hosts, exported variables, and unset variables.
 

@@ -22,6 +22,7 @@
 #   ll                   ls -la
 #   lvim                 open last-edited file in vim
 #   mm                   modman
+#   note [text]          display text or interactively write a terminal sticky note
 #   psg <string>         ps aux | grep [s]tring
 #   <(cmd)               treat output of command as file (can use multiple times)
 #
@@ -367,6 +368,15 @@ alias install-packages='~/.local/colin-dotfiles/update-packages.py --install'
 function findcrlf { grep -r $'\r' -l * | grep -v -E '(png|jpg|gif|gz|zip|bz2|swp|swf|fla|ttf|ico|xap|pdf|mp3|woff|otf|eot)$'; }
 function dush { du -sh "$@" | sort -hr; } # Disk usage sorted descending and human readable
 function psg { ps aux | grep "[${1:0:1}]${1:1}"; } # ps | grep and excluding the grep process
+function note {
+  local text
+  if [[ -n $1 ]]; then
+    text=$1
+  else
+    text=$(gum write --width 52 --height 6 --header "STICKY NOTE" --placeholder "What do you need to remember?" --prompt "  " --show-help=false) || return
+  fi
+  gum style --foreground 0 --background 220 --border rounded --border-foreground 214 --padding "1 2" --margin "1 2" --width 58 "$text"
+}
 function extract-table {
   [ -z $1 ] && { echo "no table specified"; return 1; }
   awk "/Table structure for table \`$1\`/{f=1}f;/UNLOCK TABLES;/{f=0}"
@@ -1046,4 +1056,3 @@ sendclip() {
             ;;
     esac
 }
-
