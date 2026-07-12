@@ -1,0 +1,17 @@
+save_interval   = "5m"                         # daemon autosave interval (Go duration)
+restore_timeout = "5s"                         # max wait for restored pane commands to start (0 disables)
+
+# Allowlist of commands lazy-tmux may replay on restore, matched by program name.
+# Omit this key to restore every command (default). Provide a list to restore
+# only those programs; use an empty list [] to restore no commands at all.
+restore_allowlist = ["vim", "htop", "btm", "less", "tail", "ssh", "watch"]
+
+# Denylist of commands lazy-tmux must never replay, matched by program name.
+# Use this instead of an allowlist when you trust most commands and only want to
+# exclude a few. The denylist wins over the allowlist. Omit or leave empty to
+# block nothing (default).
+#restore_denylist = ["pnpm", "npm", "node", "claude", "opencode", "codex"]
+
+[scrollback]
+enabled = true   # capture shell pane scrollback
+lines   = 500    # max scrollback lines per pane
