@@ -39,6 +39,12 @@ class PackageUpdater:
                 upgrade="brew upgrade lazygit",
                 source="brew"
             ),
+            "lazy-tmux": PackageConfig(
+                command="lazy-tmux",
+                install="brew install lazy-tmux",
+                upgrade="brew upgrade lazy-tmux",
+                source="brew"
+            ),
             "crush": PackageConfig(
                 command="crush",
                 install="brew install charmbracelet/tap/crush",
