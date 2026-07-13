@@ -64,6 +64,22 @@ glab api 'projects/:fullpath/merge_requests/19/discussions?per_page=100&page=1' 
 
 If there may be more than one page, repeat for subsequent pages or use a helper/script that follows `X-Next-Page`. Never state that all comments are resolved until pagination has been accounted for.
 
+#### File Uploads (images in MR descriptions/notes)
+
+`glab api` cannot send multipart form data — `-F "file=@x.png"` does **not** upload the file (it fails confusingly, e.g. `404 Project Not Found`). To attach an image (diagram, screenshot) so it renders in an MR description or note, use `curl` against the project uploads endpoint with the token from `glab`:
+
+```bash
+# Extract the token into a shell variable WITHOUT printing it.
+# Careful: -h means --help in glab; use --hostname. `glab config get token` may return a non-usable blob — use auth status.
+TOKEN=$(glab auth status --hostname gitlab.example.com --show-token 2>&1 \
+  | sed -n 's/.*Token[^:]*: //p' | grep -v '^\*' | head -1 | tr -d '[:space:]')
+
+curl -s -X POST -H "PRIVATE-TOKEN: $TOKEN" --form "file=@diagram.png" \
+  "https://gitlab.example.com/api/v4/projects/<group>%2F<repo>/uploads"
+```
+
+The response's `markdown` field is a ready-to-embed `![name](/uploads/<hash>/name.png)` snippet — project-relative, renders in that project's MR descriptions and notes. Then apply it with `glab mr update <iid> --description "$(cat description.md)"`. Never echo the token into command output.
+
 ### Step 4: Avoid interactive flows
 
 Always pass explicit flags instead of relying on prompts.
