@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2026.07.11"
+VERSION="2026.07.13"
 
 DOTFILES=(
   ".bashrc.colin"
@@ -37,6 +37,13 @@ MANIFEST_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/colin-dotfiles/manifest"
 declare -A MANIFEST_HASH=()   # dest_abs → hash of dest at last install
 declare -A MANIFEST_SRC=()    # dest_abs → src relative to SCRIPT_DIR
 declare -A ACTIVE_DESTS=()    # dest_abs → 1 (visited this run)
+declare -A UNCHANGED_DESTS=() # dest_abs → 1 (matching hash and mtime)
+declare -A WRITTEN_DESTS=()   # dest_abs → created, replaced, or updated
+declare -a WRITTEN_FILES=()
+N_UNCHANGED=0
+N_CREATED=0
+N_REPLACED=0
+N_UPDATED=0
 
 cd "$SCRIPT_DIR"
 
@@ -86,6 +93,58 @@ file_mtime() {
   date -r "$1" '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || printf 'unknown'
 }
 
+file_mtime_key() {
+  stat -c '%y' -- "$1" 2>/dev/null
+}
+
+same_hash_and_mtime() {
+  local dest="$1" candidate="$2" mtime_source="${3:-$candidate}"
+  [[ -f "$dest" && -f "$candidate" && -f "$mtime_source" ]] || return 1
+  [[ "$(file_hash "$dest")" == "$(file_hash "$candidate")" ]] || return 1
+  [[ "$(file_mtime_key "$dest")" == "$(file_mtime_key "$mtime_source")" ]]
+}
+
+record_unchanged() {
+  local path="$1"
+  [[ -v WRITTEN_DESTS[$path] || -v UNCHANGED_DESTS[$path] ]] && return
+  UNCHANGED_DESTS["$path"]=1
+  N_UNCHANGED=$((N_UNCHANGED + 1))
+}
+
+record_written() {
+  local path="$1" kind="$2"
+  [[ -v WRITTEN_DESTS[$path] ]] && return
+
+  if [[ -v UNCHANGED_DESTS[$path] ]]; then
+    unset "UNCHANGED_DESTS[$path]"
+    N_UNCHANGED=$((N_UNCHANGED - 1))
+  fi
+
+  WRITTEN_DESTS["$path"]="$kind"
+  WRITTEN_FILES+=("$path")
+  case "$kind" in
+    created) N_CREATED=$((N_CREATED + 1)) ;;
+    replaced) N_REPLACED=$((N_REPLACED + 1)) ;;
+    updated) N_UPDATED=$((N_UPDATED + 1)) ;;
+  esac
+}
+
+show_install_summary() {
+  local path
+  printf '\nFiles written (%d):\n' "${#WRITTEN_FILES[@]}" >&2
+  if [[ ${#WRITTEN_FILES[@]} -eq 0 ]]; then
+    printf '  None\n' >&2
+  else
+    for path in "${WRITTEN_FILES[@]}"; do
+      printf '  %s\n' "$path" >&2
+    done
+  fi
+  printf 'Unchanged (same hash and mtime): %d\n' "$N_UNCHANGED" >&2
+  printf 'Replaced: %d\n' "$N_REPLACED" >&2
+  printf 'Created: %d\n' "$N_CREATED" >&2
+  printf 'Updated in place: %d\n' "$N_UPDATED" >&2
+}
+
 show_file_diff() {
   local dest="$1" candidate="$2"
   if [[ -z "$candidate" || ! -f "$candidate" ]]; then
@@ -110,6 +169,7 @@ backup_existing_file() {
     warn "Could not back up $dest; existing file was left unchanged"
     return 1
   fi
+  record_written "$backup" created
   log "Backed up $dest to $backup"
 }
 
@@ -223,22 +283,36 @@ can_overwrite() {
 # Install src_abs → dest, recording src_rel in the manifest
 install_file() {
   local src_rel="$1" src_abs="$2" dest="$3"
+  local existed=false
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
     can_overwrite "$dest" "$src_abs" && dry_run_msg "install $src_rel → $dest"
     return 0
   fi
   can_overwrite "$dest" "$src_abs" || return 0
+  [[ -f "$dest" ]] && existed=true
+  if [[ "$existed" == true ]] && same_hash_and_mtime "$dest" "$src_abs"; then
+    MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
+    MANIFEST_SRC["$dest"]="$src_rel"
+    record_unchanged "$dest"
+    return 0
+  fi
   mkdir -p "$(dirname "$dest")"
   cp -f -- "$src_abs" "$dest"
   touch -r "$src_abs" "$dest"
   MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
   MANIFEST_SRC["$dest"]="$src_rel"
+  if [[ "$existed" == true ]]; then
+    record_written "$dest" replaced
+  else
+    record_written "$dest" created
+  fi
 }
 
 # Move a pre-rendered tmpfile → dest, recording src_rel in the manifest; always removes tmpfile
 install_rendered() {
   local src_rel="$1" tmpfile="$2" dest="$3"
+  local existed=false mtime_source="$SCRIPT_DIR/$src_rel"
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
     can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel" && dry_run_msg "render $src_rel → $dest"
@@ -249,11 +323,24 @@ install_rendered() {
     rm -f "$tmpfile"
     return 0
   fi
+  [[ -f "$dest" ]] && existed=true
+  if [[ "$existed" == true ]] && same_hash_and_mtime "$dest" "$tmpfile" "$mtime_source"; then
+    rm -f "$tmpfile"
+    MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
+    MANIFEST_SRC["$dest"]="$src_rel"
+    record_unchanged "$dest"
+    return 0
+  fi
   mkdir -p "$(dirname "$dest")"
   mv -f "$tmpfile" "$dest"
-  [[ -f "$SCRIPT_DIR/$src_rel" ]] && touch -r "$SCRIPT_DIR/$src_rel" "$dest"
+  [[ -f "$mtime_source" ]] && touch -r "$mtime_source" "$dest"
   MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
   MANIFEST_SRC["$dest"]="$src_rel"
+  if [[ "$existed" == true ]]; then
+    record_written "$dest" replaced
+  else
+    record_written "$dest" created
+  fi
 }
 
 # Merge a JSON settings file rather than overwriting it. The repo file is the
@@ -269,7 +356,9 @@ install_rendered() {
 # forever once the user's live copy diverges from the baseline).
 merge_settings_json() {
   local src_rel="$1" src_abs="$2" dest="$3"
+  local existed=false
   ACTIVE_DESTS["$dest"]=1
+  [[ -f "$dest" ]] && existed=true
 
   if ! command -v jq >/dev/null 2>&1; then
     warn "jq not found; installing $src_rel without merge"
@@ -306,6 +395,11 @@ merge_settings_json() {
     mv -f "$tmp" "$dest"
     MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
     MANIFEST_SRC["$dest"]="$src_rel"
+    if [[ "$existed" == true ]]; then
+      record_written "$dest" replaced
+    else
+      record_written "$dest" created
+    fi
     log "Merged baseline $src_rel into $dest (your customizations preserved)"
   else
     rm -f "$tmp"
@@ -443,6 +537,7 @@ copy_claude_home() {
 
 write_file() {
   local path="$1"
+  local existed=false
   shift
 
   if [[ "$DRY_RUN" == true ]]; then
@@ -450,12 +545,19 @@ write_file() {
     return
   fi
 
+  [[ -f "$path" ]] && existed=true
   mkdir -p "$(dirname "$path")"
   printf '%s\n' "$@" > "$path"
+  if [[ "$existed" == true ]]; then
+    record_written "$path" replaced
+  else
+    record_written "$path" created
+  fi
 }
 
 append_file() {
   local path="$1"
+  local existed=false
   shift
 
   if [[ "$DRY_RUN" == true ]]; then
@@ -463,8 +565,14 @@ append_file() {
     return
   fi
 
+  [[ -f "$path" ]] && existed=true
   mkdir -p "$(dirname "$path")"
   printf '%s\n' "$@" >> "$path"
+  if [[ "$existed" == true ]]; then
+    record_written "$path" updated
+  else
+    record_written "$path" created
+  fi
 }
 
 bashrc_sources_colin() {
@@ -500,7 +608,7 @@ OPTIONS
   -f, --force        Overwrite conflicting files without prompting
       --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (no to avoid accidental usage)
       --no-input     Disable prompts and keep conflicts; requires an install option
-  -q, --quiet        Print only warnings and errors
+  -q, --quiet        Suppress progress messages (the final write summary remains)
   -h, --help         Show this help message
       --version      Show version and exit
 
@@ -767,10 +875,17 @@ install_agents() {
   local claude_settings="$HOME/.claude/settings.json"
 
   if [[ -f "$claude_settings" ]] && [[ "$(cat "$claude_settings")" != "{}" ]]; then
+    local backup_existed=false
+    [[ -f "$claude_settings.bak" ]] && backup_existed=true
     if [[ "$DRY_RUN" == true ]]; then
       dry_run_msg "back up $claude_settings to $claude_settings.bak"
     else
       cp "$claude_settings" "$claude_settings.bak"
+      if [[ "$backup_existed" == true ]]; then
+        record_written "$claude_settings.bak" replaced
+      else
+        record_written "$claude_settings.bak" created
+      fi
       log "Backed up ~/.claude/settings.json to ~/.claude/settings.json.bak"
     fi
   fi
@@ -992,7 +1107,7 @@ main() {
     log ""
     log "Dry run complete. No files were changed."
   else
-    log ""
+    show_install_summary
     log "Installation complete."
   fi
 }
