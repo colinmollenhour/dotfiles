@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2026.07.13"
+VERSION="2026.07.14"
 
 DOTFILES=(
   ".bashrc.colin"
@@ -89,6 +89,12 @@ file_hash() {
   sha256sum "$1" 2>/dev/null | cut -d' ' -f1
 }
 
+same_hash() {
+  local first="$1" second="$2"
+  [[ -f "$first" && -f "$second" ]] || return 1
+  [[ "$(file_hash "$first")" == "$(file_hash "$second")" ]]
+}
+
 file_mtime() {
   date -r "$1" '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || printf 'unknown'
 }
@@ -98,9 +104,10 @@ file_mtime_key() {
 }
 
 same_hash_and_mtime() {
-  local dest="$1" candidate="$2" mtime_source="${3:-$candidate}"
-  [[ -f "$dest" && -f "$candidate" && -f "$mtime_source" ]] || return 1
-  [[ "$(file_hash "$dest")" == "$(file_hash "$candidate")" ]] || return 1
+  local dest="$1" candidate="$2"
+  local mtime_source="${3:-$candidate}"
+  [[ -f "$mtime_source" ]] || return 1
+  same_hash "$dest" "$candidate" || return 1
   [[ "$(file_mtime_key "$dest")" == "$(file_mtime_key "$mtime_source")" ]]
 }
 
@@ -131,7 +138,11 @@ record_written() {
 
 show_install_summary() {
   local path
-  printf '\nFiles written (%d):\n' "${#WRITTEN_FILES[@]}" >&2
+  if [[ "$DRY_RUN" == true ]]; then
+    printf '\nFiles that would be written (%d):\n' "${#WRITTEN_FILES[@]}" >&2
+  else
+    printf '\nFiles written (%d):\n' "${#WRITTEN_FILES[@]}" >&2
+  fi
   if [[ ${#WRITTEN_FILES[@]} -eq 0 ]]; then
     printf '  None\n' >&2
   else
@@ -140,9 +151,15 @@ show_install_summary() {
     done
   fi
   printf 'Unchanged (same hash and mtime): %d\n' "$N_UNCHANGED" >&2
-  printf 'Replaced: %d\n' "$N_REPLACED" >&2
-  printf 'Created: %d\n' "$N_CREATED" >&2
-  printf 'Updated in place: %d\n' "$N_UPDATED" >&2
+  if [[ "$DRY_RUN" == true ]]; then
+    printf 'Would replace: %d\n' "$N_REPLACED" >&2
+    printf 'Would create: %d\n' "$N_CREATED" >&2
+    printf 'Would update in place: %d\n' "$N_UPDATED" >&2
+  else
+    printf 'Replaced: %d\n' "$N_REPLACED" >&2
+    printf 'Created: %d\n' "$N_CREATED" >&2
+    printf 'Updated in place: %d\n' "$N_UPDATED" >&2
+  fi
 }
 
 show_file_diff() {
@@ -286,7 +303,16 @@ install_file() {
   local existed=false
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
-    can_overwrite "$dest" "$src_abs" && dry_run_msg "install $src_rel → $dest"
+    can_overwrite "$dest" "$src_abs" || return 0
+    if same_hash_and_mtime "$dest" "$src_abs"; then
+      record_unchanged "$dest"
+    elif [[ -f "$dest" ]]; then
+      record_written "$dest" replaced
+      dry_run_msg "replace $dest from $src_rel"
+    else
+      record_written "$dest" created
+      dry_run_msg "create $dest from $src_rel"
+    fi
     return 0
   fi
   can_overwrite "$dest" "$src_abs" || return 0
@@ -315,8 +341,18 @@ install_rendered() {
   local existed=false mtime_source="$SCRIPT_DIR/$src_rel"
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
-    can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel" && dry_run_msg "render $src_rel → $dest"
-    [[ -n "$tmpfile" ]] && rm -f "$tmpfile"
+    if can_overwrite "$dest" "$tmpfile" "$mtime_source"; then
+      if same_hash_and_mtime "$dest" "$tmpfile" "$mtime_source"; then
+        record_unchanged "$dest"
+      elif [[ -f "$dest" ]]; then
+        record_written "$dest" replaced
+        dry_run_msg "replace $dest from rendered $src_rel"
+      else
+        record_written "$dest" created
+        dry_run_msg "create $dest from rendered $src_rel"
+      fi
+    fi
+    rm -f "$tmpfile"
     return 0
   fi
   if ! can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel"; then
@@ -372,11 +408,6 @@ merge_settings_json() {
     return
   fi
 
-  if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "merge $src_rel into $dest (repo scalars win, arrays unioned, your keys preserved)"
-    return
-  fi
-
   local tmp
   tmp="$(mktemp)"
   if jq -s '
@@ -392,6 +423,12 @@ merge_settings_json() {
         | (if ($repo.sandbox.network.allowedDomains or $live.sandbox.network.allowedDomains)
              then .sandbox.network.allowedDomains = ((($repo.sandbox.network.allowedDomains // []) + ($live.sandbox.network.allowedDomains // [])) | ou) else . end)
       ' "$src_abs" "$dest" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      rm -f "$tmp"
+      record_written "$dest" replaced
+      dry_run_msg "merge $src_rel into $dest (repo scalars win, arrays unioned, your keys preserved)"
+      return
+    fi
     mv -f "$tmp" "$dest"
     MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
     MANIFEST_SRC["$dest"]="$src_rel"
@@ -541,6 +578,11 @@ write_file() {
   shift
 
   if [[ "$DRY_RUN" == true ]]; then
+    if [[ -f "$path" ]]; then
+      record_written "$path" replaced
+    else
+      record_written "$path" created
+    fi
     dry_run_msg "write $path"
     return
   fi
@@ -561,6 +603,11 @@ append_file() {
   shift
 
   if [[ "$DRY_RUN" == true ]]; then
+    if [[ -f "$path" ]]; then
+      record_written "$path" updated
+    else
+      record_written "$path" created
+    fi
     dry_run_msg "append to $path"
     return
   fi
@@ -633,17 +680,23 @@ repo_head() {
   fi
 }
 
+repo_date() {
+  if command -v git >/dev/null 2>&1 && git rev-parse --verify HEAD >/dev/null 2>&1; then
+    git show -s --format='%cD' HEAD
+  else
+    date -r "$SCRIPT_DIR/install.sh" '+%a, %d %b %Y %H:%M:%S %z'
+  fi
+}
+
 install_dotfiles() {
   section "Installing dotfiles"
 
   local install_repo_head install_date dotfile src dest
 
-  if [[ "$DRY_RUN" == false ]]; then
-    command -v envsubst >/dev/null 2>&1 || die "envsubst is required to install dotfiles. Install gettext and rerun this script."
-  fi
+  command -v envsubst >/dev/null 2>&1 || die "envsubst is required to install dotfiles. Install gettext and rerun this script."
 
   install_repo_head="$(repo_head)"
-  install_date="$(date)"
+  install_date="$(repo_date)"
 
   if [[ "$DRY_RUN" == true ]]; then
     dry_run_msg "create $HOME/.config/tmux, $HOME/.config/tmux-powerline/themes, and $HOME/.config/delta"
@@ -657,16 +710,11 @@ install_dotfiles() {
     ensure_repo_file "$src"
     log "Installing $dotfile"
 
-    if [[ "$DRY_RUN" == true ]]; then
-      ACTIVE_DESTS["$dest"]=1
-      can_overwrite "$dest" && dry_run_msg "render $src → $dest"
-    else
-      local tmp
-      tmp="$(mktemp)"
-      INSTALL_REPO_HEAD="$install_repo_head" INSTALL_DATE="$install_date" \
-        envsubst '$INSTALL_REPO_HEAD:$INSTALL_DATE' < "$src" > "$tmp"
-      install_rendered "$src" "$tmp" "$dest"
-    fi
+    local tmp
+    tmp="$(mktemp)"
+    INSTALL_REPO_HEAD="$install_repo_head" INSTALL_DATE="$install_date" \
+      envsubst '$INSTALL_REPO_HEAD:$INSTALL_DATE' < "$src" > "$tmp"
+    install_rendered "$src" "$tmp" "$dest"
   done
 }
 
@@ -781,17 +829,12 @@ install_command_skills() {
     local skill_md="$skill_dir/SKILL.md"
     local openai_yaml="$skill_dir/agents/openai.yaml"
 
-    if [[ "$DRY_RUN" == true ]]; then
-      ACTIVE_DESTS["$skill_md"]=1
-      [[ "$include_openai_yaml" == true ]] && ACTIVE_DESTS["$openai_yaml"]=1
-      can_overwrite "$skill_md" && dry_run_msg "generate command skill $skill_name in $skill_dir"
-      continue
-    fi
-
-    if [[ "$include_openai_yaml" == true ]]; then
-      mkdir -p "$skill_dir/agents"
-    else
-      mkdir -p "$skill_dir"
+    if [[ "$DRY_RUN" == false ]]; then
+      if [[ "$include_openai_yaml" == true ]]; then
+        mkdir -p "$skill_dir/agents"
+      else
+        mkdir -p "$skill_dir"
+      fi
     fi
     local tmp
     tmp="$(mktemp)"
@@ -877,10 +920,20 @@ install_agents() {
   if [[ -f "$claude_settings" ]] && [[ "$(cat "$claude_settings")" != "{}" ]]; then
     local backup_existed=false
     [[ -f "$claude_settings.bak" ]] && backup_existed=true
-    if [[ "$DRY_RUN" == true ]]; then
+    if same_hash "$claude_settings" "$claude_settings.bak"; then
+      if same_hash_and_mtime "$claude_settings.bak" "$claude_settings"; then
+        record_unchanged "$claude_settings.bak"
+      fi
+      log "Backup already current: $claude_settings.bak"
+    elif [[ "$DRY_RUN" == true ]]; then
+      if [[ "$backup_existed" == true ]]; then
+        record_written "$claude_settings.bak" replaced
+      else
+        record_written "$claude_settings.bak" created
+      fi
       dry_run_msg "back up $claude_settings to $claude_settings.bak"
     else
-      cp "$claude_settings" "$claude_settings.bak"
+      cp -p "$claude_settings" "$claude_settings.bak"
       if [[ "$backup_existed" == true ]]; then
         record_written "$claude_settings.bak" replaced
       else
@@ -920,10 +973,14 @@ install_agents() {
 
   # Migrate gemini to antigravity "agy" cli
   if [[ -d "$HOME/.gemini/antigravity/skills" && ! -d "$HOME/.gemini/antigravity-cli/skills" ]]; then
-    mkdir -p $HOME/.gemini/antigravity-cli
-    mv "$HOME/.gemini/antigravity/skills" "$HOME/.gemini/antigravity-cli/skills"
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "move $HOME/.gemini/antigravity/skills to $HOME/.gemini/antigravity-cli/skills"
+    else
+      mkdir -p "$HOME/.gemini/antigravity-cli"
+      mv "$HOME/.gemini/antigravity/skills" "$HOME/.gemini/antigravity-cli/skills"
+    fi
   fi
-    
+
   if [[ "$DRY_RUN" == true ]]; then
     dry_run_msg "create $HOME/.gemini/antigravity-cli/skills"
   else
@@ -1104,7 +1161,7 @@ main() {
   save_manifest
 
   if [[ "$DRY_RUN" == true ]]; then
-    log ""
+    show_install_summary
     log "Dry run complete. No files were changed."
   else
     show_install_summary

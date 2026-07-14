@@ -1,7 +1,7 @@
 #!/bin/bash
 # ##################################################################
 # Colin's bashrc file ($INSTALL_REPO_HEAD)
-# Installed on $INSTALL_DATE
+# Revision committed on $INSTALL_DATE
 # git clone https://github.com/colinmollenhour/dotfiles.git ~/.local/colin-dotfiles && ~/.local/colin-dotfiles/install.sh
 # ##################################################################
 #
