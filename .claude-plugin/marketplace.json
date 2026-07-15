@@ -1,0 +1,41 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "colin-dotfiles",
+  "description": "Shipping, multi-model review, framework skills, CLI bridges, and Megamind",
+  "owner": {
+    "name": "Colin Mollenhour"
+  },
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "colin-shipping",
+      "source": "./colin-shipping",
+      "description": "Review, merge, multi-model MBOT/MBOD workflows, platform CLIs, and shipping skills (includes former slash commands as skills)",
+      "category": "productivity",
+      "homepage": "https://github.com/colinmollenhour/dotfiles"
+    },
+    {
+      "name": "colin-frameworks",
+      "source": "./colin-frameworks",
+      "description": "Framework and stack skills: Nuxt UI/Content, Drizzle, VoltAgent, Playwright E2E, Nano Banana",
+      "category": "development",
+      "homepage": "https://github.com/colinmollenhour/dotfiles"
+    },
+    {
+      "name": "colin-cli-bridges",
+      "source": "./colin-cli-bridges",
+      "description": "Shell-out skills for claude, codex, and grok CLIs from other host agents",
+      "category": "development",
+      "homepage": "https://github.com/colinmollenhour/dotfiles"
+    },
+    {
+      "name": "megamind",
+      "source": "./megamind",
+      "description": "Autonomous large-task delivery agent and skill. Depends on colin-shipping (MBOT/MBOD). Use the agent when the host supports it (Claude Code, grok --agent megamind); otherwise use the megamind skill.",
+      "category": "productivity",
+      "homepage": "https://github.com/colinmollenhour/dotfiles"
+    }
+  ]
+}

@@ -1,3 +1,10 @@
+# Local MBOT/MBOD profiles (keep SKILL.md tracked)
+plugins/colin-shipping/skills/many-brain-one-task/*.md
+!plugins/colin-shipping/skills/many-brain-one-task/SKILL.md
+plugins/colin-shipping/skills/many-brain-one-decision/*.md
+!plugins/colin-shipping/skills/many-brain-one-decision/SKILL.md
+
+# Legacy paths (if anything reappears)
 .claude/skills/many-brain-one-task/*.md
 !.claude/skills/many-brain-one-task/SKILL.md
 .claude/skills/many-brain-one-decision/*.md

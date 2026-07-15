@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2026.07.14"
+VERSION="2026.07.15"
 
 DOTFILES=(
   ".bashrc.colin"
@@ -546,32 +546,6 @@ copy_agent_files() {
   shopt -u nullglob
 }
 
-copy_claude_home() {
-  local src=".claude" dest="$HOME/.claude"
-  local item base
-  if [[ ! -d "$src" ]]; then
-    warn "Skipping missing directory: $src"
-    return
-  fi
-  shopt -s nullglob
-  for item in "$src"/*; do
-    base="$(basename "$item")"
-    [[ "$base" == "worktrees" ]] && continue
-    if [[ "$base" == "agents" ]]; then
-      copy_agent_files "$item" "$dest/agents"
-    elif [[ -d "$item" ]]; then
-      install_dir_files "$SCRIPT_DIR/$item" "$dest/$base"
-    elif [[ -f "$item" ]]; then
-      if [[ "$base" == "settings.json" || "$base" == "settings.local.json" ]]; then
-        merge_settings_json "$item" "$SCRIPT_DIR/$item" "$dest/$base"
-      else
-        install_file "$item" "$SCRIPT_DIR/$item" "$dest/$base"
-      fi
-    fi
-  done
-  shopt -u nullglob
-}
-
 write_file() {
   local path="$1"
   local existed=false
@@ -632,7 +606,10 @@ gitconfig_includes_colin() {
 
 show_help() {
   cat << EOF
-Install Colin's dotfiles and AI agent configuration.
+Install Colin's dotfiles and non-skill AI agent files.
+
+Skills, former slash-command workflows, and multi-agent procedures install via
+the Vercel skills CLI or Claude plugin marketplace — not this script. See README.
 
 USAGE
   $SCRIPT_NAME [OPTIONS]
@@ -644,12 +621,15 @@ EXAMPLES
   $SCRIPT_NAME --dry-run --all
   $SCRIPT_NAME --interactive
 
+  # Skills (separate from this script):
+  npx skills add colinmollenhour/dotfiles -g --all
+
 OPTIONS
   -a, --all          Install everything: dotfiles, shell/git hooks, and agents
       --dotfiles     Install dotfiles into \$HOME
       --bashrc       Update ~/.bashrc to source ~/.bashrc.colin
       --gitconfig    Update ~/.gitconfig to include ~/.gitconfig.colin
-      --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
+      --agents       Install agent definitions + Claude settings (not skills)
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
   -f, --force        Overwrite conflicting files without prompting
@@ -659,9 +639,10 @@ OPTIONS
   -h, --help         Show this help message
       --version      Show version and exit
 
-CONFLICTS
-  In a TTY, choose per file: keep, overwrite, back up, show a diff, keep all,
-  or overwrite all. Non-interactive runs keep conflicts unless --force is used.
+--agents installs only what the skills CLI cannot:
+  - Claude settings merge (~/.claude/settings.json)
+  - MBOT persona agents (~/.claude/agents, ~/.opencode/agents)
+  - Megamind agent (~/.claude/agents/megamind.md) for Claude Code and grok --agent megamind
 
 DOTFILES
 EOF
@@ -796,91 +777,33 @@ update_gitconfig() {
   fi
 }
 
-install_command_skills() {
-  local commands_dir=".claude/commands"
-  local skills_dir="${1:-$HOME/.agents/skills}"
-  local label="${2:-Claude command skills}"
-  local include_openai_yaml="${3:-true}"
-  local command_file rel command_path command_name command_subdir command_namespace skill_name skill_dir
-  local count=0
-
-  if [[ ! -d "$commands_dir" ]]; then
-    warn "Skipping command skills; no $commands_dir directory exists"
-    return
-  fi
-
-  while IFS= read -r command_file; do
-    rel="${command_file#$commands_dir/}"
-    command_path="${rel%.md}"
-    command_name="$(basename "$command_path")"
-    command_subdir="$(dirname "$command_path")"
-
-    if [[ "$command_subdir" == "." ]]; then
-      skill_name="$command_name"
-      skill_dir="$skills_dir/$command_name"
-    else
-      command_namespace="${command_subdir//\//:}"
-      skill_name="$command_namespace:$command_name"
-      skill_dir="$skills_dir/$command_subdir/$command_name"
-    fi
-
-    count=$((count + 1))
-
-    local skill_md="$skill_dir/SKILL.md"
-    local openai_yaml="$skill_dir/agents/openai.yaml"
-
-    if [[ "$DRY_RUN" == false ]]; then
-      if [[ "$include_openai_yaml" == true ]]; then
-        mkdir -p "$skill_dir/agents"
-      else
-        mkdir -p "$skill_dir"
-      fi
-    fi
-    local tmp
-    tmp="$(mktemp)"
-    awk -v skill_name="$skill_name" '
-      BEGIN { frontmatter = 0; inserted = 0 }
-      NR == 1 && $0 == "---" {
-        print
-        print "name: " skill_name
-        frontmatter = 1
-        inserted = 1
-        next
-      }
-      frontmatter && $0 == "---" {
-        print
-        frontmatter = 0
-        next
-      }
-      frontmatter && ($0 ~ /^name:[[:space:]]*/ || $0 ~ /^allowed-tools:[[:space:]]*/) {
-        next
-      }
-      !inserted {
-        print "---"
-        print "name: " skill_name
-        print "---"
-        inserted = 1
-      }
-      { print }
-    ' "$command_file" > "$tmp"
-    install_rendered "$command_file" "$tmp" "$skill_md"
-    if [[ "$include_openai_yaml" == true ]]; then
-      # openai.yaml is always the same two lines, but still goes through the
-      # conflict checks so local changes are never overwritten silently.
-      tmp="$(mktemp)"
-      printf 'policy:\n  allow_implicit_invocation: false\n' > "$tmp"
-      install_rendered "$command_file" "$tmp" "$openai_yaml"
-    fi
-  done < <(find "$commands_dir" -type f -name '*.md' | sort)
-
-  if [[ "$DRY_RUN" == true ]]; then
-    log "Would install $count $label in $skills_dir"
+# Resolve a path that may be a symlink (for plugin agent files that point at skills).
+resolve_src() {
+  local path="$1"
+  if command -v realpath >/dev/null 2>&1; then
+    realpath -e "$path" 2>/dev/null || realpath "$path" 2>/dev/null || printf '%s' "$path"
+  elif command -v readlink >/dev/null 2>&1; then
+    readlink -f "$path" 2>/dev/null || printf '%s' "$path"
   else
-    log "Installed $count $label in $skills_dir"
+    printf '%s' "$path"
   fi
 }
 
-cleanup_legacy_namespaced_agent_dirs() {
+install_agent_file() {
+  # src_rel is the repo-relative path used for manifest tracking (the agent path).
+  # Content is read through symlinks so megamind.md → SKILL.md installs as a real file.
+  local src_rel="$1"
+  local dest="$2"
+  local src_abs resolved
+  src_abs="$SCRIPT_DIR/$src_rel"
+  ensure_repo_file "$src_rel"
+  resolved="$(resolve_src "$src_abs")"
+  install_file "$src_rel" "$resolved" "$dest"
+}
+
+cleanup_legacy_skill_and_command_mirrors() {
+  # Skills and former slash commands are no longer installed by this script.
+  # Offer to remove old mirrored paths that previous installs created.
   local legacy_dirs=(
     "$HOME/.agents/skills/colin"
     "$HOME/.claude/commands/colin"
@@ -913,9 +836,11 @@ cleanup_legacy_namespaced_agent_dirs() {
 }
 
 install_agents() {
-  section "Installing AI agent files"
+  section "Installing agent definitions and Claude settings"
+  log "Skills are not installed here. Use: npx skills add colinmollenhour/dotfiles -g --all"
 
   local claude_settings="$HOME/.claude/settings.json"
+  local megamind_agent="plugins/megamind/agents/megamind.md"
 
   if [[ -f "$claude_settings" ]] && [[ "$(cat "$claude_settings")" != "{}" ]]; then
     local backup_existed=false
@@ -943,13 +868,29 @@ install_agents() {
     fi
   fi
 
-  # settings.json is merged (not overwritten) by copy_claude_home so any
-  # statusLine set by the simple-statusline plugin is preserved. Configure the
-  # statusline itself with `/simple-statusline:setup` (see
+  # settings.json is merged (not overwritten) so any statusLine set by the
+  # simple-statusline plugin is preserved. Configure the statusline with
+  # `/simple-statusline:setup` (see
   # https://github.com/Postmodum37/simple-claude-code-statusline).
-  copy_claude_home
+  if [[ -f ".claude/settings.json" ]]; then
+    merge_settings_json ".claude/settings.json" "$SCRIPT_DIR/.claude/settings.json" "$HOME/.claude/settings.json"
+  fi
+  if [[ -f ".claude/settings.local.json" ]]; then
+    merge_settings_json ".claude/settings.local.json" "$SCRIPT_DIR/.claude/settings.local.json" "$HOME/.claude/settings.local.json"
+  fi
 
-  if [[ -d "$HOME/.config/opencode/command/colin" ]]; then
+  # MBOT persona agents for Claude Code (and hosts that read ~/.claude/agents,
+  # including grok --agent <name>).
+  if [[ "$DRY_RUN" == true ]]; then
+    dry_run_msg "create $HOME/.claude/agents"
+  else
+    mkdir -p "$HOME/.claude/agents"
+  fi
+  copy_agent_files ".claude/agents" "$HOME/.claude/agents"
+  install_agent_file "$megamind_agent" "$HOME/.claude/agents/megamind.md"
+
+  # OpenCode agents: full MBOT persona set + megamind
+  if [[ -d "$HOME/.config/opencode/command/colin" ]] || [[ -d "$HOME/.config/opencode/agent" ]]; then
     if [[ "$DRY_RUN" == true ]]; then
       dry_run_msg "remove legacy OpenCode directories under $HOME/.config/opencode"
     else
@@ -959,43 +900,29 @@ install_agents() {
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.opencode/{commands,agents} and $HOME/.agents/skills"
+    dry_run_msg "create $HOME/.opencode/agents"
   else
-    mkdir -p "$HOME/.opencode/commands" "$HOME/.opencode/agents" "$HOME/.agents/skills"
+    mkdir -p "$HOME/.opencode/agents"
   fi
-
-  copy_dir_contents ".claude/commands" "$HOME/.opencode/commands"
-  copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
-  install_command_skills "$HOME/.agents/skills" "Claude command skills" true
-  cleanup_legacy_namespaced_agent_dirs
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
-  install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
+  install_agent_file "$megamind_agent" "$HOME/.opencode/agents/megamind.md"
 
-  # Migrate gemini to antigravity "agy" cli
-  if [[ -d "$HOME/.gemini/antigravity/skills" && ! -d "$HOME/.gemini/antigravity-cli/skills" ]]; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "move $HOME/.gemini/antigravity/skills to $HOME/.gemini/antigravity-cli/skills"
-    else
-      mkdir -p "$HOME/.gemini/antigravity-cli"
-      mv "$HOME/.gemini/antigravity/skills" "$HOME/.gemini/antigravity-cli/skills"
-    fi
-  fi
+  cleanup_legacy_skill_and_command_mirrors
 
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.gemini/antigravity-cli/skills"
+    log "Would install agent definitions to ~/.claude/agents and ~/.opencode/agents"
   else
-    mkdir -p "$HOME/.gemini/antigravity-cli/skills"
-  fi
-  copy_dir_contents ".claude/skills" "$HOME/.gemini/antigravity-cli/skills"
-  install_command_skills "$HOME/.gemini/antigravity-cli/skills" "Claude command skills as agy skills" false
-
-  if [[ "$DRY_RUN" == true ]]; then
-    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity-cli"
-  else
-    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity-cli"
+    log "Installed agent definitions to ~/.claude/agents and ~/.opencode/agents"
   fi
 
   suggest_statusline_if_missing
+  log ""
+  log "Install skills separately (all plugins / all agents):"
+  log "  npx skills add colinmollenhour/dotfiles -g --all"
+  log "Claude plugin marketplace (optional):"
+  log "  /plugin marketplace add colinmollenhour/dotfiles"
+  log "  /plugin install colin-shipping@colin-dotfiles"
+  log "  /plugin install megamind@colin-dotfiles"
 }
 
 prompt_yes_no() {
@@ -1032,7 +959,7 @@ interactive_install() {
     update_gitconfig
   fi
 
-  if prompt_yes_no "Install Claude/OpenCode/Gemini/OpenAI agent files"; then
+  if prompt_yes_no "Install agent definitions and Claude settings (not skills — use npx skills for those)"; then
     install_agents
   fi
 }

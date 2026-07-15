@@ -1,12 +1,13 @@
 # Colin's dotfiles
 
-Personal dotfiles plus a batteries-included Claude Code config for shipping software with AI agents — slash commands for review, planning, and merging; skills for platform CLIs and common frameworks; and a multi-model review and audit toolkit (MBOT) that runs the same diff past Opus, GPT, Gemini, and friends in parallel.
+Personal dotfiles plus a batteries-included agent skills marketplace for shipping software with AI — review and merge workflows, platform CLIs, framework skills, multi-model MBOT/MBOD tooling, and Megamind for autonomous delivery.
 
 ## Highlights
 
-- **Code review workflows.** `/colin-review` runs a focused single-agent review, while `/colin-ultra-review` fans out across MBOT models and roles, dedupes findings, and posts inline comments on GitHub PRs or GitLab MRs.
-- **Spec critique and group decisions.** `/colin-critique` and the MBOD debate skill stress-test plans before you write code.
-- **Production-readiness audit.** `/colin-ultra-audit` runs three roles (hardening, operability, stewardship) against the current repo state, grouped by severity.
+- **Code review workflows.** The `colin-review` skill runs a focused single-agent review; `colin-ultra-review` fans out across MBOT models and roles, dedupes findings, and posts inline comments on GitHub PRs or GitLab MRs.
+- **Spec critique and group decisions.** `colin-critique` and the MBOD debate skill stress-test plans before you write code.
+- **Production-readiness audit.** `colin-ultra-audit` runs three roles (hardening, operability, stewardship) against the current repo state, grouped by severity.
+- **Megamind.** Autonomous large-task delivery as an agent (Claude Code, `grok --agent megamind`) or as a skill for hosts without agents.
 - **Boring shell quality of life.** Sensible Bash, Git, tmux, Vim, Delta, and [Starship](https://starship.rs/) configs with non-clobbering installs for `.bashrc` and `.gitconfig`.
 - **Yours to configure.** Models, harnesses, and providers come from plain-prose Markdown profiles you own.
 
@@ -17,8 +18,9 @@ Personal dotfiles plus a batteries-included Claude Code config for shipping soft
 - [Shell helpers](#shell-helpers)
 - [VS Code dev containers](#vs-code-dev-containers)
 - [AI tools reference](#ai-tools-reference)
+  - [Plugins](#plugins)
   - [Agents](#agents)
-  - [Slash commands](#slash-commands)
+  - [Workflow skills](#workflow-skills-formerly-slash-commands)
   - [Skills](#skills)
   - [Using MBOD](#using-mbod-many-brain-one-decision)
   - [Customizing MBOT](#customizing-mbot-your-models-your-harness)
@@ -27,41 +29,70 @@ Personal dotfiles plus a batteries-included Claude Code config for shipping soft
 
 ## Quickstart
 
-Clone the repo and run `install.sh`. The script never overwrites `.bashrc` or `.gitconfig` — it appends an `include` directive so the `.colin` variants load alongside whatever you already have.
+Two installers, two jobs:
+
+| What you want | How |
+|---|---|
+| **Skills** (review, shipping, frameworks, CLI bridges, megamind skill) | [Vercel skills CLI](https://github.com/vercel-labs/skills) — see below |
+| **Agent definitions + shell dotfiles** (Megamind agent for Grok/Claude, MBOT personas, settings) | `./install.sh` |
 
 ```bash
 git clone https://github.com/colinmollenhour/dotfiles.git ~/.dotfiles
 cd ~/.dotfiles
 
-# Interactive — choose what to install
-./install.sh
+# 1) Skills — install into your coding agents (Claude, Codex, Cursor, OpenCode, …)
+npx skills add colinmollenhour/dotfiles -g --all
 
-# Install everything
-./install.sh --all
+# Or pick skills / list what's available
+npx skills add colinmollenhour/dotfiles --list
+npx skills add colinmollenhour/dotfiles -g --skill colin-review --skill gh-cli --skill megamind
 
-# Install only the AI agent configs
-./install.sh --agents
-
-# Install only the dotfiles
-./install.sh --dotfiles
-
-# Show every flag
+# 2) Agents + settings + shell (what skills cannot install)
+./install.sh --agents          # megamind + MBOT agents, Claude settings
+./install.sh --dotfiles        # bash, git, tmux, …
+./install.sh --all             # agents + dotfiles + bashrc/gitconfig hooks
+./install.sh                   # interactive
 ./install.sh --help
 ```
 
-**First-time install on an existing system** — if destination files already exist, an interactive run lets you keep, overwrite, back up, or diff each conflict. You can also keep or overwrite all remaining conflicts. Non-interactive runs skip conflicting files; pass `--force` to overwrite them all:
+**Claude Code plugins (optional alternative for Claude only):**
+
+```text
+/plugin marketplace add colinmollenhour/dotfiles
+/plugin install colin-shipping@colin-dotfiles
+/plugin install colin-frameworks@colin-dotfiles
+/plugin install colin-cli-bridges@colin-dotfiles
+/plugin install megamind@colin-dotfiles
+```
+
+Megamind depends on MBOT/MBOD from **colin-shipping** — install that plugin (or those skills) as well.
+
+**First-time `install.sh` on an existing system** — if destination files already exist, an interactive run lets you keep, overwrite, back up, or diff each conflict. Non-interactive runs skip conflicting files; pass `--force` to overwrite them all:
 
 ```bash
 ./install.sh --all --force
 ```
 
-Subsequent runs are safe without `--force`: the script tracks which files it installed and their hashes, so it only updates files it owns that haven't been manually changed. Copied files retain the repository source's modification time, making a destination with a newer mtime an easy visual indicator that it was subsequently saved by a user; hashes remain the authoritative conflict check.
-
-After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, and tools. The same content lives at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2).
+Subsequent `install.sh` runs are safe without `--force`: the script tracks which files it owns and their hashes. After shell setup, run `colin-help` for the cheat sheet of aliases (also at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2)).
 
 ## What gets installed
 
-### Dotfiles
+### Skills (`npx skills` or Claude plugins)
+
+Skills live under `plugins/` in four plugins (see [Plugins](#plugins)). The skills CLI discovers them via the Claude marketplace manifest and installs `SKILL.md` trees into each agent’s skills directory. **Former slash commands** (`colin-review`, `colin-commit-and-push`, …) are skills now — same names, same workflows.
+
+### Agents and settings (`./install.sh --agents`)
+
+| Path | What |
+|---|---|
+| `~/.claude/settings.json` | Merged baseline permissions (your custom keys preserved) |
+| `~/.claude/agents/megamind.md` | Megamind agent (Claude Code; **Grok**: `grok --agent megamind`) |
+| `~/.claude/agents/colin-mbot-*.md` | MBOT persona agents for Claude |
+| `~/.opencode/agents/*` | MBOT personas + megamind for OpenCode |
+
+Skills are **not** copied by `install.sh`. Use `npx skills add …`.
+
+### Dotfiles (`./install.sh --dotfiles`)
 
 | File | Behavior |
 |---|---|
@@ -74,10 +105,6 @@ The installer tracks every file it owns in `~/.local/share/colin-dotfiles/manife
 - **Prompts** on conflicts in a TTY, with options to keep, overwrite, back up, or view a unified diff.
 - **Skips** conflicting files in non-interactive runs and warns you (use `--force` to overwrite anyway).
 - **Deletes** installed files whose source was removed from the repo, but only if you haven't modified them locally.
-
-### Claude Code config
-
-Slash commands, skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors them into `~/.opencode/`, `~/.agents/`, and `~/.gemini/antigravity/` when those tools are present, so the same commands work across harnesses.
 
 ## Shell helpers
 
@@ -94,7 +121,7 @@ Drop this into your `settings.json` to auto-install on every dev container:
 {
   "dotfiles.repository": "colinmollenhour/dotfiles",
   "dotfiles.targetPath": "~/.dotfiles",
-  "dotfiles.installCommand": "~/.dotfiles/install.sh --all"
+  "dotfiles.installCommand": "~/.dotfiles/install.sh --all && npx skills add colinmollenhour/dotfiles -g --all -y"
 }
 ```
 
@@ -102,19 +129,39 @@ Drop this into your `settings.json` to auto-install on every dev container:
 
 # AI tools reference
 
-A reference to the shared slash commands, skills, and agents in `.claude/`. Invoke slash commands directly (`/colin-review` for Claude Code, `/colin/review` for OpenCode). Skills load automatically when relevant or you can name them in a prompt.
+Skills are the shared workflows. Agents are host-specific entry points (Claude subagents, Grok `--agent`, OpenCode agents). Everything ships from the `plugins/` tree and the Claude plugin marketplace at `.claude-plugin/marketplace.json`.
 
 ## Concepts
 
-- **Slash commands** (`/name`) kick off workflows. You type them.
-- **Skills** are reusable procedures Claude loads on demand, often invoked internally by commands.
-- **MBOT agents** are dedicated subagents backed by specific models. The review, critique, audit, and MBOD commands use them to gather multi-model opinions. Which models run, and through which harness, is driven by MBOT-style profile files — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
+- **Skills** — reusable procedures in `SKILL.md` form. Install with `npx skills add`. Agents load them when relevant, or you name them in a prompt (e.g. “use the colin-review skill”).
+- **Workflow skills** — the former slash commands (`colin-review`, `colin-ultra-review`, …). Same behavior; install and invoke as skills.
+- **Agents** — named personas installed by `./install.sh --agents` (or Claude `/plugin install megamind@…`). Megamind and MBOT personas live here.
+- **MBOT agents** — dedicated subagents for multi-model work. Review, critique, audit, and MBOD skills use them. Model lists come from profile files — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
+
+## Plugins
+
+| Plugin | Contents |
+|---|---|
+| **colin-shipping** | Workflow skills (`colin-*`), MBOT/MBOD, gh/glab, security, docs, ClickUp, Coolify, … |
+| **colin-frameworks** | Nuxt UI/Content, Drizzle, VoltAgent, Playwright E2E, Nano Banana |
+| **colin-cli-bridges** | `claude-cli`, `codex-cli`, `grok-cli` shell-out skills |
+| **megamind** | Megamind **skill** + **agent** (one body; agent file symlinks the skill). Needs MBOT/MBOD from colin-shipping |
+
+`npx skills add` lists every skill **flat** (by skill name), not by plugin. Claude’s `/plugin install name@colin-dotfiles` installs one plugin at a time (skills + agents for that package).
 
 ## Agents
 
 ### `megamind`
 
-`megamind` is the autonomous large-task delivery agent. Give it an objective, spec, issue, task URL, or plan file, and it drives the work from intake to delivery with only one optional human checkpoint: review after a non-unanimous MBOD decision.
+`megamind` is the autonomous large-task delivery agent **and** skill.
+
+| Host | How to run |
+|---|---|
+| Claude Code | Subagent / plugin agent after install |
+| Grok | `grok --agent megamind` (after `./install.sh --agents` puts the agent in `~/.claude/agents/`) |
+| Tools without agents | Install the `megamind` skill (`npx skills add … --skill megamind`) and ask the host to follow it |
+
+Give it an objective, spec, issue, task URL, or plan file, and it drives the work from intake to delivery with only one optional human checkpoint: review after a non-unanimous MBOD decision.
 
 At a high level, it:
 
@@ -175,26 +222,26 @@ pi install ./pi-megamind
 
 The package defaults MBOT/MBOD delegation to Pi-backed participants and prefers the lightweight `pi-fast-subagent` extension when available.
 
-## Slash commands
+## Workflow skills (formerly slash commands)
 
-### `colin-*` — day-to-day dev workflow (name-spaced to avoid conflicts)
+These used to be Claude slash commands. They are skills now (plugin **colin-shipping**). Invoke by name in any agent that has them installed — e.g. “run colin-review on the open PR” or `/colin-review` where the host supports skill slash-invocation.
 
-#### Shipping
+### Shipping
 
-| Command | Use it when… |
+| Skill | Use it when… |
 |---|---|
-| `/colin-commit-and-push` | You're done with changes. Commits, pushes, opens or updates a GitHub PR or GitLab MR. |
-| `/colin-fix-comments` | Address open review comments on the current branch's PR or MR. Posts fixes, rebuttals, and a summary. |
-| `/colin-fix-pipeline` | Diagnose and fix a failing GitHub Actions or GitLab CI pipeline on the current branch. |
-| `/colin-fix-conflicts` | Resolve Git merge conflicts intelligently, preserving intent from both sides. |
-| `/colin-squash-merge [branch]` | Squash-merge a branch onto trunk with one clean commit **per author**, each AI-summarized. |
-| `/colin-git-cleanup` | Delete local branches that have been merged remotely (including squash-merges). |
+| `colin-commit-and-push` | You're done with changes. Commits, pushes, opens or updates a GitHub PR or GitLab MR. |
+| `colin-fix-comments` | Address open review comments on the current branch's PR or MR. Posts fixes, rebuttals, and a summary. |
+| `colin-fix-pipeline` | Diagnose and fix a failing GitHub Actions or GitLab CI pipeline on the current branch. |
+| `colin-fix-conflicts` | Resolve Git merge conflicts intelligently, preserving intent from both sides. |
+| `colin-squash-merge [branch]` | Squash-merge a branch onto trunk with one clean commit **per author**, each AI-summarized. |
+| `colin-git-cleanup` | Delete local branches that have been merged remotely (including squash-merges). |
 
-#### Reviewing
+### Reviewing
 
-Both review commands resolve the target the same way. Pass no argument to review the open PR or MR for your current branch. Otherwise the target accepts: a PR or MR URL or number, `last N commits`, `whole repo`, `branch NAME`, or a Git rev spec like `SHA..SHA`.
+Both review skills resolve the target the same way. Pass no argument to review the open PR or MR for your current branch. Otherwise the target accepts: a PR or MR URL or number, `last N commits`, `whole repo`, `branch NAME`, or a Git rev spec like `SHA..SHA`.
 
-**`/colin-review [target] [flags]`** — standard single-agent review. Triages, buckets large diffs (≤ 5,000 lines runs as a single pass; otherwise ~3,000-line buckets grouped by top-level directory), reviews each bucket directly, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label. It does not use MBOT or `colin-mbot-*` agents; use `/colin-ultra-review` for multi-model fan-out.
+**`colin-review [target] [flags]`** — standard single-agent review. Triages, buckets large diffs (≤ 5,000 lines runs as a single pass; otherwise ~3,000-line buckets grouped by top-level directory), reviews each bucket directly, validates and deduplicates issues, posts inline comments, and applies the `:Reviewed-By-AI` label. It does not use MBOT or `colin-mbot-*` agents; use `colin-ultra-review` for multi-model fan-out.
 
 | Flag | Effect |
 |---|---|
@@ -202,16 +249,16 @@ Both review commands resolve the target the same way. Pass no argument to review
 | `--no-post` | Print comments to the terminal and wait for `post`, `drop issue 3`, `edit issue 2 to …`, or `cancel` instead of auto-posting. |
 | `--no-summary` | Skip the review summary comment. |
 
-In Git-diff mode (when the target is a rev spec rather than a PR or MR) the command always behaves as `--no-post` — nothing is posted, just displayed.
+In Git-diff mode (when the target is a rev spec rather than a PR or MR) the skill always behaves as `--no-post` — nothing is posted, just displayed.
 
-**`/colin-ultra-review [target] [agents] [flags]`** — the heavyweight variant. Runs **3 roles × N models** per bucket in parallel: `bugs` (correctness and security), `runtime` (performance, dependencies, deploy safety), and `craft` (quality, simplification, test quality). Expensive — reserve for important merges. Uses a separate `:Reviewed-By-AI-Ultra` label and a separate `**AI Ultra Review**` comment history, so it can run alongside `/colin-review` on the same PR.
+**`colin-ultra-review [target] [agents] [flags]`** — the heavyweight variant. Runs **3 roles × N models** per bucket in parallel: `bugs` (correctness and security), `runtime` (performance, dependencies, deploy safety), and `craft` (quality, simplification, test quality). Expensive — reserve for important merges. Uses a separate `:Reviewed-By-AI-Ultra` label and a separate `**AI Ultra Review**` comment history, so it can run alongside `colin-review` on the same PR.
 
 | Flag | Effect |
 |---|---|
 | `[agents]` (positional) | Model list for this run. Overrides the MBOT profile. |
 | `--roles=bugs,runtime,craft` | Restrict to specific roles. Default is all three. |
 | `--re-review` | Only review commits since the last `**AI Ultra Review**` comment. |
-| `--no-post` | Same as `/colin-review`. |
+| `--no-post` | Same as `colin-review`. |
 | `--no-summary` | Skip both the per-model and per-role comparison tables. |
 
 ##### How ultra-review fans out across MBOT
@@ -220,9 +267,9 @@ Buckets run **sequentially** to bound cost. Within each bucket, the three roles 
 
 ```mermaid
 flowchart TD
-    User([User: /colin-ultra-review &lt;arg?&gt;])
+    User([User: colin-ultra-review &lt;arg?&gt;])
 
-    subgraph UR["ultra-review command"]
+    subgraph UR["ultra-review skill"]
         Resolve[Resolve input<br/>PR / MR / git diff<br/>capture head+base SHAs]
         Triage[Triage &amp; bucket<br/>git diff --stat → exclude generated/lock/vendor<br/>K = ⌈T/4000⌉ buckets, directory-aware packing]
         Roles[Role selection<br/>bugs · runtime · craft<br/>--roles=csv override]
@@ -278,14 +325,14 @@ flowchart TD
     class MBOT,Profile,Guard,Assemble,Gather mbot
 ```
 
-**`/colin-critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.
+**`colin-critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.
 
 | Flag | Effect |
 |---|---|
 | `--agents opus gpt …` | Override the MBOT `critique` profile for this run. |
 | `--summary` | Include a per-model comparison table (found, validated, unique, accuracy, composite score). |
 
-**`/colin-ultra-audit [scope] [agents] [flags]`** — production-readiness audit of the **current repo state**, not a diff. Runs **3 roles × N models** per module bucket: `hardening` (security and resiliency), `operability` (observability, deployment, config, performance, dependencies), and `stewardship` (docs, tests, code quality). Findings merge and group by severity (`Blocker`, `High`, `Medium`, `Low`). Display only — no PR comments, no labels. Expensive — reserve for pre-launch or quarterly checkups.
+**`colin-ultra-audit [scope] [agents] [flags]`** — production-readiness audit of the **current repo state**, not a diff. Runs **3 roles × N models** per module bucket: `hardening` (security and resiliency), `operability` (observability, deployment, config, performance, dependencies), and `stewardship` (docs, tests, code quality). Findings merge and group by severity (`Blocker`, `High`, `Medium`, `Low`). Display only — no PR comments, no labels. Expensive — reserve for pre-launch or quarterly checkups.
 
 | Flag | Effect |
 |---|---|
@@ -295,18 +342,20 @@ flowchart TD
 | `--save <PATH>` | Also write the rendered report to `<PATH>`. |
 | `--no-summary` | Skip both the per-model and per-role comparison tables. |
 
-#### Planning and porting
+### Planning and porting
 
-| Command | Use it when… |
+| Skill | Use it when… |
 |---|---|
-| `/colin-finalize-spec` | Augment the current plan with the senior-SWE planning sections needed before implementation. |
-| `/colin-feature-export <FEATURE>` | Generate a portable implementation guide for moving a feature to a sibling repo. |
-| `/colin-handoff [PATH]` | Dump the current session context into a portable Markdown handoff doc. No tool calls, just context. |
-| `/colin-progress` | Audit the in-scope task and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
+| `colin-finalize-spec` | Augment the current plan with the senior-SWE planning sections needed before implementation. |
+| `colin-feature-export <FEATURE>` | Generate a portable implementation guide for moving a feature to a sibling repo. |
+| `colin-handoff [PATH]` | Dump the current session context into a portable Markdown handoff doc. No tool calls, just context. |
+| `colin-progress` | Audit the in-scope task and keep working until it's actually 100% done. Forbids deferring parts of the spec. |
+| `colin-infographic` | Draft an infographic image-generation prompt for a change set (delegates to the `infographic` skill). |
+| `colin-review-merits` | Critique the merits of a PR/MR (not a line-by-line code review). |
 
 ## Skills
 
-Claude loads these automatically when a task matches, or you can reference them by name.
+Agents load these automatically when a task matches, or you can reference them by name.
 
 ### Platform CLIs
 
@@ -317,14 +366,16 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 ### Code generation and review
 
-- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare or merge results. Powers `/colin-critique`, `/colin-ultra-review`, and `/colin-ultra-audit`. Configurable — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
+- **`many-brain-one-task`** (MBOT) — Run the same prompt across many models and compare or merge results. Powers `colin-critique`, `colin-ultra-review`, and `colin-ultra-audit`. Configurable — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
 - **`many-brain-one-decision`** (MBOD) — Coordinate a multi-round debate across MBOT agents with distinct personalities until they converge on a decision or hit the configured round limit. Use it for prompts like "decide which option is best", "debate this tradeoff", or "propose a solution to this problem".
+- **`megamind`** — Full autonomous delivery procedure as a skill (for hosts without a Megamind agent). Prefer the agent when available.
 - **`educational-brief`** — Creates grounded journey/design/architecture/lessons briefs for delivered PRs, MRs, branches, features, or agent runs.
 - **`generate-e2e-test`** — Drives Playwright MCP through a workflow, then generates the E2E test code.
 - **`security-hardening`** — App-level security review covering abuse prevention, rate limiting, business logic, and input validation. Beyond generic checklists.
 - **`cli-design`** — Design and review CLIs against `clig.dev` guidelines: flags, help text, errors, and scriptability.
 - **`docs-writer`** — Write or restructure technical docs against Diataxis, Google, Microsoft, and Write the Docs style guides.
-- **`skill-writer`** — Author new `.claude` skills with correct frontmatter and structure.
+- **`skill-writer`** — Author new agent skills with correct frontmatter and structure.
+- **`claude-cli` / `codex-cli` / `grok-cli`** — Shell-out bridges when the current host must call another model CLI.
 
 ### Frameworks and stacks
 
@@ -367,7 +418,7 @@ Use many-brain-one-decision to propose a solution to this scaling problem: [fact
 
 Harness routing follows MBOT's rules with one cost-sensitive exception: Claude-backed debaters use native Claude agents or the `claude` CLI first so usage stays on the Claude Max plan. Use `colin-mbot-opus` or `colin-mbot-sonnet` only when the CLI does not work or the user explicitly requests OpenCode-routed Claude. Claude-hosted runs still use the sibling MBOT `run-opencode.ts` helper for OpenCode-backed debaters.
 
-Profiles live in `~/.claude/skills/many-brain-one-decision/` and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill falls back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities:
+Profiles live next to the installed skill (e.g. `~/.claude/skills/many-brain-one-decision/` or the global skills path for your agent) and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill falls back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities:
 
 ```markdown
 Use the following:
@@ -390,7 +441,7 @@ When MBOT starts, it picks a profile in this order:
 3. Anything else falls back to `default.md`.
 4. If the chosen file does not exist, MBOT tries `default.md`. If that is also missing, it uses hardcoded defaults (Opus through the `claude` CLI, Grok through the `grok` CLI when available, plus GPT, Gemini, GLM, Qwen, MiMo, and Kimi through OpenCode; OpenCode `colin-mbot-grok` is the Grok fallback).
 
-All profile files live in `~/.claude/skills/many-brain-one-task/`, beside the `SKILL.md` file. Profiles are a plain Markdown bullet list — model and harness, one per line.
+All profile files live beside the installed `many-brain-one-task` skill’s `SKILL.md`. Profiles are a plain Markdown bullet list — model and harness, one per line.
 
 ### Example: `default.md`
 
@@ -433,8 +484,8 @@ Profiles are prose. MBOT reads them naturally and translates them into the right
 
 ### Overriding per run
 
-- `[agents]` on `/colin-ultra-review` (positional, e.g. `gpt gemini kimi`) overrides the profile for that run only.
-- `--agents opus gpt gemini` on `/colin-critique` does the same.
+- `[agents]` on `colin-ultra-review` (positional, e.g. `gpt gemini kimi`) overrides the profile for that run only.
+- `--agents opus gpt gemini` on `colin-critique` does the same.
 - `--profile X` in a prompt forces profile `X.md`.
 - `--dry-run` in a prompt makes MBOT report its execution plan instead of launching anything. Useful for verifying a new profile.
 
@@ -466,10 +517,10 @@ Add your own by dropping a new `colin-mbot-<NAME>.md` into `.claude/agents/` wit
 
 ## Typical flows
 
-- **Shipping a change.** Make edits → `/colin-review` → `/colin-commit-and-push` → on feedback `/colin-fix-comments` → on red CI `/colin-fix-pipeline`.
-- **Planning a feature.** `/agent-sops-pdd` → `/colin-finalize-spec` → `/colin-critique --summary` → `/agent-sops-code-task-generator`.
-- **Important merge.** `/colin-ultra-review --no-post` → review the output → `post` if it looks right. Use `--re-review` on subsequent pushes.
-- **Picking up someone else's context.** Ask them to run `/colin-handoff` and commit the resulting Markdown.
+- **Shipping a change.** Make edits → `colin-review` → `colin-commit-and-push` → on feedback `colin-fix-comments` → on red CI `colin-fix-pipeline`.
+- **Planning a feature.** Plan → `colin-finalize-spec` → `colin-critique --summary` → implement.
+- **Important merge.** `colin-ultra-review --no-post` → review the output → `post` if it looks right. Use `--re-review` on subsequent pushes.
+- **Picking up someone else's context.** Ask them to run `colin-handoff` and commit the resulting Markdown.
 
 ## License
 

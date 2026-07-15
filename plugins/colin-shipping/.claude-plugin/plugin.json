@@ -1,0 +1,11 @@
+{
+  "name": "colin-shipping",
+  "description": "Review, merge, multi-model MBOT/MBOD workflows, platform CLIs, and shipping skills",
+  "author": {
+    "name": "Colin Mollenhour"
+  },
+  "homepage": "https://github.com/colinmollenhour/dotfiles",
+  "repository": "https://github.com/colinmollenhour/dotfiles",
+  "license": "MIT",
+  "keywords": ["review", "gitlab", "github", "mbot", "mbod", "shipping"]
+}
