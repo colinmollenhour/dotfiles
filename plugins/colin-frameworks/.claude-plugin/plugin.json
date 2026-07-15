@@ -1,0 +1,11 @@
+{
+  "name": "colin-frameworks",
+  "description": "Framework and stack skills: Nuxt, Drizzle, VoltAgent, Playwright E2E, Nano Banana",
+  "author": {
+    "name": "Colin Mollenhour"
+  },
+  "homepage": "https://github.com/colinmollenhour/dotfiles",
+  "repository": "https://github.com/colinmollenhour/dotfiles",
+  "license": "MIT",
+  "keywords": ["nuxt", "drizzle", "voltagent", "playwright"]
+}

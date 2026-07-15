@@ -1,0 +1,11 @@
+{
+  "name": "colin-cli-bridges",
+  "description": "Shell-out skills for claude, codex, and grok CLIs from other host agents",
+  "author": {
+    "name": "Colin Mollenhour"
+  },
+  "homepage": "https://github.com/colinmollenhour/dotfiles",
+  "repository": "https://github.com/colinmollenhour/dotfiles",
+  "license": "MIT",
+  "keywords": ["claude", "codex", "grok", "cli"]
+}

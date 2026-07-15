@@ -1,0 +1,1 @@
+../skills/megamind/SKILL.md
