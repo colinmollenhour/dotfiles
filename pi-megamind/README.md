@@ -46,6 +46,7 @@ Useful flags supported by the Megamind workflow include:
 - `--max-coders 1|2|3` — cap implementation agents.
 - `--base <branch>` — set base branch.
 - `--agents <list>` — pass through model/agent selection.
+- `--evidence` — create a ZIP of the completed run artifacts and attach it to the PR/MR; skipped by default.
 - `--skip-human-review` or `skip human review` — do not pause after split MBOD decisions.
 
 ## How it works
@@ -74,7 +75,10 @@ flowchart TD
     Gates --> Delivery["Commit, push branch, and open or update PR/MR"]
     Delivery --> Education["Generate and validate educational brief"]
     Education --> CI["Monitor CI and fix minor failures"]
-    CI --> Done{"Green CI or documented blocker"}
+    CI --> Evidence{"Evidence requested?"}
+    Evidence -->|"Yes"| Archive["Package and attach evidence ZIP"]
+    Evidence -->|"No"| Done{"Green CI or documented blocker"}
+    Archive --> Done
 ```
 
 ## Notes

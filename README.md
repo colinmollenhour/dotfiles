@@ -125,8 +125,9 @@ At a high level, it:
 - Runs final local gates, creates a feature branch, commits only task-related files, pushes, and opens or updates a GitHub PR or GitLab MR with artifact links and test results.
 - Launches an educational synthesis sub-agent after the PR/MR exists, validates its claims against Megamind artifacts and diffs, then appends a dense journey/design/architecture/lessons brief to the PR/MR.
 - Monitors CI after the PR/MR exists, fixes minor CI failures autonomously, and stops only when CI is green or a blocker file documents the exact evidence and next action.
+- With `--evidence`, packages the completed run artifacts into a ZIP and attaches it to the PR/MR. Evidence packaging is skipped by default.
 
-Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, or include `skip human review` to have it make the best call autonomously after a split MBOD result.
+Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, include `skip human review` to have it make the best call autonomously after a split MBOD result, or pass `--evidence` to attach the final artifact archive.
 
 ```mermaid
 flowchart TD
@@ -152,7 +153,10 @@ flowchart TD
     Gates --> Delivery["Commit, push branch, and open or update PR/MR"]
     Delivery --> Education["Generate and validate educational brief"]
     Education --> CI["Monitor CI and fix minor failures"]
-    CI --> Done{"Green CI or documented blocker"}
+    CI --> Evidence{"Evidence requested?"}
+    Evidence -->|"Yes"| Archive["Package and attach evidence ZIP"]
+    Evidence -->|"No"| Done{"Green CI or documented blocker"}
+    Archive --> Done
 ```
 
 ### Pi package
