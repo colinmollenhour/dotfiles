@@ -9,7 +9,7 @@ Pi package for the Megamind autonomous delivery workflow and supporting multi-ag
 - `skills/many-brain-one-decision/` — MBOD moderated multi-agent decision workflow.
 - `skills/educational-brief/` — grounded educational brief synthesis.
 - `skills/gh-cli/`, `skills/glab-cli/` — hosted PR/MR and CI platform operations.
-- `skills/claude-cli/`, `skills/codex-cli/` — CLI routing references used by MBOT/MBOD.
+- `skills/claude-cli/`, `skills/codex-cli/`, `skills/grok-cli/` — CLI routing references used by MBOT/MBOD.
 - `prompts/megamind.md` — Pi slash prompt for `/megamind`.
 
 ## Local install

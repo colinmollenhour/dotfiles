@@ -12,6 +12,7 @@ This directory is a first-cut Pi package assembled by copying source material fr
 - `.claude/skills/glab-cli/` → `skills/glab-cli/`
 - `.claude/skills/claude-cli/` → `skills/claude-cli/`
 - `.claude/skills/codex-cli/` → `skills/codex-cli/`
+- `.claude/skills/grok-cli/` → `skills/grok-cli/`
 
 ## Pi-specific additions
 
