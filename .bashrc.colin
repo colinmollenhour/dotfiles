@@ -43,6 +43,7 @@
 #   docker-volume-copy   create a copy of a docker volume
 #   dush                 like du -sh but sorted by size
 #   findcrlf             find files containing CRLF
+#   fixdisplay           update the X11 DISPLAY env by discovery
 #   git-clean-merged     clean merged branches from remote
 #   git-clean-nomerged   clean not-merged branches from remote
 #   git-clean-local      clean local branches
@@ -478,6 +479,90 @@ test -f ~/.bashrc.after && . ~/.bashrc.after
 #################################################################
 
 [ -z "$PS1" ] && return
+
+# --- X11 over SSH: discover / refresh DISPLAY ---
+# Call `fixdisplay` after re-SSH / when xcalc says "Can't open display".
+# Also auto-runs for interactive shells (and prefers tmux showenv when in tmux).
+
+# Find SSH X11 forward: localhost listens on 6000+N for display :N
+_x11_find_display() {
+  local ports port n
+  # Newest connection usually gets the highest display number
+  ports=$(ss -ltn 2>/dev/null | awk '
+    $4 ~ /^127\.0\.0\.1:60[0-9][0-9]$/ {
+      split($4, a, ":"); print a[2]
+    }' | sort -n)
+  [ -z "$ports" ] && return 1
+
+  # Prefer highest open port that has an xauth cookie
+  for port in $(echo "$ports" | tac); do
+    n=$((port - 6000))
+    if xauth list 2>/dev/null | grep -qE "[:/]${n}( |$)"; then
+      printf 'localhost:%s.0' "$n"
+      return 0
+    fi
+  done
+
+  # Fall back: highest open X11-forward port
+  port=$(echo "$ports" | tail -1)
+  printf 'localhost:%s.0' "$((port - 6000))"
+}
+
+# Persist for other shells / later reattach in this host session
+_x11_save_display() {
+  local d="${1:-$DISPLAY}"
+  [ -n "$d" ] || return 1
+  umask 077
+  {
+    printf 'export DISPLAY=%q\n' "$d"
+    # Only set XAUTHORITY if you use a non-default path
+    [ -n "${XAUTHORITY:-}" ] && printf 'export XAUTHORITY=%q\n' "$XAUTHORITY"
+  } > "$HOME/.xdisplay"
+}
+
+# Call this after re-SSH / when xcalc says "Can't open display"
+fixdisplay() {
+  local d
+  if [[ -n ${TMUX:-} ]]; then
+    # Prefer tmux's updated env when available
+    if eval "$(tmux showenv -s DISPLAY 2>/dev/null)"; then
+      _x11_save_display
+      echo "DISPLAY=$DISPLAY (from tmux)"
+      return 0
+    fi
+  fi
+  d=$(_x11_find_display) || {
+    echo "fixdisplay: no SSH X11 listener on 127.0.0.1:60xx" >&2
+    return 1
+  }
+  export DISPLAY="$d"
+  _x11_save_display "$d"
+  echo "DISPLAY=$DISPLAY"
+}
+
+# Interactive shells: refresh if missing/wrong-looking
+if [[ $- == *i* ]]; then
+  if [[ -n ${TMUX:-} ]]; then
+    eval "$(tmux showenv -s DISPLAY 2>/dev/null)" || true
+  fi
+  # If sshd/tmux already set a sensible localhost display, keep it
+  if [[ "${DISPLAY:-}" == localhost:* || "${DISPLAY:-}" == 127.0.0.1:* ]]; then
+    _x11_save_display
+  else
+    # Overwritten (e.g. LAN IP:11.0) or unset → rediscover
+    if d=$(_x11_find_display); then
+      export DISPLAY="$d"
+      _x11_save_display "$d"
+    elif [[ -f "$HOME/.xdisplay" ]]; then
+      # No live tunnel right now; last-known (may be stale)
+      # shellcheck disable=SC1090
+      source "$HOME/.xdisplay"
+    fi
+  fi
+fi
+# --- end X11 over SSH ---
+
+
 
 #----------------------------------------------------------------
 #----------------------------------------------------------------
