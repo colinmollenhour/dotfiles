@@ -5,10 +5,16 @@ description: 'Create or update ClickUp tasks, bugs, features, sprint items, fiel
 
 # ClickUp Tasks (Create & Update)
 
-This skill creates and updates ClickUp tasks. It supports two backends:
+This skill creates and updates ClickUp tasks. It supports two backends — **pick per operation, not globally**:
 
-1. **ClickUp MCP** (preferred) - use MCP tools like `ClickUp_create_task`, `ClickUp_update_task`
-2. **`cup` CLI** (fallback) - use `cup create`, `cup update`, `cup field` when MCP is unavailable
+1. **ClickUp MCP** - use for creates, updates, comments, and task links (clean JSON payloads, compact success responses)
+2. **`cup` CLI** - use for attachments and lean reads; full fallback for everything when MCP is unavailable
+
+| Operation | Preferred backend | Why |
+|-----------|-------------------|-----|
+| Create/update task, comment, link | MCP | JSON payloads beat shell-quoting long markdown; success responses are compact |
+| Attach files | `cup attach <taskId> <file>` | One Bash call per file (loopable in a single call). The MCP upload-ticket flow costs 2+ calls per file and tickets expire in ~30-45s |
+| Read/verify a field | `cup task <id> --json \| jq '.field'` | MCP `get_task` always echoes the description twice (`markdown_description` AND `text_content`) |
 
 ## Backend Detection
 
@@ -116,7 +122,7 @@ ClickUp renders extra white space as visible gaps. **Never use blank lines betwe
 - `markdown_description`: Full formatted description
 - `custom_item_id`: Task type ID - use `1001` for Bug type, omit or use `0` for regular Task
 
-**Update:** Use `ClickUp_update_task` with the task ID and fields to update.
+**Update:** Use `ClickUp_update_task` with the task ID and fields to update. `markdown_description` is a **full replacement** — there is no append/patch (see Efficiency Rules below).
 
 **Note:** If the `custom_item_id` parameter is not supported by the MCP tool, inform the user that they will need to manually change the Task Type to "Bug" in ClickUp after creation, or the MCP server needs to be updated to support this parameter.
 
@@ -216,6 +222,20 @@ After creating or updating the task, provide a summary:
 
 **URL:** https://app.clickup.com/t/XXXXXXXX
 ```
+
+## Attachments and Embedded Images
+
+- Upload local files with `cup attach <taskId> <filePath>` — one Bash call per file; batch several files in a single Bash loop.
+- Avoid the MCP `request_attachment_upload` ticket flow: it costs 2+ tool calls per file, tickets expire in ~30-45 seconds, and the ~700-char ticket blobs bloat context. If you must use it, upload immediately after receiving the ticket, and never use `curl -sf` — a hidden response makes a success look like a failure and a blind retry double-uploads. Use `curl -s -w '%{http_code}'` instead.
+- To embed an image in a description: upload it first, take the `url` from the upload response (`https://tNNN.p.clickup-attachments.com/...`), and reference it in `markdown_description` as `![alt](url)`.
+- Neither backend can delete an attachment — duplicates must be removed in the ClickUp UI.
+
+## Efficiency Rules
+
+- **Descriptions are full-replacement only.** Keep the canonical markdown in a local scratchpad file, edit locally, and push the whole description once. Do not fetch-modify-push unless a human may have edited the task since your last write.
+- **Fetch sparingly.** MCP `get_task` returns the description twice (`markdown_description` + `text_content`) with no way to suppress either — a full-task fetch is 10-20KB of echo. Trust the compact create/update success responses; verify once at the end with `include` limited to what you need, or via `cup task <id> --json | jq`.
+- **Parallelize independent MCP calls** (multiple creates, gets, links) in one message.
+- **Multi-workspace accounts:** always pass `workspace_id` (ShipStream: `2304761`) — omitting it fails the call with a workspace-selection error.
 
 ## Common team members
 
