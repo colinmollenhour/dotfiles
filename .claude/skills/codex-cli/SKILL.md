@@ -29,6 +29,8 @@ For a long prompt file, use stdin instead of an argument and do not also redirec
 codex exec --ephemeral - < .tmp/codex-task.md
 ```
 
+Capture output to a file — `-o <FILE>` for the final message, or `> out.txt 2>&1` for the full combined stdout+stderr stream — and extract from it afterwards. Never pipe `codex exec` into `head` or another early-exiting reader: the final answer prints after the prompt echo and exec logs, so a head-window shows only preamble, and the reader's early exit closes the pipe, causing subsequent CLI writes to fail with `EPIPE` — the streamed output may be incomplete. A non-`--ephemeral` session's rollout under `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` retains the run if streamed output is lost.
+
 Useful flags:
 
 - `--ephemeral`: do not persist the one-shot session.
@@ -163,3 +165,4 @@ If no artifact appears, inspect the final Codex message and retry once with a sh
 - Use a project-local prompt file for large contexts rather than a huge shell argument.
 - Keep output paths inside the workspace when using `--sandbox workspace-write`.
 - Verify generated files independently instead of trusting a success message.
+- Never pipe `codex exec` output through `head` or another early-exiting reader — capture to a file (`-o` or a redirect) and extract from it.
