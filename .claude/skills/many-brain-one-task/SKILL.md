@@ -1,7 +1,7 @@
 ---
 name: many-brain-one-task
 description: 'Run the same task with multiple agents for reviews, critiques, or model comparison.'
-allowed-tools: Bash(bun *), Bash(cr *), Bash(pi *)
+allowed-tools: Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *)
 ---
 
 # Many Brain One Task
@@ -28,7 +28,8 @@ Primary models:
   - Opus (via Claude CLI)
   - GPT (via OpenCode)
   - Gemini (via OpenCode)
-Backup models (via OpenCode): MiMo, GLM, Qwen, Kimi, Grok.
+  - Grok (via Grok CLI when `grok` is available; otherwise OpenCode `colin-mbot-grok`)
+Backup models (via OpenCode unless noted): MiMo, GLM, Qwen, Kimi; Grok CLI is preferred over OpenCode for Grok.
 
 ## Step 2: Pick the harness for each participant
 
@@ -41,15 +42,21 @@ The host harness (you, the one running this skill right now) limits which models
 | Pi          | `pi` agent requested      | Prefer the `pi-fast-subagent` package `subagent` tool when it is available; otherwise shell out with `pi --print` using the prepared prompt file. See [Pi](#pi). |
 | Pi          | any other model family    | Follow the profile's requested CLI/harness. If unspecified in the Pi package, use Pi itself as the participant. |
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
-| Claude Code | non-Claude               | `occtl run` (preferred); `run-opencode.ts` fallback.                                                       |
+| Claude Code | Grok                     | `grok` CLI (preferred). OpenCode `colin-mbot-grok` only if `grok` is missing/unauthenticated or the profile forces OpenCode. See [Grok](#grok). |
+| Claude Code | other non-Claude         | `occtl run` (preferred); `run-opencode.ts` fallback.                                                       |
 | OpenCode    | Claude (Opus/Sonnet/Haiku) | `claude` CLI — the **only** path. See [Claude](#claude-opus--sonnet--haiku). Do not use `colin-mbot-*` subagents for Claude. |
-| OpenCode    | non-Claude               | `task` tool with a `colin-mbot-*` `subagent_type` (e.g. `colin-mbot-glm` for GLM). Auto-selects model.     |
+| OpenCode    | Grok                     | `grok` CLI (preferred). Fall back to `colin-mbot-grok` / `occtl run` only when Grok CLI is unavailable or the profile says OpenCode. See [Grok](#grok). |
+| OpenCode    | other non-Claude         | `task` tool with a `colin-mbot-*` `subagent_type` (e.g. `colin-mbot-glm` for GLM). Auto-selects model.     |
+| Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
+| Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `occtl run` / `run-opencode.ts`, `pi`, `codex`, `gemini`). |
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
-When OpenCode is the host and dispatching to a `colin-mbot-*` subagent, **only** use agents whose names start with `colin-mbot-`. Do not pick other agents.
+When OpenCode is the host and dispatching to a `colin-mbot-*` subagent, **only** use agents whose names start with `colin-mbot-`. Do not pick other agents. Exception: Claude and Grok prefer their first-party CLIs over `colin-mbot-*` when those CLIs are available.
 
 When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
+
+When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.5`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok`.
 
 
 ### Pi
@@ -128,6 +135,56 @@ If `--dry-run` is in the prompt, do **not** actually run anything. Print the exe
 Launch all participants in parallel. If one fails to start, skip it, note it in the final summary, and substitute a backup if the profile or prompt named one.
 
 It may help to instruct each agent to wrap findings in markers (e.g. `<<<ISSUE>>>...<<<END>>>`) so the gather/summarize step can parse output reliably.
+
+### Grok
+
+Load the `grok-cli` skill for complete flag reference. Summary:
+
+**Grok CLI host** — prefer the native `spawn_subagent` tool for Grok-family participants:
+
+```ts
+spawn_subagent({
+  subagent_type: "general-purpose",
+  description: "MBOT grok participant",
+  prompt: "<contents or path instructions for the prepared prompt>",
+  background: true,
+})
+```
+
+Save the returned summary/result under `.tmp/<run-id>/results/<participant>.out`. If `spawn_subagent` is unavailable, fall back to the headless `grok` CLI form below.
+
+**Any other host** — shell out to the `grok` CLI. Do **not** use `colin-mbot-grok` when `grok version` succeeds unless the profile explicitly requests OpenCode-routed Grok.
+
+#### Preflight (run once when any participant is Grok-CLI-backed)
+
+```bash
+grok version            # must exit 0
+```
+
+Optional: `grok models` when the profile names a non-default model id. Cache success as `GROK_VIA=cli`. If `grok version` fails, set `GROK_VIA=opencode` and use the OpenCode path (`colin-mbot-grok` / `occtl run`) for Grok participants.
+
+#### Headless launch
+
+Write the full task to a prompt file, then:
+
+```bash
+grok --prompt-file .tmp/<run-id>/grok.md \
+  --always-approve \
+  --output-format plain \
+  --reasoning-effort high \
+  --disallowed-tools Agent \
+  > .tmp/<run-id>/results/grok.out 2> .tmp/<run-id>/results/grok.err
+```
+
+Guidelines:
+
+- Prefer `--prompt-file` over `-p` for any non-trivial MBOT prompt (same reliability reason as OpenCode `--file`).
+- Use `--always-approve` so unattended batch runs never block on tool permission prompts.
+- Pass `-m <model>` / `--model` only when the profile pins one (resolve with `grok models`; default is usually `grok-4.5`).
+- Map profile effort prose: `"max" thinking` / `xhigh` → `--reasoning-effort max` (alias of `xhigh`); `"high"` → `high`.
+- For pure critique/review/opinion tasks, add `--disallowed-tools Agent` or `--no-subagents` so the child does not spawn nested agents.
+- Treat success as exit `0` **and** non-whitespace stdout. On failure, record stderr and substitute a backup if configured.
+- Profile prose `OpenCode with Grok` / `colin-mbot-grok` still means the OpenCode path. Bare `Grok` / `Grok CLI` means this path.
 
 ### Claude (Opus / Sonnet / Haiku)
 

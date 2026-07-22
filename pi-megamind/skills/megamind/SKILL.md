@@ -38,6 +38,7 @@ Honor these prompt options when present:
 | `--max-coders 1|2|3` | Upper bound for implementation agents; default `3` |
 | `--base <branch>` | Base branch for diff, branch creation, and PR/MR; default is detected default branch |
 | `--dry-run` | Create the execution outline only; do not launch agents, edit code, commit, push, or open PR/MR |
+| `--evidence` | Create a ZIP of the completed run artifacts and attach it to the PR/MR; disabled by default |
 | `skip human review` or `--skip-human-review` | Do not pause for user review when MBOD is not unanimous; record the dissent and make the best call autonomously |
 
 If no usable source can be resolved, ask for a plan, spec, or objective and stop. Otherwise proceed autonomously.
@@ -94,7 +95,7 @@ Write these initial artifacts:
 - `plans/original.md` - normalized copy of the provided plan/objective
 - `final/ledger.md` - append-only phase log with timestamps, artifact paths, agent names, command outcomes, and blockers
 
-For `--dry-run`, write `final/dry-run.md` with planned phases, expected artifact files, and intended agent fan-out, then report the file path and stop.
+For `--dry-run`, write `final/dry-run.md` with planned phases, expected artifact files, intended agent fan-out, and whether `--evidence` was requested, then report the file path and stop.
 
 ## Phase 1: Basic Context
 
@@ -120,8 +121,9 @@ Load these skills only when actually shelling out to the relevant CLI; do not lo
 
 - `claude-cli` — when invoking the `claude` CLI directly (e.g. for a planning or fix agent that does not go through MBOT).
 - `codex-cli` — when invoking the `codex` CLI directly.
+- `grok-cli` — when invoking the `grok` CLI directly (e.g. for a planning or fix agent that does not go through MBOT).
 
-When delegating to MBOT or MBOD, those skills handle CLI routing themselves.
+When delegating to MBOT or MBOD, those skills handle CLI routing themselves (including preferring the first-party `grok` CLI over OpenCode `colin-mbot-grok` when available).
 
 ## Phase 2: MBOT Plan Critique
 
@@ -441,14 +443,14 @@ The skill/sub-agent must write:
 final/educational-material.md
 ```
 
-The brief format, grounding rules, section requirements, Mermaid guidance, and density expectations are owned by the skill. Do not inline or reinvent those instructions in Megamind.
+The brief format, grounding rules, section requirements, diagram format selection, and density expectations are owned by the skill. Do not inline or reinvent those instructions in Megamind.
 
 After the sub-agent writes `final/educational-material.md`, Megamind must validate it before posting:
 
 1. Read `final/educational-material.md`.
 2. Spot-check each substantive claim against run artifacts, changed files, diffs, local gate output, or PR/MR metadata.
 3. Correct or remove claims that are ungrounded, overstated, stale, or unsupported.
-4. Ensure Mermaid diagrams match the actual code/configuration structure.
+4. Ensure every diagram matches the actual code/configuration structure. For tldraw diagrams, also verify that each referenced PNG and its `.tldr` source exist in `final/`; for Mermaid fallback diagrams, ensure the Mermaid lint passed.
 5. Write:
 
 ```text
@@ -462,6 +464,8 @@ Append the validated educational material to the PR/MR description using `gh-cli
 ```markdown
 ## Megamind Educational Brief
 ```
+
+Before appending a brief that references local tldraw PNGs, upload each PNG with the platform's supported attachment workflow and replace the local Markdown reference with the returned hosted Markdown or URL. Keep the `.tldr` source and local PNG in the run directory as durable artifacts. Mermaid fallback diagrams need no upload step.
 
 If the PR/MR platform update fails because of permissions or API errors, write the exact attempted command and error excerpt to `final/educational-validation.md` and continue to CI monitoring.
 
@@ -500,12 +504,42 @@ and stops.
 
 Do not declare completion until `ci/final-status.md` confirms green CI or `ci/blocker.md` documents a real blocker.
 
+## Phase 15: Evidence Archive
+
+Run this phase after the CI monitor writes `ci/final-status.md` or `ci/blocker.md`, so the archive captures the complete run.
+
+Only when the invocation included `--evidence`:
+
+1. Review the run directory for secrets, credentials, tokens, private keys, and unrelated sensitive data. Redact secrets where the artifact remains useful; otherwise exclude the file. Never publish a secret merely to make the archive complete.
+2. Write `final/evidence-manifest.md` with the run slug, PR/MR URL, commit SHA, creation time, included artifact groups, redactions or exclusions, and the CI outcome. Append the packaging start to `final/ledger.md` before creating the ZIP.
+3. Create the ZIP outside the run directory so it cannot include itself, then move it to:
+
+```text
+final/megamind-<slug>-evidence.zip
+```
+
+Preserve the run directory's relative paths in the archive. Exclude any prior `final/megamind-*-evidence.zip` files when rerunning this phase.
+
+4. Compute the archive's SHA-256 checksum and byte size.
+5. Upload the ZIP to the hosted review item. For a GitLab MR, use the project uploads endpoint documented by `glab-cli`, then append the returned Markdown link to the MR description under:
+
+```markdown
+## Megamind Evidence
+```
+
+For another platform, use its supported attachment workflow and add the resulting link under the equivalent heading.
+
+6. Write `final/evidence.md` with the local archive path, checksum, size, attachment URL or returned Markdown, upload command shape, and verification that the updated PR/MR renders or links to the attachment.
+
+Without `--evidence`, skip this phase silently: do not create evidence files, run ZIP commands, attempt an upload, or mention evidence in the final response. When `--evidence` was requested, if packaging or upload fails, write the exact command, error excerpt, and required next action to `final/evidence.md`; preserve the local ZIP when one was created and continue to the final report.
+
 ## Failure Handling
 
 - Agent failed to start: record it in `final/ledger.md`; use a backup only when the phase still needs diversity.
 - Agent output missing required file: send one format-repair follow-up. If still missing, summarize from chat output and record the deviation.
 - Unparsable MBOT/MBOD result: preserve raw output, extract the obvious decision/findings if possible, otherwise rerun once.
 - Dirty pre-existing worktree: never stage or revert unrelated files. If unrelated changes overlap required files and make safe edits impossible, write `final/blocker.md`.
+- Evidence packaging or upload failure: follow Phase 15 and record it in `final/evidence.md`; do not create a hard blocker solely because the attachment failed.
 - Permission or auth failure: write exact command, stderr excerpt, and required credential/action to `final/blocker.md`.
 - CI cannot be observed: write platform command attempted and auth/permission error to `ci/blocker.md`.
 
@@ -518,6 +552,7 @@ Keep the final response concise:
 - Commit SHA(s)
 - Local gates summary
 - Artifact directory path
+- Evidence archive attachment status and link when `--evidence` was requested
 - Estimated total time worked: compute from the run directory's oldest artifact timestamp to newest artifact timestamp when possible, falling back to `final/ledger.md` timestamps or current `date` if filesystem birth times are unavailable
 - Educational brief status
 - Remaining blocker, if one exists
@@ -528,5 +563,5 @@ Do not paste long critiques, reviews, decisions, or CI logs into chat. Point to 
 
 You are done only when one of these is true:
 
-- PR/MR exists, latest pushed commit includes the work, final local gates passed, and CI is green.
+- PR/MR exists, latest pushed commit includes the work, final local gates passed, and CI is green. When `--evidence` was requested, the evidence ZIP is also attached or an exact attachment failure is recorded in `final/evidence.md`.
 - A hard blocker file exists explaining why autonomous completion is impossible, with exact evidence and next action.

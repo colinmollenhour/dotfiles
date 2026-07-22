@@ -64,9 +64,9 @@ glab api 'projects/:fullpath/merge_requests/19/discussions?per_page=100&page=1' 
 
 If there may be more than one page, repeat for subsequent pages or use a helper/script that follows `X-Next-Page`. Never state that all comments are resolved until pagination has been accounted for.
 
-#### File Uploads (images in MR descriptions/notes)
+#### File Uploads (MR attachments)
 
-`glab api` cannot send multipart form data — `-F "file=@x.png"` does **not** upload the file (it fails confusingly, e.g. `404 Project Not Found`). To attach an image (diagram, screenshot) so it renders in an MR description or note, use `curl` against the project uploads endpoint with the token from `glab`:
+`glab api` cannot send multipart form data — `-F "file=@artifact.zip"` does **not** upload the file (it fails confusingly, e.g. `404 Project Not Found`). To attach an image, archive, or other artifact to an MR description or note, use `curl` against the project uploads endpoint with the token from `glab`:
 
 ```bash
 # Extract the token into a shell variable WITHOUT printing it.
@@ -74,11 +74,11 @@ If there may be more than one page, repeat for subsequent pages or use a helper/
 TOKEN=$(glab auth status --hostname gitlab.example.com --show-token 2>&1 \
   | sed -n 's/.*Token[^:]*: //p' | grep -v '^\*' | head -1 | tr -d '[:space:]')
 
-curl -s -X POST -H "PRIVATE-TOKEN: $TOKEN" --form "file=@diagram.png" \
+curl -s -X POST -H "PRIVATE-TOKEN: $TOKEN" --form "file=@artifact.zip" \
   "https://gitlab.example.com/api/v4/projects/<group>%2F<repo>/uploads"
 ```
 
-The response's `markdown` field is a ready-to-embed `![name](/uploads/<hash>/name.png)` snippet — project-relative, renders in that project's MR descriptions and notes. Then apply it with `glab mr update <iid> --description "$(cat description.md)"`. Never echo the token into command output.
+The response's `markdown` field is a ready-to-use project-relative snippet. Images render inline; archives and other files render as attachment links. Add the returned Markdown to the description with `glab mr update <iid> --description "$(cat description.md)"`. Never echo the token into command output.
 
 ### Step 4: Avoid interactive flows
 

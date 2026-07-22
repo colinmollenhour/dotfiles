@@ -125,8 +125,9 @@ At a high level, it:
 - Runs final local gates, creates a feature branch, commits only task-related files, pushes, and opens or updates a GitHub PR or GitLab MR with artifact links and test results.
 - Launches an educational synthesis sub-agent after the PR/MR exists, validates its claims against Megamind artifacts and diffs, then appends a dense journey/design/architecture/lessons brief to the PR/MR.
 - Monitors CI after the PR/MR exists, fixes minor CI failures autonomously, and stops only when CI is green or a blocker file documents the exact evidence and next action.
+- With `--evidence`, packages the completed run artifacts into a ZIP and attaches it to the PR/MR. Evidence packaging is skipped by default.
 
-Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, or include `skip human review` to have it make the best call autonomously after a split MBOD result.
+Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, include `skip human review` to have it make the best call autonomously after a split MBOD result, or pass `--evidence` to attach the final artifact archive.
 
 ```mermaid
 flowchart TD
@@ -152,7 +153,10 @@ flowchart TD
     Gates --> Delivery["Commit, push branch, and open or update PR/MR"]
     Delivery --> Education["Generate and validate educational brief"]
     Education --> CI["Monitor CI and fix minor failures"]
-    CI --> Done{"Green CI or documented blocker"}
+    CI --> Evidence{"Evidence requested?"}
+    Evidence -->|"Yes"| Archive["Package and attach evidence ZIP"]
+    Evidence -->|"No"| Done{"Green CI or documented blocker"}
+    Archive --> Done
 ```
 
 ### Pi package
@@ -384,7 +388,7 @@ When MBOT starts, it picks a profile in this order:
 1. An explicit `--profile X` in the prompt loads `X.md`.
 2. The task type (`code-review` or `critique`) loads `code-review.md` or `critique.md`.
 3. Anything else falls back to `default.md`.
-4. If the chosen file does not exist, MBOT tries `default.md`. If that is also missing, it uses hardcoded defaults (Opus through the `claude` CLI plus GPT, Gemini, GLM, Qwen, MiMo, Kimi, and Grok through OpenCode).
+4. If the chosen file does not exist, MBOT tries `default.md`. If that is also missing, it uses hardcoded defaults (Opus through the `claude` CLI, Grok through the `grok` CLI when available, plus GPT, Gemini, GLM, Qwen, MiMo, and Kimi through OpenCode; OpenCode `colin-mbot-grok` is the Grok fallback).
 
 All profile files live in `~/.claude/skills/many-brain-one-task/`, beside the `SKILL.md` file. Profiles are a plain Markdown bullet list — model and harness, one per line.
 
@@ -413,9 +417,10 @@ Use the following:
 Copy one of the examples above and edit to taste. You can specify:
 
 - **Which models** (e.g. Opus 4.6, GPT 5.4 Codex, Gemini 3.1 Pro, Grok 4.20, Kimi K2.6, MiniMax M2.5).
-- **Which harness** drives each model (`claude` CLI, `codex`, `gemini`, `opencode`). Constraints:
-  - Claude Code can only run Claude models natively. Non-Claude models go through another harness, typically OpenCode.
-  - OpenCode **must** call `claude` for Claude models, but can run everything else as an OpenCode subagent.
+- **Which harness** drives each model (`claude` CLI, `grok` CLI, `codex`, `gemini`, `opencode`). Constraints:
+  - Claude Code can only run Claude models natively. Non-Claude models go through another harness (prefer `grok` CLI for Grok; otherwise typically OpenCode).
+  - OpenCode **must** call `claude` for Claude models, and should prefer the first-party `grok` CLI for Grok when installed; other non-Claude models run as OpenCode subagents.
+  - Grok CLI can run Grok models natively (or via headless `grok --prompt-file`); shell out for everything else.
   - Codex drives only OpenAI models natively. Same story for the Gemini CLI.
 - **Which provider or route** (e.g. `via OpenCode Zen`, `via Z.ai Coding Plan`, `via OpenRouter`). Prefer coding-plan routes over generic `openrouter/` or `opencode/` when you have entitlements — they are cheaper or uncapped.
 - **Model-specific knobs** (e.g. `"max" thinking`, `"xhigh" variant`).
@@ -446,7 +451,7 @@ Sorted roughly by capability:
 | `colin-mbot-gpt-zen` | GPT 5.6 Sol through OpenCode Zen |
 | `colin-mbot-gpt-terra` | OpenAI GPT 5.6 Terra |
 | `colin-mbot-gpt-terra-zen` | GPT 5.6 Terra through OpenCode Zen |
-| `colin-mbot-grok` | xAI Grok 4.5 |
+| `colin-mbot-grok` | xAI Grok 4.5 (OpenCode fallback; prefer `grok` CLI when available) |
 | `colin-mbot-sonnet` | Anthropic Claude Sonnet 5 |
 | `colin-mbot-glm` | Zhipu GLM 5.2 |
 | `colin-mbot-gemini-pro` | Gemini 3.1 Pro (OpenRouter) |

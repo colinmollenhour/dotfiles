@@ -56,7 +56,7 @@ Bullets or a compact table with: decision, why it was made, important alternativ
 
 ## Architecture
 
-Overall structure of the delivered code or configuration. Include Mermaid diagrams when they clarify module relationships, request/data flow, state transitions, or deployment/runtime structure. Skip diagrams when they would be ornamental.
+Overall structure of the delivered code or configuration. Include diagrams when they clarify module relationships, request/data flow, state transitions, or deployment/runtime structure. Skip diagrams when they would be ornamental. Follow the diagram format selection below.
 
 ## Lessons
 
@@ -73,16 +73,32 @@ Claim-to-source map for the most important claims, using artifact paths, changed
 - Include file paths and artifact paths where they make the material more useful.
 - Keep the journey focused on decisions and pivots, not every command that ran.
 - Explain design decisions in terms of constraints, tradeoffs, and rejected alternatives.
-- Use Mermaid only when it clarifies actual structure or flow.
+- Use a diagram only when it clarifies actual structure or flow.
 - Do not duplicate the review summary or test plan unless needed to explain the journey.
 - Do not include secrets, credential values, raw logs, or noisy full diffs.
 - If evidence is missing for an expected section, say what is missing briefly instead of guessing.
 
-## Mermaid Rules
+## Diagram Format Selection
+
+Check for the tldraw CLI once before creating any diagrams:
+
+```bash
+command -v tldraw >/dev/null 2>&1
+```
+
+- When it is available, prefer tldraw for every useful diagram. Load and follow the `tldraw-skill`; the successful PATH check is sufficient, so assume the CLI and its export path work without additional probes. Write each `.tldr` source and exported `.png` beside the brief, and reference the PNG from the brief with a relative Markdown image link.
+- When it is unavailable, use Mermaid exactly as described below. Do not report or explain the fallback in the brief or parent conversation.
+- Do not install tldraw as part of this workflow.
+
+Use stable, descriptive asset names such as `architecture.tldr` and `architecture.png`. For multiple diagrams, use purpose-specific names such as `request-flow.*` and `state-transitions.*`.
+
+## Diagram Rules
 
 Use diagrams sparingly.
 
-Always enclose Mermaid node and edge labels in double quotes (for example, `NodeID["Label text"]`) if they contain any punctuation, special characters such as `;`, `|`, `:`, `>`, `<`, or brackets. This safely escapes reserved characters and prevents parser crashes.
+For tldraw diagrams, follow the generation, layout, export, and self-check rules in `tldraw-skill`.
+
+For Mermaid fallback diagrams, always enclose node and edge labels in double quotes (for example, `NodeID["Label text"]`) if they contain any punctuation, special characters such as `;`, `|`, `:`, `>`, `<`, or brackets. This safely escapes reserved characters and prevents parser crashes.
 
 Examples:
 
@@ -104,7 +120,7 @@ Avoid diagrams for:
 - Cosmetic summaries already clear from bullets
 - Structures not visible in the diff or artifacts
 
-## Mermaid Lint
+## Mermaid Fallback Lint
 
 After writing the brief, if it contains any ```` ```mermaid ```` blocks, lint the file with `maid` and fix every reported error before considering the brief complete. Skip this step only when the brief has no Mermaid diagrams.
 
