@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Kimi K2.7 Code - only to be used by the MBOT skill
+description: Many brain, one task with Kimi K3 - only to be used by the MBOT skill
 mode: subagent
-model: opencode/kimi-k2.7-code
+model: openrouter/moonshotai/kimi-k3
 tools:
   write: false
   edit: false
