@@ -1,7 +1,7 @@
 ---
 name: many-brain-one-decision
 description: 'Run a multi-agent debate to compare options and converge on a decision.'
-allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *), Bash(pi *), Bash(grok *), Bash(codex *)
+allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *), Bash(pi *), Bash(grok *), Bash(codex *), Bash(botctl *)
 ---
 
 # Many Brain One Decision
@@ -70,9 +70,9 @@ If the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line l
 | Pi | Pi-backed debater | Prefer the `pi-fast-subagent` package `subagent` tool when available; otherwise run `pi --print < prompt.md` and save stdout as that debater's result. |
 | Pi | Other debater | Follow the selected profile route. If unspecified in the Pi package, use Pi-backed debaters by default. |
 | OpenCode | OpenCode-backed MBOT agent | Use the `Task` tool with the matching `colin-mbot-*` `subagent_type`. |
-| OpenCode | Claude-backed debater | Use the `claude` CLI first so usage can stay on the Claude Max plan. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if the CLI does not work or the user explicitly requests OpenCode-routed Claude. |
+| OpenCode | Claude-backed debater | Prefer **`botctl prompt`** (load `botctl-prompt` skill or `botctl view-skill`) so usage stays on the Claude Max plan via a real TUI session. Fall back to the `claude` CLI if `botctl` is missing. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if both fail or the user explicitly requests OpenCode-routed Claude. |
 | OpenCode | Grok-backed debater | Use the `grok` CLI first so usage stays on the xAI plan. Use `colin-mbot-grok` only if the CLI does not work or the user explicitly requests OpenCode-routed Grok. |
-| Claude Code | Claude-backed debater | Use Claude Code's native Agent tool when available with `run_in_background: true`; fallback to the `claude` CLI. |
+| Claude Code | Claude-backed debater | Use Claude Code's native Agent tool when available with `run_in_background: true`; fallback to **`botctl prompt`** then the `claude` CLI. |
 | Claude Code | Grok-backed debater | Use the `grok` CLI when available; fallback to OpenCode only if `grok` is missing/unauthenticated or the profile forces OpenCode. |
 | Claude Code | OpenCode-backed MBOT agent | Use **`occtl run`** when the preflight succeeds; otherwise fall back to the sibling MBOT `run-opencode.ts` helper. Claude Code does not expose `colin-mbot-*` subagents directly. |
 | Grok CLI | Grok-backed debater | Prefer native `spawn_subagent`; fallback to the `grok` CLI. |
@@ -201,9 +201,25 @@ bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/run-opencode.ts" \
   -- "Participate in the decision debate exactly as instructed."
 ```
 
-When the host is OpenCode and the selected debater is Claude-backed, use the `claude` CLI first (load the `claude-cli` skill for complete flag reference):
+When the host is OpenCode and the selected debater is Claude-backed, prefer **`botctl prompt`**. Load the `botctl-prompt` skill if already installed; otherwise run `botctl view-skill botctl-prompt` and follow it — do **not** install the skill. Fall back to the `claude` CLI only when `botctl` is unavailable.
 
 ```bash
+# Preferred: botctl prompt (unique session-id per parallel debater)
+botctl prompt \
+  --source .tmp/many-brain-one-decision/<slug>/round-1/prompts/opus-pragmatic-operator.md \
+  --cwd "$PWD" \
+  --session "botctl-mbod" \
+  --window "mbod-r1-opus-pragmatic" \
+  --verbose \
+  -- \
+  --model opus \
+  --effort max \
+  --session-id "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
+  --name "MBOD round 1 opus pragmatic-operator" \
+  > .tmp/many-brain-one-decision/<slug>/round-1/results/opus-pragmatic-operator.out \
+  2> .tmp/many-brain-one-decision/<slug>/round-1/results/opus-pragmatic-operator.err
+
+# Fallback when botctl is missing (load claude-cli skill for flags)
 claude --agent general \
   --model opus \
   --print \

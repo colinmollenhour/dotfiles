@@ -1,7 +1,7 @@
 ---
 name: many-brain-one-task
 description: 'Run the same task with multiple agents for reviews, critiques, or model comparison.'
-allowed-tools: Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *)
+allowed-tools: Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *), Bash(botctl *)
 ---
 
 # Many Brain One Task
@@ -41,10 +41,10 @@ The host harness (you, the one running this skill right now) limits which models
 |-------------|--------------------------|------------------------------------------------------------------------------------------------------------|
 | Pi          | `pi` agent requested      | Prefer the `pi-fast-subagent` package `subagent` tool when it is available; otherwise shell out with `pi --print` using the prepared prompt file. See [Pi](#pi). |
 | Pi          | any other model family    | Follow the profile's requested CLI/harness. If unspecified in the Pi package, use Pi itself as the participant. |
-| Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
+| Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to **`botctl prompt`** (via `botctl-prompt` skill) or the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
 | Claude Code | Grok                     | `grok` CLI (preferred). OpenCode `colin-mbot-grok` only if `grok` is missing/unauthenticated or the profile forces OpenCode. See [Grok](#grok). |
 | Claude Code | other non-Claude         | `occtl run` (preferred); `run-opencode.ts` fallback.                                                       |
-| OpenCode    | Claude (Opus/Sonnet/Haiku) | `claude` CLI — the **only** path. See [Claude](#claude-opus--sonnet--haiku). Do not use `colin-mbot-*` subagents for Claude. |
+| OpenCode    | Claude (Opus/Sonnet/Haiku) | **`botctl prompt`** (preferred when available) or `claude` CLI — never `colin-mbot-*` for Claude. See [Claude](#claude-opus--sonnet--haiku). |
 | OpenCode    | Grok                     | `grok` CLI (preferred). Fall back to `colin-mbot-grok` / `occtl run` only when Grok CLI is unavailable or the profile says OpenCode. See [Grok](#grok). |
 | OpenCode    | other non-Claude         | `task` tool with a `colin-mbot-*` `subagent_type` (e.g. `colin-mbot-glm` for GLM). Auto-selects model.     |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
@@ -188,25 +188,70 @@ Guidelines:
 
 ### Claude (Opus / Sonnet / Haiku)
 
-Load the `claude-cli` skill for complete flag reference. Summary:
+Prefer the **`botctl-prompt`** skill for advanced agentic Claude shell-outs (observable tmux TUI, YOLO-safe blockers, multi-file packets, isolated `--session-id`). Load it before inventing flags:
 
-Both Claude Code and OpenCode hosts run Claude models via the same path: shell out to the `claude` CLI (or, when the host is Claude Code, prefer the native `Agent` tool which uses the same backend).
+```bash
+# If installed as a Claude Code / agent skill, open the skill file.
+# Otherwise print the copy bundled in the botctl binary (do not install):
+command -v botctl >/dev/null && botctl view-skill botctl-prompt
+```
 
-**Claude Code host** — prefer the native `Agent` tool:
+If `botctl` is missing, fall back to the `claude-cli` skill / `claude --print` path below.
+
+**Claude Code host** — prefer the native `Agent` tool for in-process Claude participants:
 
 ```ts
 Agent({ subagent_type: "general-purpose", model: "opus", run_in_background: true, description: "...", prompt: "..." })
 ```
 
-If the `Agent` tool is unavailable, fall back to the `claude` CLI form below.
+If the `Agent` tool is unavailable, fall back to **`botctl prompt`** (preferred) or the `claude` CLI.
 
-**OpenCode host** — the `claude` CLI is the **only** path. Do **not** use a `colin-mbot-*` subagent for Claude models; those subagents are for non-Claude models only.
+**OpenCode host** — do **not** use a `colin-mbot-*` subagent for Claude models. Prefer **`botctl prompt`** when `botctl` is on `PATH`; otherwise use the `claude` CLI.
+
+#### `botctl prompt` (preferred shell-out)
+
+```bash
+# Short prompt
+botctl prompt \
+  --text "PROMPT_HERE" \
+  --cwd "$PWD" \
+  --session "botctl-mbot" \
+  --window "mbot-opus-runtime" \
+  --verbose \
+  -- \
+  --model opus \
+  --effort max \
+  --session-id "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
+  --name "MBOT: Code review for X"
+
+# Multi-file / large packet (repeatable --source)
+botctl prompt \
+  --source .tmp/ultra-review/runtime.full.md \
+  --cwd "$PWD" \
+  --session "botctl-mbot" \
+  --window "mbot-sonnet-runtime" \
+  --verbose \
+  -- \
+  --model sonnet \
+  --session-id "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
+  --name "MBOT: Code review for X"
+```
+
+Rules:
+
+- Always pass a unique Claude `--session-id` (UUID) when running participants in parallel on the same cwd.
+- Prefer unique `--window` names under a shared owning session (default `botctl`).
+- stdout is the final assistant message only; capture stderr separately with `--verbose`.
+- On non-zero exit, the prompt window is left alive — inspect with `botctl capture --pane` / `botctl last-message --pane`.
+- Swap `--model opus` for `sonnet` / `haiku` as appropriate.
+
+#### `claude --print` fallback
 
 ```bash
 claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort max --append-system-prompt .tmp/ultra-review/runtime.full.md -- "PROMPT_HERE"
 ```
 
-Swap `--model opus` for `sonnet` / `haiku` as appropriate. `--append-system-prompt <file>` is how you pipe a long shared context (e.g. an MR's full diff) into the run; the trailing `-- "..."` is the short user-visible prompt.
+Use this only when `botctl` is unavailable or the profile explicitly requires headless `claude --print`.
 
 ### OpenCode
 
