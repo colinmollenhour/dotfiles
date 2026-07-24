@@ -63,8 +63,9 @@ Redirect to a file for consumption by aggregation steps. Capturing both stdout a
 
 | Flag value | Model |
 |---|---|
-| `opus` | Claude Opus 4.7 — strongest reasoning |
-| `sonnet` | Claude Sonnet 4.6 — balanced speed and quality |
+| `fable` | Claude Fable 5 — strongest reasoning |
+| `opus` | Claude Opus 5 — strongest reasoning - best value |
+| `sonnet` | Claude Sonnet 5 — balanced speed and quality |
 | `haiku` | Claude Haiku 4.5 — fastest, cheapest |
 
 ## Host-Specific Routing
