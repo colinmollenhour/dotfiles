@@ -159,21 +159,29 @@ flowchart TD
     Archive --> Done
 ```
 
-### Pi package
+### OMP and Pi package
 
-This repo also includes `pi-megamind/`, a draft Pi package that bundles Megamind as a Pi skill plus a `/megamind` prompt template. Try it without installing permanently:
+This repo also includes `pi-megamind/`, an installable package for OMP and Pi. OMP runs `/megamind` in the current user-visible `Main` session and delegates only bounded work through native child agents:
 
 ```bash
-pi -e ./pi-megamind
+omp install ./pi-megamind
+omp
+# Then type: /megamind <objective, plan file, issue URL, or task ID>
 ```
 
-Or install it from this checkout:
+Try it for one OMP session without installing:
+
+```bash
+omp --extension ./pi-megamind
+```
+
+Pi remains supported:
 
 ```bash
 pi install ./pi-megamind
 ```
 
-The package defaults MBOT/MBOD delegation to Pi-backed participants and prefers the lightweight `pi-fast-subagent` extension when available.
+The OMP route defaults MBOT/MBOD delegation to native `task` batches. The Pi route defaults to Pi-backed participants and prefers the lightweight `pi-fast-subagent` extension when available.
 
 ## Slash commands
 

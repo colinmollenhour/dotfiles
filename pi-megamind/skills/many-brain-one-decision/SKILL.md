@@ -61,14 +61,18 @@ Default agents:
 
 Route debaters according to the current host harness. From a non-OpenCode host (e.g. Claude Code), prefer `occtl run` to drive OpenCode-backed debaters; the sibling MBOT `run-opencode.ts` helper is the fallback when occtl is unavailable.
 
-If the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, select a Pi-backed debater. In the Pi package, Pi-backed debaters are the default unless the user or profile names specific non-Pi agents.
+When the current host is OMP and the profile does not explicitly require an external harness, use OMP-native `task` children as the default debaters. Keep the current visible `Main` agent as moderator.
+
+If the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, select a Pi-backed debater. When the current host is Pi, Pi-backed debaters are the default unless the user or profile names specific non-Pi agents.
 
 If the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.5`, select a Grok-CLI-backed debater unless the line explicitly says OpenCode / `colin-mbot-grok`.
 
 | Current host | Selected debater | Preferred route |
 |---|---|---|
+| OMP | OMP-native/default debater | Use the native `task` tool in one parallel batch per round. Pass an explicit OMP model selector through the task item when provided. |
+| OMP | External-harness debater | Follow the selected profile route only when it explicitly names that harness; otherwise stay native. |
 | Pi | Pi-backed debater | Prefer the `pi-fast-subagent` package `subagent` tool when available; otherwise run `pi --print < prompt.md` and save stdout as that debater's result. |
-| Pi | Other debater | Follow the selected profile route. If unspecified in the Pi package, use Pi-backed debaters by default. |
+| Pi | Other debater | Follow the selected profile route. If unspecified while the current host is Pi, use Pi-backed debaters by default. |
 | OpenCode | OpenCode-backed MBOT agent | Use the `Task` tool with the matching `colin-mbot-*` `subagent_type`. |
 | OpenCode | Claude-backed debater | Use the `claude` CLI first so usage can stay on the Claude Max plan. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if the CLI does not work or the user explicitly requests OpenCode-routed Claude. |
 | OpenCode | Grok-backed debater | Use the `grok` CLI first so usage stays on the xAI plan. Use `colin-mbot-grok` only if the CLI does not work or the user explicitly requests OpenCode-routed Grok. |
@@ -78,6 +82,12 @@ If the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line l
 | Grok CLI | Grok-backed debater | Prefer native `spawn_subagent`; fallback to the `grok` CLI. |
 | Grok CLI | Other debater | Follow the selected profile route (`claude`, `occtl run` / `run-opencode.ts`, `pi`, etc.). |
 
+
+#### OMP debaters
+
+Launch every active debater for a round together in one native `task` call. Give each item the complete round prompt, its fixed personality, and the required `BEGIN_MBOD_JSON` output contract. Use the most specific agent type advertised by the current task tool; the general task agent is the safe fallback. Pass the profile's OMP model id or role through the item's `model` field when specified, otherwise omit it.
+
+Keep moderation and artifact ownership in the visible `Main` session. Read each completed result or `agent://<id>`, save it under the round's `results/` directory, and apply the normal parse, repair, and backup rules. Do not dispatch a `megamind` child and do not shell out to `omp -p` while the native `task` tool is available.
 
 #### Pi debaters
 

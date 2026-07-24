@@ -1,6 +1,6 @@
-# pi-megamind
+# Megamind for OMP and Pi
 
-Pi package for the Megamind autonomous delivery workflow and supporting multi-agent skills copied from this dotfiles repo.
+Installable Megamind autonomous-delivery workflow with supporting multi-agent skills. The same package works in OMP and Pi.
 
 ## Contents
 
@@ -10,11 +10,40 @@ Pi package for the Megamind autonomous delivery workflow and supporting multi-ag
 - `skills/educational-brief/` — grounded educational brief synthesis.
 - `skills/gh-cli/`, `skills/glab-cli/` — hosted PR/MR and CI platform operations.
 - `skills/claude-cli/`, `skills/codex-cli/`, `skills/grok-cli/` — CLI routing references used by MBOT/MBOD.
-- `prompts/megamind.md` — Pi slash prompt for `/megamind`.
+- `prompts/megamind.md` — shared `/megamind` prompt template.
 
-## Local install
+## OMP
 
-From this repo root:
+Install from this checkout:
+
+```bash
+omp install ./pi-megamind
+```
+
+Start OMP in the target repository and invoke Megamind:
+
+```text
+/megamind <objective, plan file, issue URL, or task ID>
+```
+
+The command changes the current, user-visible OMP session into Megamind mode. That session remains the `Main` orchestrator; it uses OMP's native `task` tool only for bounded child work. Megamind itself is not hidden behind a subagent.
+
+Try the package for one session without installing it:
+
+```bash
+omp --extension ./pi-megamind
+```
+
+For a non-interactive smoke run:
+
+```bash
+omp --extension ./pi-megamind -p \
+  '/megamind Check this integration --dry-run --agents omp'
+```
+
+## Pi
+
+Install from this checkout:
 
 ```bash
 pi install ./pi-megamind
@@ -26,15 +55,9 @@ Or try it for one Pi session without adding it to settings:
 pi -e ./pi-megamind
 ```
 
-Then invoke:
+Then invoke the same `/megamind` command. The Pi route defaults MBOT/MBOD delegation to Pi-backed participants. If the lightweight `pi-fast-subagent` extension is installed, Megamind should prefer in-process Pi child agents through that package; otherwise it falls back to `pi --print < prompt.md`.
 
-```text
-/megamind <objective, plan file, issue URL, or task ID>
-```
-
-This package defaults MBOT/MBOD delegation to Pi-backed participants. If the lightweight `pi-fast-subagent` extension is installed, Megamind should prefer in-process Pi child agents through that package; otherwise it falls back to shelling out with `pi --print < prompt.md`.
-
-Optional recommended install:
+Optional recommended Pi install:
 
 ```bash
 pi install npm:pi-fast-subagent
@@ -45,7 +68,7 @@ Useful flags supported by the Megamind workflow include:
 - `--dry-run` — write the execution outline only.
 - `--max-coders 1|2|3` — cap implementation agents.
 - `--base <branch>` — set base branch.
-- `--agents <list>` — pass through model/agent selection.
+- `--agents <list>` — pass through model/agent selection; use `omp` for OMP-native children or `pi` for Pi-backed children.
 - `--evidence` — create a ZIP of the completed run artifacts and attach it to the PR/MR; skipped by default.
 - `--skip-human-review` or `skip human review` — do not pause after split MBOD decisions.
 

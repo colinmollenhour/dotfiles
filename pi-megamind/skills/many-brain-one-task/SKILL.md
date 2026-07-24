@@ -39,6 +39,8 @@ The host harness (you, the one running this skill right now) limits which models
 
 | Host        | Model family             | Mechanism                                                                                                  |
 |-------------|--------------------------|------------------------------------------------------------------------------------------------------------|
+| OMP         | OMP-native/default       | Use the native `task` tool in one parallel batch. Keep the current `Main` agent as moderator and persister. See [OMP](#omp). |
+| OMP         | explicitly selected model | Prefer an OMP `task` child with that `model` selector; use the profile's external CLI only when it explicitly requires that harness. |
 | Pi          | `pi` agent requested      | Prefer the `pi-fast-subagent` package `subagent` tool when it is available; otherwise shell out with `pi --print` using the prepared prompt file. See [Pi](#pi). |
 | Pi          | any other model family    | Follow the profile's requested CLI/harness. If unspecified in the Pi package, use Pi itself as the participant. |
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
@@ -54,10 +56,18 @@ The host harness (you, the one running this skill right now) limits which models
 
 When OpenCode is the host and dispatching to a `colin-mbot-*` subagent, **only** use agents whose names start with `colin-mbot-`. Do not pick other agents. Exception: Claude and Grok prefer their first-party CLIs over `colin-mbot-*` when those CLIs are available.
 
-When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
+When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. When the current host is Pi, Pi-backed participants are the default unless the user or profile names different agents.
 
 When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.5`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok`.
 
+
+### OMP
+
+Use this route when the host is OMP and the user/profile requests `omp`, `OMP`, `native`, or does not name an external harness. Keep the current visible `Main` agent as the MBOT moderator.
+
+Launch all participants in one native `task` call so they run in parallel. Give every task the complete prepared prompt, a distinct review role, and instructions to return only its required result shape. Use the most specific agent type advertised by the current `task` tool. For a read-only opinion, prefer its read-only exploration or review agent; otherwise use its general task agent. If the profile names an OMP model id or role, pass it through the task item's `model` field. Otherwise omit `model` and use the child agent's configured default.
+
+After completion, read each returned result or `agent://<id>` and write it under `.tmp/<run-id>/results/<participant>.out`. A native child succeeds only when it completes and returns non-whitespace output. On failure, record the exact task error and substitute a configured backup. Do not shell out to `omp -p` while the native `task` tool is available.
 
 ### Pi
 
