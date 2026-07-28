@@ -5,22 +5,14 @@ description: 'Manage ClickUp tasks.'
 
 # ClickUp Tasks (Create & Update)
 
-This skill creates and updates ClickUp tasks. It supports two backends:
+Workflow for creating and updating ClickUp tasks via the `cup` CLI.
 
-1. **ClickUp MCP** (preferred) - use MCP tools like `ClickUp_create_task`, `ClickUp_update_task`
-2. **`cup` CLI** (fallback) - use `cup create`, `cup update`, `cup field` when MCP is unavailable
+Composes with:
 
-## Backend Detection
+- **`clickup`** — full `cup` CLI reference (all commands, flags, syntax). Consult it for anything not stated here; do not duplicate its content into this file.
+- **`shipstream-clickup`** (in the ShipStream repo) — workspace identifiers: custom field IDs, option IDs, task type IDs, team member user IDs.
 
-Before proceeding, check which backend is available:
-
-1. Try `cup auth --json` - if it returns authenticated user, CLI is available
-2. Check if ClickUp MCP tools are available (e.g., `ClickUp_create_task`)
-
-**If neither is available, halt and alert the user:**
-> ClickUp integration is not available. Neither the ClickUp MCP server nor the `cup` CLI is configured and working. Please set up one of the following:
-> - ClickUp MCP server in your opencode config
-> - `cup` CLI: run `cup init` to configure your API token
+**Prerequisite:** `cup auth` must return an authenticated user. If it fails, halt and tell the user to run `cup init` to configure their API token.
 
 ## Source Fidelity Contract
 
@@ -58,25 +50,13 @@ Ask clarifying questions if any required information is missing:
 
 ## Step 2: Determine Task Type
 
-ClickUp has a "Task Type" feature (shown as `custom_item_id` in the API). This is separate from the "Value Stream" custom field.
+ClickUp's "Task Type" feature (`custom_item_id` in the API, `--custom-item-id` on `cup create`) is separate from the "Value Stream" custom field. Both must be set for bugs.
 
-**Task Types:**
-| Type | custom_item_id |
-|------|----------------|
-| Task | 0 (default) |
-| Bug | 1001 |
+**Use Bug type for:** defects in existing functionality, unexpected behavior reported by users, issues that need fixing (not new features).
 
-**When to use Bug type:**
-- Defects in existing functionality
-- Unexpected behavior reported by users
-- Issues that need fixing (not new features)
+**Use Task type for:** new features, enhancements, documentation, refactoring, general work items.
 
-**When to use Task type:**
-- New features
-- Enhancements
-- Documentation
-- Refactoring
-- General work items
+For the `custom_item_id` values, see `shipstream-clickup` (or run `cup task-types`).
 
 ## Step 3: Format the task
 
@@ -142,105 +122,31 @@ ClickUp renders extra white space as visible gaps. Avoid blank lines inside task
 
 ## Step 4: Find the list and assignee
 
-### Using MCP:
-1. **Find the Sprint list**: Use `ClickUp_get_task` with `taskName` like "Sprint NNN" to find the list ID
-2. **Find the assignee**: Use `ClickUp_find_member_by_name` to get the user ID
-
-### Using cup CLI:
-1. **Find the Sprint list**: Use `cup sprints` to list sprints, then `cup task <sprintTaskId>` to get the list ID
-2. **Find the assignee**: Use `cup members` to list workspace members and find user ID
+Use `cup sprints` to find the sprint list and `cup members` to resolve an assignee to a user ID. Prefer a list ID over a list name — faster and unambiguous. `cup create --list sprint:current` targets the active sprint directly.
 
 ## Step 5: Create or update the task
 
-### Using MCP:
+Use `cup create` / `cup update`. See the `clickup` skill for the full flag list.
 
-**Create:** Use `ClickUp_create_task` with:
-- `name`: Task name (emoji optional - Bug type provides its own icon)
-- `listId`: The sprint list ID (preferred over listName)
-- `priority`: 1-4 (1=urgent, 4=low)
-- `status`: "Ready to Start" (or as specified)
-- `assignees`: Array with user ID, e.g., `[2685610]`
-- `markdown_description`: Full formatted description
-- `custom_item_id`: Task type ID - use `1001` for Bug type, omit or use `0` for regular Task
+**`--parent` must be spelled out in full.** The short `-p` resolves to the global `--profile` flag, not `create`'s `--parent`, despite what `cup create --help` shows:
 
-**Update:** Use `ClickUp_update_task` with the task ID and fields to update.
-
-**Note:** If the `custom_item_id` parameter is not supported by the MCP tool, inform the user that they will need to manually change the Task Type to "Bug" in ClickUp after creation, or the MCP server needs to be updated to support this parameter.
-
-### Using cup CLI:
-
-**Create:**
 ```bash
-cup create \
-  -n "Task Name" \
-  -l <listId> \
-  -d "Formatted description in markdown" \
-  -s "Ready to Start" \
-  --priority normal \
-  --assignee 2685610 \
-  --custom-item-id 1001  # only for Bug type
+cup create -n "Subtask" -p abc123def       # WRONG: Profile "abc123def" not found
+cup create -n "Subtask" --parent abc123def # correct (list auto-detected from parent)
 ```
 
-**Update:**
-```bash
-cup update <taskId> \
-  -n "New Name" \
-  -d "New description" \
-  -s "In Progress" \
-  --priority high
-```
+Set the task type at creation time with `--custom-item-id` — changing it afterward is a separate step.
 
 ## Step 6: Set custom fields
 
-### Using MCP:
-
-Use `ClickUp_update_task` to set custom fields:
-
-**Value Stream** (field ID: `49ed7876-0e5f-490e-9cdc-612252997997`):
-| Value | Option ID |
-|-------|-----------|
-| Unknown | `25db8568-9947-4c4f-832d-6f6a4ffa0803` |
-| Internal Enhancement | `1e60663d-a01b-4581-8ca9-219d26d539be` |
-| External Enhancement | `ed07ceef-8c34-4efa-a18c-e89eeca305ab` |
-| Differentiator | `d7ee22ad-2c5d-4bd8-a1a6-426654dca26b` |
-| Bug | `4499c3b7-49da-43cd-ad38-f082a56079ef` |
-| Must Have | `2901a6cb-07c7-4a15-a0d0-bbe493cf18c1` |
-| Who Needs This | `f60e06ad-8f18-4a23-92e8-c31b2f365b9d` |
-
-**Requested By/Affects Clients** (field ID: `40acbf4e-77be-4e77-a0f6-d38b448c2804`):
-| Value | Option ID |
-|-------|-----------|
-| All Clients | `cabb4354-4d0f-480d-9815-d064b6d36e18` |
-| RSF | `927a2f33-0026-40df-971b-a21d1395ac58` |
-| Falcon | `20473328-70f7-44a8-a99f-f900616517c2` |
-| PGW | `edfe590f-d6de-40ef-a8d5-92c2324fd17a` |
-| LVLup | `d83b46b3-759f-4f76-82bd-b18562657d3b` |
-| Buho | `208ddc4a-3d8a-47fa-9a3f-e6878eb92996` |
-| PTAC | `7bb112be-0514-46e9-ba02-0d1d0b148ce0` |
-| Prospects | `8616a602-348d-4fe5-9688-b580cd39d3e9` |
-| R&S Logistics | `a8833d5d-4646-4c5a-ba24-b3f25241f200` |
-| LuckyGunner | `22a6d2ec-b7bc-409d-a071-eafb8492e7fc` |
-| RSD | `341e41d8-7f20-4132-8e0c-8926e377d90a` |
-
-Example update call:
-```
-custom_fields: [
-  {"id": "49ed7876-0e5f-490e-9cdc-612252997997", "value": "4499c3b7-49da-43cd-ad38-f082a56079ef"},
-  {"id": "40acbf4e-77be-4e77-a0f6-d38b448c2804", "value": ["927a2f33-0026-40df-971b-a21d1395ac58"]}
-]
-```
-
-### Using cup CLI:
+Every task needs **Value Stream**; client-reported work also needs **Requested By/Affects Clients**.
 
 ```bash
-# Set Value Stream to Bug
 cup field <taskId> --set "Value Stream" Bug
-
-# Set Requested By to RSF
 cup field <taskId> --set "Requested By/Affects Clients" RSF
 ```
 
-The `cup field --set` command resolves field and option names case-insensitively. If the name doesn't match, it will list available options.
+Names resolve case-insensitively and a bad name lists the valid options, so option IDs are rarely needed. When a raw API payload does need them, see `shipstream-clickup`. Custom fields can also be set inline at creation with `cup create --field "Name" value`.
 
 ## Step 7: Run the post-write fidelity audit
 
@@ -300,22 +206,8 @@ After creating or updating the task, provide the task summary and fidelity resul
 
 List every intentional omission and its rationale instead of reporting "None." If the task was updated rather than created, change the report heading accordingly.
 
-## Common team members
-
-| Name | User ID |
-|------|---------|
-| Colin | 2685610 |
-
-Use `ClickUp_find_member_by_name` (MCP) or `cup members` (CLI) to find other team members by name or email.
-
 ## Tips
 
-- Always use `listId` instead of `listName` when you have it - it's faster and more reliable
-- The Sprint list name format is typically "Sprint NNN (MM/DD - MM/DD)"
-- **For bugs:** Set BOTH Task Type to Bug (`custom_item_id: 1001`) AND Value Stream to "Bug"
+- **For bugs:** set BOTH Task Type to Bug AND Value Stream to "Bug" — they are different fields
 - For client-reported issues, set the appropriate client in "Requested By/Affects Clients"
-- Custom field values for dropdowns use the option ID, not the display name
-- Custom field values for labels (like "Requested By") take an array of option IDs
-- Task Type (Bug vs Task) is different from Value Stream - both should be set appropriately
-- When using `cup` CLI, descriptions support markdown natively
-- For conversation-derived tasks, the post-write fidelity audit is mandatory; successful API persistence alone is not completion.
+- For conversation-derived tasks, the post-write fidelity audit is mandatory; successful API persistence alone is not completion
