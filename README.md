@@ -163,26 +163,20 @@ flowchart TD
     Archive --> Done
 ```
 
-### OMP and Pi package
+### Multi-Harness Integration & Platform Support
 
-This repo also includes `pi-megamind/`, an installable package for OMP and Pi. OMP runs `/megamind` in the current user-visible `Main` session and delegates only bounded work through native child agents:
+Megamind supports native integration across 5 AI development platforms:
 
-```bash
-omp install ./pi-megamind
-omp
-# Then type: /megamind <objective, plan file, issue URL, or task ID>
-```
+- **Claude Code**: Native agent at `.claude/agents/megamind.md` and slash command at `.claude/commands/megamind.md`. Invoke via `/megamind <task>` or `/agent megamind`.
+- **OpenCode Pi**: Native agent at `.opencode/agents/megamind.md` (installed to `~/.opencode/agents/megamind.md`) configured with `mode: primary` and tool declarations. Invoke via `/megamind <task>` or agent selection in OpenCode TUI.
+- **Oh My Pi (omp) & Pi**: Installable npm package at `pi-megamind/`. Supports `omp install ./pi-megamind` and `pi install ./pi-megamind` with slash command `/megamind <task>` and `mode: main` execution.
+- **Grok CLI**: Installed to `~/.grok/agents/megamind.md`. Supports headless batch fan-out via `grok --prompt-file` with `--always-approve` and `--disallowed-tools Agent`.
+- **Antigravity (AGY)**: Native skill loaded via standard `~/.agents/skills/megamind/SKILL.md` (and `.claude/skills/megamind/SKILL.md`). Leverages native `define_subagent` and `invoke_subagent` for parallel MBOT/MBOD worker orchestration.
 
-Try it for one OMP session without installing:
-
-```bash
-omp --extension ./pi-megamind
-```
-
-Pi remains supported:
+Install all targets automatically via:
 
 ```bash
-pi install ./pi-megamind
+./install.sh
 ```
 
 The OMP route defaults MBOT/MBOD delegation to native `task` batches. The Pi route defaults to Pi-backed participants and prefers the lightweight `pi-fast-subagent` extension when available.

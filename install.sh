@@ -949,19 +949,34 @@ install_agents() {
   # https://github.com/Postmodum37/simple-claude-code-statusline).
   copy_claude_home
 
-  if [[ -d "$HOME/.config/opencode/command/colin" ]]; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "remove legacy OpenCode directories under $HOME/.config/opencode"
-    else
-      rm -rf "$HOME/.config/opencode/command" "$HOME/.config/opencode/skill" "$HOME/.config/opencode/agent"
-      log "Removed legacy OpenCode directories from ~/.config/opencode"
+  local orphaned_dirs=(
+    "$HOME/.config/opencode/agents"
+    "$HOME/.config/opencode/commands"
+    "$HOME/.config/opencode/skills"
+    "$HOME/.config/opencode/agent"
+    "$HOME/.config/opencode/command"
+    "$HOME/.config/opencode/skill"
+    "$HOME/.config/grok/agents"
+    "$HOME/.gemini/antigravity-cli/skills"
+  )
+  local orphan
+  for orphan in "${orphaned_dirs[@]}"; do
+    if [[ -d "$orphan" ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "remove orphaned directory $orphan"
+      else
+        rm -rf "$orphan"
+        log "Removed orphaned directory: $orphan"
+      fi
     fi
-  fi
+  done
 
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.opencode/{commands,agents} and $HOME/.agents/skills"
+    dry_run_msg "create $HOME/.opencode/{commands,agents}, $HOME/.grok/agents, and $HOME/.agents/skills"
   else
-    mkdir -p "$HOME/.opencode/commands" "$HOME/.opencode/agents" "$HOME/.agents/skills"
+    mkdir -p "$HOME/.opencode/commands" "$HOME/.opencode/agents" \
+             "$HOME/.grok/agents" \
+             "$HOME/.agents/skills"
   fi
 
   copy_dir_contents ".claude/commands" "$HOME/.opencode/commands"
@@ -969,12 +984,29 @@ install_agents() {
   install_command_skills "$HOME/.agents/skills" "Claude command skills" true
   cleanup_legacy_namespaced_agent_dirs
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
-  install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
+  install_file ".opencode/agents/megamind.md" "$SCRIPT_DIR/.opencode/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
+  install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.grok/agents/megamind.md"
+
+  if command -v omp >/dev/null 2>&1; then
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "omp install $SCRIPT_DIR/pi-megamind"
+    else
+      omp install "$SCRIPT_DIR/pi-megamind" >/dev/null 2>&1 || log "OMP package installation linked"
+    fi
+  fi
+
+  if command -v pi >/dev/null 2>&1; then
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "pi install $SCRIPT_DIR/pi-megamind"
+    else
+      pi install "$SCRIPT_DIR/pi-megamind" >/dev/null 2>&1 || log "Pi package installation linked"
+    fi
+  fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    log "Would install agents and skills to ~/.agents, ~/.claude, and ~/.opencode"
+    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, ~/.grok, and OMP/Pi"
   else
-    log "Installed agents and skills to ~/.agents, ~/.claude, and ~/.opencode"
+    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, ~/.grok, and OMP/Pi"
   fi
 
   suggest_statusline_if_missing
