@@ -44,6 +44,14 @@ run_install() {
   HOME="$home" XDG_DATA_HOME="$home/.local/share" "$INSTALLER" "$@" 2>&1
 }
 
+UNINSTALLER="$ROOT_DIR/uninstall.sh"
+
+run_uninstall() {
+  local home="$1"
+  shift
+  HOME="$home" XDG_DATA_HOME="$home/.local/share" "$UNINSTALLER" "$@" 2>&1
+}
+
 home="$TEST_ROOT/dotfiles-home"
 mkdir -p "$home"
 
@@ -84,6 +92,19 @@ assert_contains "$output" "Unchanged (same hash and mtime): 11"
 assert_contains "$output" "Replaced: 0"
 assert_contains "$(<"$home/.config/starship.toml")" "# local customization"
 
+# --- Test uninstall dotfiles ---
+output="$(run_install "$home" --bashrc --gitconfig --no-input --quiet)"
+assert_contains "$(<"$home/.bashrc")" "source ~/.bashrc.colin"
+assert_contains "$(<"$home/.gitconfig")" "path = ~/.gitconfig.colin"
+
+output="$(run_uninstall "$home" --dotfiles --bashrc --gitconfig --force --no-input --quiet)"
+assert_contains "$output" "Files removed ("
+assert_file_missing "$home/.bashrc.colin"
+assert_file_missing "$home/.gitconfig.colin"
+assert_file_missing "$home/.bashrc"
+assert_file_missing "$home/.gitconfig"
+assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
+
 agents_home="$TEST_ROOT/agents-home"
 mkdir -p "$agents_home/.claude"
 cp -p "$ROOT_DIR/.claude/settings.json" "$agents_home/.claude/settings.json"
@@ -98,7 +119,7 @@ assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
 output="$(run_install "$agents_home" --agents --no-input --quiet)"
 assert_files_equal "$ROOT_DIR/.claude/agents/megamind.md" \
   "$agents_home/.claude/agents/megamind.md"
-assert_files_equal "$ROOT_DIR/.claude/agents/megamind.md" \
+assert_files_equal "$ROOT_DIR/.opencode/agents/megamind.md" \
   "$agents_home/.opencode/agents/megamind.md"
 assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/default.md" \
   "$agents_home/.claude/skills/many-brain-one-task/default.md"
@@ -113,4 +134,33 @@ if [[ "$(stat -c '%z' "$agents_home/.claude/settings.json.bak")" != "$backup_cti
   exit 1
 fi
 
-printf 'install.sh regression tests passed\n'
+# --- Test uninstall agents ---
+output="$(run_uninstall "$agents_home" --agents --no-input --quiet)"
+assert_file_missing "$agents_home/.opencode/agents/megamind.md"
+assert_file_missing "$agents_home/.agents"
+assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
+
+# --- Test uninstall --all and modified files ---
+all_home="$TEST_ROOT/all-home"
+mkdir -p "$all_home"
+output="$(run_install "$all_home" --all --no-input --quiet)"
+
+output="$(run_uninstall "$all_home" --all --dry-run --no-input --quiet)"
+assert_contains "$output" "Files that would be removed ("
+
+printf '\n# modified\n' >> "$all_home/.tmux.conf"
+output="$(run_uninstall "$all_home" --all --no-input --quiet)"
+assert_contains "$output" "Skipping file modified since installation: $all_home/.tmux.conf"
+if [[ ! -f "$all_home/.tmux.conf" ]]; then
+  printf 'Expected modified file to be skipped without --force\n' >&2
+  exit 1
+fi
+
+output="$(run_uninstall "$all_home" --all --force --no-input --quiet)"
+assert_file_missing "$all_home/.tmux.conf"
+assert_file_missing "$all_home/.bashrc.colin"
+assert_file_missing "$all_home/.opencode"
+assert_file_missing "$all_home/.local/share/colin-dotfiles/manifest"
+
+printf 'install.sh and uninstall.sh regression tests passed\n'
+

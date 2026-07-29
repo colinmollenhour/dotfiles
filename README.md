@@ -13,6 +13,7 @@ Personal dotfiles plus a batteries-included Claude Code config for shipping soft
 ## Contents
 
 - [Quickstart](#quickstart)
+- [Uninstalling](#uninstalling)
 - [What gets installed](#what-gets-installed)
 - [Shell helpers](#shell-helpers)
 - [VS Code dev containers](#vs-code-dev-containers)
@@ -59,6 +60,29 @@ Subsequent runs are safe without `--force`: the script tracks which files it ins
 
 After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, and tools. The same content lives at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2).
 
+## Uninstalling
+
+Uninstalling is fast and clean. To remove installed dotfiles, agent configs, and shell/git includes:
+
+```bash
+# Interactive — choose what to remove
+./uninstall.sh
+
+# Remove everything installed
+./uninstall.sh --all
+
+# Remove only AI agent configs
+./uninstall.sh --agents
+
+# Remove only dotfiles
+./uninstall.sh --dotfiles
+
+# Show every flag
+./uninstall.sh --help
+```
+
+`uninstall.sh` reads the manifest written during installation (`~/.local/share/colin-dotfiles/manifest`) to safely remove installed files, clean up empty created directories, restore settings backups, and revert the `include` and `source` directives in `.gitconfig` and `.bashrc`. Files modified since installation are preserved unless you pass `--force`.
+
 ## What gets installed
 
 ### Dotfiles
@@ -74,6 +98,8 @@ The installer tracks every file it owns in `~/.local/share/colin-dotfiles/manife
 - **Prompts** on conflicts in a TTY, with options to keep, overwrite, back up, or view a unified diff.
 - **Skips** conflicting files in non-interactive runs and warns you (use `--force` to overwrite anyway).
 - **Deletes** installed files whose source was removed from the repo, but only if you haven't modified them locally.
+
+Running `./uninstall.sh` uses this same manifest to cleanly undo installation at any time.
 
 ### Claude Code config
 
