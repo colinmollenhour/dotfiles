@@ -121,13 +121,13 @@ At a high level, it:
 - Resolves the task source, records repo context, and creates a durable `.tmp/megamind-<slug>/` run directory for plans, critiques, decisions, agent reports, reviews, CI logs, and final delivery notes.
 - Uses MBOT to critique the starting plan, then produces a refined implementation plan. If the plan has unresolved choices, it bundles them into one MBOD decision round, asks for human review only when the MBOD result is not unanimous, and folds the result into `plans/final.md`.
 - Splits implementation into one to three disjoint work packages, creates the feature branch before implementation, launches coding agents, inspects their reports and diffs, runs integration checks, and commits each work package once its checks pass.
-- Runs repository-aware ultra-review discovery across state/lifecycle, contracts/integration, and failure/security; validates every candidate against source evidence; performs whole-change convergence rounds; assigns fix work; and rechecks both the fix delta and final branch state. When the repo is enrolled in [roborev](https://www.roborev.io/), milestone commits are auto-reviewed by the daemon and Megamind drains failing reviews before the ultra review and after fix rounds, fixing or closing each with a comment.
-- Runs final local gates, drains any remaining roborev reviews, pushes the branch's milestone commits, and opens or updates a GitHub PR or GitLab MR with artifact links and test results.
+- Runs repository-aware ultra-review discovery across state/lifecycle, contracts/integration, and failure/security; validates every candidate against source evidence; performs whole-change convergence rounds; assigns fix work; and rechecks both the fix delta and final branch state. Megamind's Roborev integration is disabled by default. With `--roborev`, Megamind checks whether the repo is already enrolled, uses the existing daemon integration to review milestone commits, and drains failing reviews before the ultra review and after fix rounds.
+- Runs final local gates, optionally drains remaining Roborev reviews when `--roborev` is active, pushes the branch's milestone commits, and opens or updates a GitHub PR or GitLab MR with artifact links and test results.
 - Launches an educational synthesis sub-agent after the PR/MR exists, validates its claims against Megamind artifacts and diffs, then appends a dense journey/design/architecture/lessons brief to the PR/MR.
-- Monitors CI after the PR/MR exists, fixes minor CI failures autonomously, drains roborev reviews of CI-fix commits along the way, and stops only when CI is green or a blocker file documents the exact evidence and next action.
+- Monitors CI after the PR/MR exists, fixes minor CI failures autonomously, optionally drains Roborev reviews of CI-fix commits when `--roborev` is active, and stops only when CI is green or a blocker file documents the exact evidence and next action.
 - With `--evidence`, packages the completed run artifacts into a ZIP and attaches it to the PR/MR. Evidence packaging is skipped by default.
 
-Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, include `skip human review` to have it make the best call autonomously after a split MBOD result, or pass `--evidence` to attach the final artifact archive.
+Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, pass `--roborev` to opt into Roborev detection and review drains for an already enrolled repo, include `skip human review` to have it make the best call autonomously after a split MBOD result, or pass `--evidence` to attach the final artifact archive.
 
 ```mermaid
 flowchart TD
@@ -146,15 +146,17 @@ flowchart TD
     Split --> Branch["Create feature branch"]
     Branch --> Agents["Delegated coding agents implement assigned scopes"]
     Agents --> Integrate["Commit work packages and run integration checks"]
-    Integrate --> RoboDrain["Drain roborev commit reviews (when enrolled)"]
-    RoboDrain --> UltraReview["Ultra review: state, contracts, failure, integration"]
+    Integrate --> RoboChoice{"--roborev active?"}
+    RoboChoice -->|"Yes"| RoboDrain["Drain Roborev commit reviews"]
+    RoboChoice -->|"No"| UltraReview["Ultra review: state, contracts, failure, integration"]
+    RoboDrain --> UltraReview
     UltraReview --> Fixes{"Validated findings?"}
-    Fixes -->|"Yes"| Fix["Fix agents; commit fix round and drain roborev"]
+    Fixes -->|"Yes"| Fix["Fix agents; commit fix round and optionally drain Roborev"]
     Fix --> UltraReview
     Fixes -->|"No"| Gates["Run final local gates"]
-    Gates --> Delivery["Final roborev drain, push milestone commits, open or update PR/MR"]
+    Gates --> Delivery["Optional Roborev drain, push milestone commits, open or update PR/MR"]
     Delivery --> Education["Generate and validate educational brief"]
-    Education --> CI["Monitor CI, fix minor failures, drain roborev"]
+    Education --> CI["Monitor CI, fix minor failures, optionally drain Roborev"]
     CI --> Evidence{"Evidence requested?"}
     Evidence -->|"Yes"| Archive["Package and attach evidence ZIP"]
     Evidence -->|"No"| Done{"Green CI or documented blocker"}

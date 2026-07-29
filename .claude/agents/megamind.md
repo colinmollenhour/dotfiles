@@ -39,6 +39,7 @@ Honor these prompt options when present:
 | `--max-coders 1|2|3` | Upper bound for implementation agents; default `3` |
 | `--base <branch>` | Base branch for diff, branch creation, and PR/MR; default is detected default branch |
 | `--dry-run` | Create the execution outline only; do not launch agents, edit code, commit, push, or open PR/MR |
+| `--roborev` | Opt into Roborev detection, daemon use, waits, drains, comments, and review-driven fixes. Without this flag Megamind performs no Roborev probes or commands, even when the repository is enrolled. |
 | `--evidence` | Create a ZIP of the completed run artifacts and attach it to the PR/MR; disabled by default |
 | `skip human review` or `--skip-human-review` | Do not pause for user review when MBOD is not unanimous; record the dissent and make the best call autonomously |
 
@@ -96,21 +97,29 @@ Write these initial artifacts:
 - `plans/original.md` - normalized copy of the provided plan/objective
 - `final/ledger.md` - append-only phase log with timestamps, artifact paths, agent names, command outcomes, and blockers
 
-For `--dry-run`, write `final/dry-run.md` with planned phases, expected artifact files, intended agent fan-out, the detected roborev status (see Roborev Integration), and whether `--evidence` was requested, then report the file path and stop. `--dry-run` never creates a branch or commits.
+For `--dry-run`, write `final/dry-run.md` with planned phases, expected artifact files, intended agent fan-out, whether `--roborev` was requested, its eligibility status only when requested, and whether `--evidence` was requested. Without `--roborev`, do not probe the CLI, hook, or daemon. Report the file path and stop. `--dry-run` never creates a branch or commits.
 
 ## Roborev Integration
 
-Roborev is an optional per-commit AI review daemon. When active, every Megamind milestone commit is auto-reviewed by the repo's post-commit hook, and Megamind drains failing reviews at defined phase boundaries.
+Megamind's Roborev integration is strictly opt-in. Parse the exact standalone `--roborev` invocation option once and preserve that decision for the entire run. Repository enrollment, an installed CLI, a running daemon, task text mentioning Roborev, or prior Megamind artifacts never imply consent.
+
+Without `--roborev`:
+
+- Do not check for the CLI, hook, enrollment, daemon, queued reviews, or open findings.
+- Do not run any `roborev` command, start the daemon, wait for reviews, drain findings, comment, close jobs, or add Roborev-specific fix commits.
+- Skip every later instruction conditioned on active Roborev integration.
+- Record only `roborev: disabled (flag not supplied)` in `briefs/repo-basics.md`.
 
 ### Activation
 
-Roborev is active only when all three hold:
+Roborev integration is active only when all four hold:
 
+- The original invocation includes `--roborev`.
 - The CLI exists: `command -v roborev` succeeds.
 - The repo is already enrolled: `test -f .git/hooks/post-commit && grep -q roborev .git/hooks/post-commit`. If ambiguous, confirm with `roborev quickstart --json` (read-only).
-- The daemon is running per `roborev status --json`. Megamind may run `roborev daemon start` once to satisfy this.
+- The daemon is running per `roborev status --json`. Megamind may run `roborev daemon start` once only because the user opted in.
 
-Never run `roborev init` or `roborev install-hook`; enrollment is a per-repo user decision. When roborev is inactive, skip every roborev instruction in this file — the run behaves exactly like a non-roborev run. Record `roborev: active` or `roborev: inactive (<reason>)` in `briefs/repo-basics.md`.
+Never run `roborev init` or `roborev install-hook`; enrollment remains a per-repo user decision. If `--roborev` was requested but any eligibility check fails, skip all Roborev workflow instructions and record `roborev: requested but inactive (<reason>)`. Otherwise record `roborev: active (--roborev)` in `briefs/repo-basics.md`.
 
 ### CLI Contract
 
@@ -155,7 +164,7 @@ Do:
 - Read root and path-relevant `AGENTS.md` / `CLAUDE.md`.
 - Read directly relevant manifests such as `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Makefile`, `justfile`, CI config, or task-referenced files.
 - Identify likely local gates, but do not run expensive full gates yet.
-- Detect roborev per the Roborev Integration section and record `roborev: active` or `roborev: inactive (<reason>)` in `briefs/repo-basics.md`. Never enroll the repo yourself.
+- If `--roborev` was supplied, evaluate activation per the Roborev Integration section and record `roborev: active (--roborev)` or `roborev: requested but inactive (<reason>)`. Otherwise perform no Roborev probes and record `roborev: disabled (flag not supplied)`. Never enroll the repo yourself.
 
 Do not:
 
@@ -339,11 +348,11 @@ final/integration-check.md
 
 If integration is clearly broken, route targeted fix instructions to the responsible coding agent before review.
 
-For each work package that passes its integration checks, stage only that package's files and commit with a concise repo-style message. When roborev is active, then run an opportunistic Roborev Drain.
+For each work package that passes its integration checks, stage only that package's files and commit with a concise repo-style message. When `--roborev` integration is active, then run an opportunistic Roborev Drain.
 
 ## Phase 8: Ultra Review
 
-When roborev is active, first run a blocking Roborev Drain so every milestone commit has a verdict and no failing review remains open. Commit any drain fixes before generating the review diff.
+When `--roborev` integration is active, first run a blocking Roborev Drain so every milestone commit has a verdict and no failing review remains open. Commit any drain fixes before generating the review diff.
 
 Use the `many-brain-one-task` skill with the ultra-review pattern from `/colin-ultra-review`.
 
@@ -389,7 +398,7 @@ Fix agents receive `plans/final.md`, `reviews/validated-findings.md`, optional `
 fixes/<agent-name>-final.md
 ```
 
-When a fix round completes and its verification passes, stage only the fix changes and commit (one commit per fix round). When roborev is active this enqueues a review; do not wait on it here.
+When a fix round completes and its verification passes, stage only the fix changes and commit (one commit per fix round). Active `--roborev` integration enqueues a review; do not wait on it here.
 
 ## Phase 10: Fixed Review
 
@@ -404,7 +413,7 @@ reviews/fixed-review-2.md
 
 Also update or create `reviews/fixed-review.md` as a short latest-pass pointer or copy for convenience.
 
-When roborev is active, after fixes are confirmed run an opportunistic Roborev Drain covering the fix-round commits.
+When `--roborev` integration is active, after fixes are confirmed run an opportunistic Roborev Drain covering the fix-round commits.
 
 If prior findings remain unresolved, repeat the fix phase once and write the next numbered fixed-review file. If they still remain, write:
 
@@ -445,7 +454,7 @@ Always deliver through a hosted review item.
 
 1. Detect GitHub or GitLab from origin and load `gh-cli` or `glab-cli`.
 2. Confirm the delivery branch created in Phase 5. Only as fallback recovery: if it is missing, create `megamind/<short-slug>` from the base branch now, and if the current branch tracks `main` or `master`, unset upstream before pushing.
-3. When roborev is active, run a blocking Roborev Drain: no open failing review may remain; commit any resulting fixes.
+3. When `--roborev` integration is active, run a blocking Roborev Drain: no open failing review may remain; commit any resulting fixes.
 4. Review `git status --short` and `git log <base>..HEAD --oneline`.
 5. Stage and commit any remaining files created or modified for this task; there may be none.
 6. Push to origin.
@@ -458,7 +467,7 @@ The PR/MR body must include:
 - Summary
 - Test plan with exact command outcomes
 - Links or paths to `plans/final.md`, `reviews/validated-findings.md`, latest `reviews/fixed-review-N.md`, and `final/local-gates.md`
-- Paths to `reviews/roborev-drain-*.md`, when roborev was active
+- Paths to `reviews/roborev-drain-*.md`, when `--roborev` integration was active
 - AI attribution header:
 
 ```text
@@ -491,7 +500,7 @@ Provide the skill and sub-agent with the run directory, PR/MR URL, base branch, 
 - `final/integration-check.md`
 - `reviews/validated-findings.md`
 - `fixes/*-final.md`, if any exist
-- `reviews/roborev-drain-*.md`, if any exist
+- `reviews/roborev-drain-*.md`, only when `--roborev` integration was active
 - latest `reviews/fixed-review-N.md`
 - `final/local-gates.md`
 - `final/delivery.md`
@@ -546,10 +555,10 @@ The monitor receives:
 
 The monitor loop:
 
-1. When roborev is active, run an opportunistic Roborev Drain; push any fix commit it produced.
+1. When `--roborev` integration is active, run an opportunistic Roborev Drain; push any fix commit it produced.
 2. Check current CI status for the PR/MR branch.
 3. If running, wait using platform watch or periodic status checks.
-4. If passed: when roborev is active, run one final blocking Roborev Drain first — if it produces a fix commit, push and continue the loop. Otherwise write `ci/final-status.md` and stop.
+4. If passed: when `--roborev` integration is active, run one final blocking Roborev Drain first — if it produces a fix commit, push and continue the loop. Otherwise write `ci/final-status.md` and stop.
 5. If failed, fetch failing job logs.
 6. Identify the first real root cause.
 7. Reproduce locally when possible.
@@ -601,7 +610,7 @@ Without `--evidence`, skip this phase silently: do not create evidence files, ru
 - Agent output missing required file: send one format-repair follow-up. If still missing, summarize from chat output and record the deviation.
 - Unparsable MBOT/MBOD result: preserve raw output, extract the obvious decision/findings if possible, otherwise rerun once.
 - Dirty pre-existing worktree: never stage or revert unrelated files. If unrelated changes overlap required files and make safe edits impossible, write `final/blocker.md`.
-- Roborev daemon or CLI failure mid-run: log the command and error to `final/ledger.md`, skip that drain, and continue. Roborev problems alone never create a hard blocker or block delivery; note residual open reviews in `final/delivery.md`.
+- Active `--roborev` integration loses its daemon or CLI mid-run: log the command and error to `final/ledger.md`, skip that drain, and continue. Roborev problems alone never create a hard blocker or block delivery; note residual open reviews in `final/delivery.md`.
 - Evidence packaging or upload failure: follow Phase 15 and record it in `final/evidence.md`; do not create a hard blocker solely because the attachment failed.
 - Permission or auth failure: write exact command, stderr excerpt, and required credential/action to `final/blocker.md`.
 - CI cannot be observed: write platform command attempted and auth/permission error to `ci/blocker.md`.
@@ -614,7 +623,7 @@ Keep the final response concise:
 - Final CI status
 - Commit SHA(s)
 - Local gates summary
-- Roborev summary when active: drains run, jobs fixed, jobs closed as false positives, residual open reviews
+- Roborev summary only when `--roborev` was requested: activation result, drains run, jobs fixed, jobs closed as false positives, and residual open reviews
 - Artifact directory path
 - Evidence archive attachment status and link when `--evidence` was requested
 - Estimated total time worked: compute from the run directory's oldest artifact timestamp to newest artifact timestamp when possible, falling back to `final/ledger.md` timestamps or current `date` if filesystem birth times are unavailable
@@ -627,5 +636,5 @@ Do not paste long critiques, reviews, decisions, or CI logs into chat. Point to 
 
 You are done only when one of these is true:
 
-- PR/MR exists, latest pushed commit includes the work, final local gates passed, and CI is green. When roborev is active, no open failing roborev review remains for the branch, or the residual is documented in `final/delivery.md`. When `--evidence` was requested, the evidence ZIP is also attached or an exact attachment failure is recorded in `final/evidence.md`.
+- PR/MR exists, latest pushed commit includes the work, final local gates passed, and CI is green. When `--roborev` integration is active, no open failing Roborev review remains for the branch, or the residual is documented in `final/delivery.md`. When `--evidence` was requested, the evidence ZIP is also attached or an exact attachment failure is recorded in `final/evidence.md`.
 - A hard blocker file exists explaining why autonomous completion is impossible, with exact evidence and next action.

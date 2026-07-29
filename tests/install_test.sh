@@ -96,6 +96,10 @@ assert_file_missing "$agents_home/.opencode"
 assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
 
 output="$(run_install "$agents_home" --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/.claude/agents/megamind.md" \
+  "$agents_home/.claude/agents/megamind.md"
+assert_files_equal "$ROOT_DIR/.claude/agents/megamind.md" \
+  "$agents_home/.opencode/agents/megamind.md"
 assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/default.md" \
   "$agents_home/.claude/skills/many-brain-one-task/default.md"
 assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \

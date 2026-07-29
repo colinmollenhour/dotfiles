@@ -23,7 +23,7 @@ omp install ./pi-megamind
 Start OMP in the target repository and invoke Megamind:
 
 ```text
-/megamind <objective, plan file, issue URL, or task ID>
+/megamind <objective, plan file, issue URL, or task ID> [flags]
 ```
 
 The command changes the current, user-visible OMP session into Megamind mode. That session remains the `Main` orchestrator; it uses OMP's native `task` tool only for bounded child work. Megamind itself is not hidden behind a subagent.
@@ -66,6 +66,7 @@ pi install npm:pi-fast-subagent
 Useful flags supported by the Megamind workflow include:
 
 - `--dry-run` — write the execution outline only.
+- `--roborev` — opt into Roborev detection and review drains for an already enrolled repo; without it Megamind runs no Roborev probes or commands.
 - `--max-coders 1|2|3` — cap implementation agents.
 - `--base <branch>` — set base branch.
 - `--agents <list>` — pass through model/agent selection; use `omp` for OMP-native children or `pi` for Pi-backed children.
@@ -90,14 +91,17 @@ flowchart TD
     FinalPlan --> Split["Split into one to three disjoint work packages"]
     Split --> Agents["Pi subagents or pi --print workers implement assigned scopes"]
     Agents --> Integrate["Inspect diffs, reports, and cheap integration checks"]
-    Integrate --> UltraReview["Ultra review: bugs, runtime, and craft"]
+    Integrate --> RoboChoice{"--roborev active?"}
+    RoboChoice -->|"Yes"| RoboDrain["Drain Roborev milestone reviews"]
+    RoboChoice -->|"No"| UltraReview["Ultra review: state, contracts, failure, integration"]
+    RoboDrain --> UltraReview
     UltraReview --> Fixes{"Validated findings?"}
     Fixes -->|"Yes"| Fix["Route targeted fix agents and verify fixes"]
     Fix --> UltraReview
     Fixes -->|"No"| Gates["Run final local gates"]
-    Gates --> Delivery["Commit, push branch, and open or update PR/MR"]
+    Gates --> Delivery["Optional Roborev drain, commit, push, and open or update PR/MR"]
     Delivery --> Education["Generate and validate educational brief"]
-    Education --> CI["Monitor CI and fix minor failures"]
+    Education --> CI["Monitor CI, fix minor failures, optionally drain Roborev"]
     CI --> Evidence{"Evidence requested?"}
     Evidence -->|"Yes"| Archive["Package and attach evidence ZIP"]
     Evidence -->|"No"| Done{"Green CI or documented blocker"}
