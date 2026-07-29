@@ -13,10 +13,10 @@
  *
  *   bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
  *     --model opencode/gemini-3.1-pro \
- *     --title "ultra-review !2514 craft/Gemini-3.1-Pro" \
- *     --file .tmp/ultra-review-2514/craft.full.md \
- *     --attach http://seamus:4095 \
- *     --out .tmp/ultra-review-2514/results/craft-gemini.out \
+ *     --title "ultra-review !2514 contracts/Gemini-3.1-Pro" \
+ *     --file .tmp/ultra-review-2514/prompts/contracts.full.md \
+ *     --attach http://example.test:4095 \
+ *     --out .tmp/ultra-review-2514/results/contracts-gemini.out \
  *     -- "Perform the code review exactly as instructed."
  *
  * Required: --model, --file, trailing `--`, and a short message (positional).

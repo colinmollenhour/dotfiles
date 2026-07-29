@@ -30,6 +30,14 @@ assert_file_missing() {
   fi
 }
 
+assert_files_equal() {
+  local expected="$1" actual="$2"
+  if ! cmp -s "$expected" "$actual"; then
+    printf 'Expected installed file to match source:\n  source: %s\n  installed: %s\n' "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+
 run_install() {
   local home="$1"
   shift
@@ -88,6 +96,14 @@ assert_file_missing "$agents_home/.opencode"
 assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
 
 output="$(run_install "$agents_home" --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/default.md" \
+  "$agents_home/.claude/skills/many-brain-one-task/default.md"
+assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \
+  "$agents_home/.claude/skills/many-brain-one-task/code-review.md"
+assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \
+  "$agents_home/.agents/skills/many-brain-one-task/code-review.md"
+assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \
+  "$agents_home/.gemini/antigravity-cli/skills/many-brain-one-task/code-review.md"
 assert_contains "$output" "Unchanged (same hash and mtime): 1"
 if [[ "$(stat -c '%z' "$agents_home/.claude/settings.json.bak")" != "$backup_ctime" ]]; then
   printf 'Expected current settings backup not to be rewritten\n' >&2

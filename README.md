@@ -121,7 +121,7 @@ At a high level, it:
 - Resolves the task source, records repo context, and creates a durable `.tmp/megamind-<slug>/` run directory for plans, critiques, decisions, agent reports, reviews, CI logs, and final delivery notes.
 - Uses MBOT to critique the starting plan, then produces a refined implementation plan. If the plan has unresolved choices, it bundles them into one MBOD decision round, asks for human review only when the MBOD result is not unanimous, and folds the result into `plans/final.md`.
 - Splits implementation into one to three disjoint work packages, creates the feature branch before implementation, launches coding agents, inspects their reports and diffs, runs integration checks, and commits each work package once its checks pass.
-- Runs an ultra-review pass across correctness/security, runtime/deployment risk, and craft/test quality; validates findings; assigns fix work; and confirms the fixes with a focused review pass. When the repo is enrolled in [roborev](https://www.roborev.io/), milestone commits are auto-reviewed by the daemon and Megamind drains failing reviews before the ultra review and after fix rounds, fixing or closing each with a comment.
+- Runs repository-aware ultra-review discovery across state/lifecycle, contracts/integration, and failure/security; validates every candidate against source evidence; performs whole-change convergence rounds; assigns fix work; and rechecks both the fix delta and final branch state. When the repo is enrolled in [roborev](https://www.roborev.io/), milestone commits are auto-reviewed by the daemon and Megamind drains failing reviews before the ultra review and after fix rounds, fixing or closing each with a comment.
 - Runs final local gates, drains any remaining roborev reviews, pushes the branch's milestone commits, and opens or updates a GitHub PR or GitLab MR with artifact links and test results.
 - Launches an educational synthesis sub-agent after the PR/MR exists, validates its claims against Megamind artifacts and diffs, then appends a dense journey/design/architecture/lessons brief to the PR/MR.
 - Monitors CI after the PR/MR exists, fixes minor CI failures autonomously, drains roborev reviews of CI-fix commits along the way, and stops only when CI is green or a blocker file documents the exact evidence and next action.
@@ -147,7 +147,7 @@ flowchart TD
     Branch --> Agents["Delegated coding agents implement assigned scopes"]
     Agents --> Integrate["Commit work packages and run integration checks"]
     Integrate --> RoboDrain["Drain roborev commit reviews (when enrolled)"]
-    RoboDrain --> UltraReview["Ultra review: bugs, runtime, and craft"]
+    RoboDrain --> UltraReview["Ultra review: state, contracts, failure, integration"]
     UltraReview --> Fixes{"Validated findings?"}
     Fixes -->|"Yes"| Fix["Fix agents; commit fix round and drain roborev"]
     Fix --> UltraReview
@@ -214,79 +214,59 @@ Both review commands resolve the target the same way. Pass no argument to review
 
 In Git-diff mode (when the target is a rev spec rather than a PR or MR) the command always behaves as `--no-post` — nothing is posted, just displayed.
 
-**`/colin-ultra-review [target] [agents] [flags]`** — the heavyweight variant. Runs **3 roles × N models** per bucket in parallel: `bugs` (correctness and security), `runtime` (performance, dependencies, deploy safety), and `craft` (quality, simplification, test quality). Expensive — reserve for important merges. Uses a separate `:Reviewed-By-AI-Ultra` label and a separate `**AI Ultra Review**` comment history, so it can run alongside `/colin-review` on the same PR.
+**`/colin-ultra-review [target] [agents] [flags]`** — the heavyweight, repository-aware variant. It runs **3 bug-hunting lenses × N models** per behavioral bucket: `state` (behavior and lifecycle invariants), `contracts` (callers, consumers, schema, and deployment compatibility), and `failure` (errors, concurrency, adversarial input, and security). A whole-change integration pass follows the buckets. Discovery favors candidate recall; an independent source-evidence pass decides what is safe to post. Fresh full-state integration rounds continue until a round finds no new confirmed issue or the configured cap is reached.
 
 | Flag | Effect |
 |---|---|
-| `[agents]` (positional) | Model list for this run. Overrides the MBOT profile. |
-| `--roles=bugs,runtime,craft` | Restrict to specific roles. Default is all three. |
-| `--re-review` | Only review commits since the last `**AI Ultra Review**` comment. |
-| `--no-post` | Same as `/colin-review`. |
-| `--no-summary` | Skip both the per-model and per-role comparison tables. |
+| `[agents]` (positional) | Model list for this run. Overrides the shipped MBOT `code-review.md` profile. |
+| `--roles=state,contracts,failure` | Restrict discovery to specific lenses. Default is all three. |
+| `--re-review` | Review both the fix delta since the last ultra review and the current full branch state. |
+| `--max-rounds=N` | Cap fresh convergence rounds; default is 3. |
+| `--no-post` | Display confirmed comments, unresolved candidates, and convergence status before posting. |
+| `--no-summary` | Skip model, role, and round comparison tables. |
 
 ##### How ultra-review fans out across MBOT
 
-Buckets run **sequentially** to bound cost. Within each bucket, the three roles invoke MBOT **in parallel**, and each MBOT call fans out to **N models in parallel** — so a single bucket pass produces `3 × N` reviewer threads with the same diff but different role focus prompts.
+Primary files are bucketed by behavior and data flow, targeting roughly 800–1,500 changed lines. Generated files, lockfiles, snapshots, fixtures, and vendored code remain available as context instead of disappearing. Small diffs may be embedded; larger reviews send a compact change index and require reviewers to inspect the exact base/head diff plus unchanged callers and consumers using read-only repository tools.
+
+Buckets may run sequentially to bound load. Within a bucket, the three lenses invoke MBOT in parallel, and each MBOT call fans out to N models. Candidate findings then feed a full-participant integration pass and independent validation. Unique findings are retained unless source evidence disproves them.
 
 ```mermaid
 flowchart TD
-    User([User: /colin-ultra-review &lt;arg?&gt;])
+    User([User: /colin-ultra-review])
+    Resolve[Resolve exact base/head, intent, and history]
+    Index[Build change index<br/>primary targets + context-only artifacts]
+    Buckets[Bucket by behavior and data flow]
 
-    subgraph UR["ultra-review command"]
-        Resolve[Resolve input<br/>PR / MR / git diff<br/>capture head+base SHAs]
-        Triage[Triage &amp; bucket<br/>git diff --stat → exclude generated/lock/vendor<br/>K = ⌈T/4000⌉ buckets, directory-aware packing]
-        Roles[Role selection<br/>bugs · runtime · craft<br/>--roles=csv override]
-        Ctx[Gather context<br/>AGENTS.md, diff summary,<br/>ClickUp/Intercom/Sentry, prior comments]
-    end
-
-    BucketLoop{{"For each bucket (SEQUENTIAL)"}}
-
-    subgraph Pass["Per-bucket pass: 3 roles in PARALLEL"]
+    subgraph Discovery["Per-bucket discovery"]
         direction LR
-        MBOTbugs["MBOT(role=bugs)<br/>focus: correctness + security"]
-        MBOTrun["MBOT(role=runtime)<br/>focus: perf + deps + deploy"]
-        MBOTcraft["MBOT(role=craft)<br/>focus: quality + simpler + tests"]
+        State["MBOT: state"]
+        Contracts["MBOT: contracts"]
+        Failure["MBOT: failure"]
     end
 
-    subgraph MBOT["many-brain-one-task (per invocation)"]
-        direction TB
-        Profile[Load profile<br/>profile=code-review → models list]
-        Guard[Pre-launch guard<br/>Claude host? → Agent tool / claude CLI<br/>OpenCode host? → colin-mbot-* subagents<br/>CodeRabbit? → cr CLI]
-        Assemble["assemble-prompts.ts<br/>bucket.md + role-X.md → role.full.md"]
+    Integrate["Whole-change MBOT integration pass"]
+    Validate["Independent evidence validation<br/>confirmed · rejected · unresolved"]
+    NewIssues{"New confirmed issues?"}
+    Cap{"Round cap reached?"}
+    Fresh["Fresh full-state integration round"]
+    Summary["Model, role, and round summary"]
+    Post["Post confirmed findings only"]
+    Label["Apply :Reviewed-By-AI-Ultra"]
 
-        subgraph Fanout["Fan out in PARALLEL"]
-            direction LR
-            A1[Opus<br/>Agent tool]
-            A2[GPT<br/>occtl run / run-opencode.ts]
-            A3[Gemini<br/>occtl run / run-opencode.ts]
-            A4[GLM/Qwen/Kimi<br/>backups]
-            A5[CodeRabbit<br/>cr --agent --base-commit]
-        end
-
-        Gather[Gather &amp; summarize<br/>tagged ISSUE blocks per agent+role]
-    end
-
-    Validate[Validate &amp; dedupe<br/>across agent × role × bucket<br/>verify suggestion blocks]
-    Summary[Build comparison tables<br/>per-agent: found/validated/unique/composite<br/>per-role: validated, unique-to-role]
-    Post[Post inline comments<br/>header: AI Ultra Review · Commit · Role · Flagged by]
-    Label[Apply :Reviewed-By-AI-Ultra]
-
-    User --> Resolve --> Triage --> Roles --> Ctx --> BucketLoop
-    BucketLoop --> Pass
-    MBOTbugs -.invokes.-> MBOT
-    MBOTrun -.invokes.-> MBOT
-    MBOTcraft -.invokes.-> MBOT
-    Profile --> Guard --> Assemble --> Fanout --> Gather
-    Pass --> BucketLoop
-    BucketLoop -->|all buckets done| Validate --> Summary --> Post --> Label
+    User --> Resolve --> Index --> Buckets --> Discovery --> Integrate --> Validate --> NewIssues
+    NewIssues -->|"No: clean round"| Summary
+    NewIssues -->|"Yes"| Cap
+    Cap -->|"No"| Fresh --> Validate
+    Cap -->|"Yes"| Summary
+    Summary --> Post --> Label
 
     classDef parallel fill:#dbeafe,stroke:#1e40af,color:#000
-    classDef sequential fill:#fee2e2,stroke:#991b1b,color:#000
-    classDef mbot fill:#dcfce7,stroke:#166534,color:#000
-    class Pass,Fanout parallel
-    class BucketLoop sequential
-    class MBOT,Profile,Guard,Assemble,Gather mbot
+    classDef validation fill:#dcfce7,stroke:#166534,color:#000
+    class State,Contracts,Failure parallel
+    class Integrate,Validate,Fresh validation
 ```
+
 
 **`/colin-critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.
 
@@ -393,34 +373,30 @@ For OpenCode use `--attach seamus:4095`
 
 ### How profile resolution works
 
-When MBOT starts, it picks a profile in this order:
+When MBOT starts, it resolves exactly one profile:
 
-1. An explicit `--profile X` in the prompt loads `X.md`.
-2. The task type (`code-review` or `critique`) loads `code-review.md` or `critique.md`.
-3. Anything else falls back to `default.md`.
-4. If the chosen file does not exist, MBOT tries `default.md`. If that is also missing, it uses hardcoded defaults (Opus through the `claude` CLI, Grok through the `grok` CLI when available, plus GPT, Gemini, GLM, Qwen, MiMo, and Kimi through OpenCode; OpenCode `colin-mbot-grok` is the Grok fallback).
+1. An explicit `--profile X` loads `X.md`.
+2. A known task type (`code-review` or `critique`) loads the same-named file.
+3. Anything else loads `default.md`.
+4. If the chosen file is missing, MBOT tries `default.md`; if that is also missing, it uses hardcoded defaults.
 
-All profile files live in `~/.claude/skills/many-brain-one-task/`, beside the `SKILL.md` file. Profiles are a plain Markdown bullet list — model and harness, one per line.
+Profile names are exact: `defaults.md` is not an alias for `default.md`. The repo ships `default.md` and `code-review.md` beside `SKILL.md`; `install.sh --agents` copies them to each supported agent home.
 
-### Example: `default.md`
+Before launch, MBOT records the resolved profile path plus every participant's display name, exact model/provider ID, harness, reasoning effort, and backup in `.tmp/<run-id>/participants.json`. Every raw result and metadata record is persisted under `.tmp/<run-id>/results/`, including native subagent output.
 
-```markdown
-Use the following:
-- claude CLI with "opus" and "max" thinking
-- OpenCode with GPT-5.4 with "xhigh" variant via OpenCode Zen
-- OpenCode with GLM 5.1
-- OpenCode with Qwen 3.6 Plus
-```
-
-### Example: `code-review.md`
+### Shipped `default.md`
 
 ```markdown
 Use the following:
-- claude CLI with "opus" and "max" thinking
-- OpenCode with GPT-5.4 with "xhigh" variant via OpenCode Zen
-- OpenCode with GLM 5.1 via Z.ai Coding Plan
-- OpenCode with Gemini 3.1 Pro via OpenCode Zen
+
+- Claude CLI with the latest available Opus model at maximum reasoning effort
+- OpenCode with OpenAI/GPT-5.6 Sol at high reasoning effort
+- Grok CLI with Grok 4.5 at high reasoning effort
 ```
+
+### Shipped `code-review.md`
+
+The review profile uses the same model families, requires fresh independent sessions with read-only repository tools, and persists every final result. Kimi is the configured backup when a primary cannot run.
 
 ### Writing your own profile
 

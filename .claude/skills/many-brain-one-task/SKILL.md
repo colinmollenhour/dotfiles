@@ -1,7 +1,7 @@
 ---
 name: many-brain-one-task
 description: 'Run the same task with multiple agents for reviews, critiques, or model comparison.'
-allowed-tools: Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *), Bash(botctl *)
+allowed-tools: Read, Write, Agent, Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *), Bash(botctl *), Bash(occtl *), Bash(opencode *), Bash(which *), Bash(mkdir *), Bash(cp *)
 ---
 
 # Many Brain One Task
@@ -10,17 +10,26 @@ This Skill helps solicit, gather and analyze multiple "opinions" from different 
 
 # Instructions
 
-## Step 1: Pick the participants
+## Step 1: Pick and record the participants
 
-If the prompt names specific models/agents, use those. Otherwise consult the profile.
+If the prompt names specific models/agents, use those. Otherwise resolve exactly one profile.
 
 ### Profile precedence
 
-1. `--profile X` flag in the prompt → profile name is `X`.
-2. Task falls into a known bucket (`code-review`, `critique`) → profile name matches the bucket.
-3. Otherwise → `default`.
+1. `--profile X` in the prompt loads `X.md`.
+2. A known task type (`code-review`, `critique`) loads the same-named profile.
+3. Otherwise load `default.md`.
 
-Load `<profile>.md` from this skill's directory. If missing, fall back to `default.md`. If `default.md` is also missing, use the built-in defaults below.
+Profile names are exact. Do not silently substitute similarly named files such as `defaults.md`. If the selected profile is missing, try `default.md`; if that is also missing, use the built-in defaults below.
+
+Before launching, write `.tmp/<run-id>/participants.json` containing:
+
+- Requested and resolved profile names plus the resolved profile path
+- Display name, exact model ID, provider, harness, reasoning/thinking effort, and backup for every participant
+- Whether the participant was selected explicitly, from a profile, or as a backup
+- Repository path and task type
+
+Print the same resolved participant list in the pre-flight output. Never infer a successful model from a friendly display name after the run.
 
 ### Built-in defaults
 
@@ -111,30 +120,53 @@ Profiles may include an attach directive instructing every OpenCode invocation t
 
 If the user did not specify the exact model string, resolve it with `opencode models`. For example, "GLM 5.1" might resolve to `zai-coding-plan/glm-5.1` or `openrouter/z-ai/glm-5.1` depending on which connections are available. Prefer coding plans over `openrouter/` and `opencode/` when available.
 
-## Step 3: Prepare the prompt files
+## Step 3: Prepare reproducible prompt and result files
 
-Write prompts to `.tmp/<run-id>/...` **inside the project root** (not `$TMPDIR`). OpenCode's permission system auto-rejects reads outside the project (`permission requested: external_directory; auto-rejecting`).
+Write every prompt, participant record, output, and error log under `.tmp/<run-id>/` **inside the project root**. OpenCode rejects reads outside the project.
 
-For ultra-review-style fan-outs that send the same MR context to multiple role-specific prompts, use the bundled helper to assemble all role files in one shot:
+Recommended layout:
+
+```text
+.tmp/<run-id>/
+  participants.json
+  context/
+  prompts/
+  results/
+    <role>-<participant>.out
+    <role>-<participant>.err
+    <role>-<participant>.meta.json
+  run-summary.json
+```
+
+For role fan-outs, use the bundled helper to assemble prompt files. For example:
 
 ```bash
 bun "${CLAUDE_SKILL_DIR}/assemble-prompts.ts" \
-  --append .tmp/ultra-review-2514/bucket.md \
-  --out-dir .tmp/ultra-review-2514 \
-  .tmp/ultra-review-2514/role-bugs.md:bugs.full.md \
-  .tmp/ultra-review-2514/role-runtime.md:runtime.full.md \
-  .tmp/ultra-review-2514/role-craft.md:craft.full.md
+  --append .tmp/ultra-review-2514/context/bucket-index.md \
+  --out-dir .tmp/ultra-review-2514/prompts \
+  .tmp/ultra-review-2514/context/role-state.md:state.full.md \
+  .tmp/ultra-review-2514/context/role-contracts.md:contracts.full.md \
+  .tmp/ultra-review-2514/context/role-failure.md:failure.full.md
 ```
 
-Each positional is `<source>:<output-name>` and produces `<out-dir>/<output-name>` containing the source followed by the `--append` file. Prints a compact JSON summary (`out_dir`, `append_bytes`, per-output `{out, source, bytes}` and any `error`). `--append` is optional; without it the helper is just an atomic multi-copy. Saves chaining N `cat` calls and gives one JSON object to parse for byte counts.
+Each positional is `<source>:<output-name>`. Record the helper's byte counts in `run-summary.json`. Prefer a compact repository index plus tool-driven inspection over attaching an oversized concatenated diff.
 
-If `--dry-run` is in the prompt, do **not** actually run anything. Print the execution plan with abbreviated prompts (~100 chars each) for readability and stop.
+If `--dry-run` is present, do not launch participants. Still resolve the exact profile, models, harnesses, efforts, backups, and prompt paths; print the execution plan and stop.
 
-## Step 4: Launch the participants
+## Step 4: Launch and persist every participant
 
-Launch all participants in parallel. If one fails to start, skip it, note it in the final summary, and substitute a backup if the profile or prompt named one.
+Launch independent participants in parallel. If one fails, record the failure and substitute a configured backup.
 
-It may help to instruct each agent to wrap findings in markers (e.g. `<<<ISSUE>>>...<<<END>>>`) so the gather/summarize step can parse output reliably.
+Every participant, including native Claude/Pi/Grok subagents, MUST have its complete final assistant output copied to `results/<role>-<participant>.out`. Do not leave native-agent results only in transient task notifications, tool output, or a harness session. Store stderr or failure diagnostics separately and write metadata containing:
+
+- Requested and actual model/provider when the harness reports them
+- Harness and reasoning effort
+- Start/end time and exit status
+- Session/thread ID
+- Prompt path and output path
+- Whether a backup was used
+
+Treat a participant as successful only when the process/session completed and the persisted output contains non-whitespace assistant text. Structured issue markers such as `<<<ISSUE>>>...<<<END>>>` are recommended for deterministic aggregation.
 
 ### Grok
 
@@ -216,7 +248,7 @@ botctl prompt \
   --text "PROMPT_HERE" \
   --cwd "$PWD" \
   --session "botctl-mbot" \
-  --window "mbot-opus-runtime" \
+  --window "mbot-opus-state" \
   --verbose \
   -- \
   --model opus \
@@ -226,10 +258,10 @@ botctl prompt \
 
 # Multi-file / large packet (repeatable --source)
 botctl prompt \
-  --source .tmp/ultra-review/runtime.full.md \
+  --source .tmp/ultra-review/prompts/state.full.md \
   --cwd "$PWD" \
   --session "botctl-mbot" \
-  --window "mbot-sonnet-runtime" \
+  --window "mbot-sonnet-state" \
   --verbose \
   -- \
   --model sonnet \
@@ -241,14 +273,14 @@ Rules:
 
 - Always pass a unique Claude `--session-id` (UUID) when running participants in parallel on the same cwd.
 - Prefer unique `--window` names under a shared owning session (default `botctl`).
-- stdout is the final assistant message only; capture stderr separately with `--verbose`.
+- stdout is the final assistant message only; persist it to the participant's required `.out` file and capture stderr separately with `--verbose`.
 - On non-zero exit, the prompt window is left alive — inspect with `botctl capture --pane` / `botctl last-message --pane`.
 - Swap `--model opus` for `sonnet` / `haiku` as appropriate.
 
 #### `claude --print` fallback
 
 ```bash
-claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort max --append-system-prompt .tmp/ultra-review/runtime.full.md -- "PROMPT_HERE"
+claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort max --append-system-prompt .tmp/ultra-review/prompts/state.full.md -- "PROMPT_HERE"
 ```
 
 Use this only when `botctl` is unavailable or the profile explicitly requires headless `claude --print`.
@@ -282,9 +314,9 @@ occtl view-skill | head -200
 occtl run \
   --model opencode/gemini-3.1-pro \
   --variant xhigh \
-  --title "ultra-review !2514 craft/Gemini-3.1-Pro" \
-  --file .tmp/ultra-review-2514/craft.full.md \
-  --out .tmp/ultra-review-2514/results/craft-gemini.out \
+  --title "ultra-review !2514 contracts/Gemini-3.1-Pro" \
+  --file .tmp/ultra-review-2514/prompts/contracts.full.md \
+  --out .tmp/ultra-review-2514/results/contracts-gemini.out \
   --timeout 540000 \
   -- "Perform the code review exactly as instructed."
 ```
@@ -293,8 +325,8 @@ If there is no running server (or the profile asks for one fresh server per agen
 
 ```bash
 occtl run --spawn --model openai/gpt-5.4 \
-  --file .tmp/ultra-review-2514/bugs.full.md \
-  --out .tmp/ultra-review-2514/results/bugs-gpt.out \
+  --file .tmp/ultra-review-2514/prompts/failure.full.md \
+  --out .tmp/ultra-review-2514/results/failure-gpt.out \
   --timeout 540000 \
   -- "Perform the code review exactly as instructed."
 ```
@@ -309,11 +341,11 @@ Invoke inline in a single Bash call (wrapper `.sh` forms trip the Claude Code sa
 bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
   --model opencode/gemini-3.1-pro \
   --variant xhigh \
-  --title "ultra-review !2514 craft/Gemini-3.1-Pro" \
-  --file .tmp/ultra-review-2514/craft.full.md \
+  --title "ultra-review !2514 contracts/Gemini-3.1-Pro" \
+  --file .tmp/ultra-review-2514/prompts/contracts.full.md \
   --attach http://seamus:4095 \
   --timeout-ms 540000 \
-  --out .tmp/ultra-review-2514/results/craft-gemini.out \
+  --out .tmp/ultra-review-2514/results/contracts-gemini.out \
   -- "Perform the code review exactly as instructed."
 ```
 
@@ -383,9 +415,11 @@ Guidelines:
 - Do **not** parse CodeRabbit output as OpenCode assistant text. It is CLI output and should be summarized separately alongside the other agents.
 - On failure, include the command, exit status, and stderr path/excerpt in the final summary; do not retry authentication.
 
-## Step 5: Gather and summarize
+## Step 5: Gather, verify, and summarize
 
-Collect the results and apply the user's finalizing steps if specified. Otherwise the default is to summarize the findings in aggregate, compare models, scrutinize the output, pick winners and losers, and note any interesting differences.
+Read results only from the persisted files under `.tmp/<run-id>/results/`; this proves every claimed participant completed and makes later validation reproducible. Compare the result set against `participants.json`. Missing, empty, or failed primary outputs must be reported with their backup status.
+
+Write `run-summary.json` with participant outcomes, prompt/output paths, candidate counts, and any task-specific validation results. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models, and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
 
 # Caveats
 
