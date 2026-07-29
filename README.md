@@ -77,7 +77,7 @@ The installer tracks every file it owns in `~/.local/share/colin-dotfiles/manife
 
 ### Claude Code config
 
-Slash commands, skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors them into `~/.opencode/`, `~/.agents/`, and `~/.gemini/antigravity/` when those tools are present, so the same commands work across harnesses.
+Slash commands, skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors them into `~/.opencode/` and the shared `~/.agents/skills/` directory used by agy, so the same commands work across harnesses.
 
 ## Shell helpers
 

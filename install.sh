@@ -971,28 +971,10 @@ install_agents() {
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
   install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
 
-  # Migrate gemini to antigravity "agy" cli
-  if [[ -d "$HOME/.gemini/antigravity/skills" && ! -d "$HOME/.gemini/antigravity-cli/skills" ]]; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "move $HOME/.gemini/antigravity/skills to $HOME/.gemini/antigravity-cli/skills"
-    else
-      mkdir -p "$HOME/.gemini/antigravity-cli"
-      mv "$HOME/.gemini/antigravity/skills" "$HOME/.gemini/antigravity-cli/skills"
-    fi
-  fi
-
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.gemini/antigravity-cli/skills"
+    log "Would install agents and skills to ~/.agents, ~/.claude, and ~/.opencode"
   else
-    mkdir -p "$HOME/.gemini/antigravity-cli/skills"
-  fi
-  copy_dir_contents ".claude/skills" "$HOME/.gemini/antigravity-cli/skills"
-  install_command_skills "$HOME/.gemini/antigravity-cli/skills" "Claude command skills as agy skills" false
-
-  if [[ "$DRY_RUN" == true ]]; then
-    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity-cli"
-  else
-    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.gemini/antigravity-cli"
+    log "Installed agents and skills to ~/.agents, ~/.claude, and ~/.opencode"
   fi
 
   suggest_statusline_if_missing
