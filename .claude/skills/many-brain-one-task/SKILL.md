@@ -18,7 +18,7 @@ If the prompt names specific models/agents, use those. Otherwise resolve exactly
 
 1. `--profile X` in the prompt loads `X.md`.
 2. A known task type (`code-review`, `critique`) loads the same-named profile.
-3. Otherwise load `default.md`.
+3. Otherwise load `defaults.md`.
 
 Profile names are exact. Do not silently substitute similarly named files such as `defaults.md`. If the selected profile is missing, try `default.md`; if that is also missing, use the built-in defaults below.
 
