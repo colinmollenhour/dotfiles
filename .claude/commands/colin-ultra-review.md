@@ -40,12 +40,25 @@ Resolve current-branch reviews using the appropriate platform CLI skill.
 
 Use the **Many Brain One Task (MBOT)** skill with task type `code-review`.
 
-- If the user names models, pass them through exactly.
-- Otherwise require the shipped `code-review.md` profile; do not substitute an ambiguously named profile.
+- If the user names models or passes `--profile X`, use that set exactly.
+- Otherwise require the shipped `code-review.md` profile; do not substitute an ambiguously named profile. Seamus/bot hosts that ship `seamus-bot-ultra-review.md` should pass `--profile seamus-bot-ultra-review` rather than inventing a model list.
 - Resolve and record exact model/provider IDs, harnesses, reasoning efforts, backups, and session IDs.
+- **Do not add experimental models** (including Kimi, GLM, or other off-profile models) or raise reasoning effort to `xhigh`/`max` unless the user or profile explicitly asks. Prefer the profile's named backup (usually Grok) when a primary cannot run — never invent a substitute lineup.
+- Default OpenCode effort for ultra is **`high`**. When spawning Claude subagents for **discovery, validation, integration, or summarization**, use effort **`high`** (not `max`/`xhigh`). The parent orchestrator stays at the host default (often medium) and does not need max thinking.
+- Follow MBOT's retry policy: max one retry per slot, distinct `--out` paths, treat exit 124 with a complete `.out` as success. Enforce the profile wall-clock (default 20 min); do not invent multi-hour harvest loops.
 - Use fresh independent sessions with read-only repository tools.
 - Persist every prompt, raw participant output, error log, and metadata file under the run directory before aggregation.
 - Use MBOT display names in summaries and posted comments.
+
+## Orchestrator context budget (hard)
+
+The parent session is a **thin control plane**. Disk under `.tmp/ultra-<id>/` (or the run-id directory) is durable memory. Auto-compact stays enabled — stay under the limit by not filling chat with review bodies.
+
+1. **Only the orchestrator (parent) writes `STATE.json`.** Subagents never write or "helpfully update" it. Update `STATE.json` after every phase transition (`preflight` → `launch` → `harvest` → `validate` → `converge` → `post`). Fields: phase, base/head SHAs, slot status map, next actions, paths to candidates/findings/verdicts.
+2. **Reviewer outputs go to disk only.** Discovery, validation, integration, and summarization write full text to `results/<slot>.out` (+ sidecars). Instruct native `Agent` / CLI children to write that file themselves (or have the parent copy their result to the path immediately) and return **≤500 characters** to the parent: status, out path, candidate/verdict counts.
+3. **Parent never pastes full `.out` contents into chat.** Prefer `ls`/`stat`, `jq`, `rg '^VERDICT:'`, or a short harvest into `candidates.json` / `verdicts.json` / `findings-all.json`. When validating, pass **paths** in the subagent prompt, not embedded blobs.
+4. **On auto-compact or resume:** read only `STATE.json` plus structured JSON artifacts. Do not rebuild history from the compaction narrative alone.
+5. You may still finess launches, retries, and aggregation in the LLM (no mandatory external driver script). Keep finesse in **small tool rounds that write/read files**, not in growing assistant prose.
 
 ## Role Library
 
@@ -95,7 +108,8 @@ When skipping a role, record the exact reason. If `--roles=<csv>` is provided, u
 Every run uses discovery rounds. `--max-rounds=N` controls the cap; default to `3`. A round is clean only when it produces no **new confirmed** issue after validation.
 
 - Round 1 runs all selected roles over subsystem buckets, then a whole-change integration pass.
-- If Round 1 confirms findings, run a fresh full-state integration round with independent reviewer sessions. Continue until a round is clean or the cap is reached.
+- If Round 1 confirms findings, run a **fresh full-state integration-only** round with independent reviewer sessions. **Do not re-run the full role × bucket grid** in convergence rounds unless a new subsystem is in scope.
+- Continue until a round is clean or the cap is reached.
 - Deduplicate against every earlier round, but do not treat a unique finding or lack of model consensus as evidence against it.
 - Report when the cap is reached with new confirmed findings still appearing.
 
@@ -103,9 +117,10 @@ With `--re-review`:
 
 - Skip the normal already-commented stop condition.
 - Extract the last reviewed commit SHA from the most recent `**AI Ultra Review**` header. If absent, use the earliest reviewed platform SHA.
-- Treat the incremental diff as the fix-delta target, but also run a fresh full-state branch review against the current base/head. The full-state pass is required; background-only context is insufficient for emergent interactions.
+- **Default shape is delta-first:** run selected roles against the **fix-delta** (`last-reviewed-sha...head`) only, then **one** full-state whole-change **integration** pass against current base/head. Do not re-grid every historical bucket unless the user passes `--full` or the delta is empty / touch nearly everything.
+- Background-only context is insufficient for the integration pass — reviewers must inspect the live repository.
 - Gather prior ultra findings, developer responses, edits, and dispositions. Do not re-post resolved issues, but re-confirm unresolved findings against the final state.
-- Continue convergence rounds as above.
+- Continue convergence rounds as above (integration-only after Round 1).
 
 ## Process
 
@@ -285,6 +300,20 @@ Skip this step if `--no-summary` is active. Aggregate across every bucket and ro
 | Unresolved | Candidates still unresolved |
 
 Report the clean convergence round, or state that the configured cap was reached while new confirmed findings were still appearing. Do not use model consensus as a correctness score.
+
+**Run accounting** (include in the local summary and, when posting, a short note under the comparison tables):
+
+- Resolved model IDs, providers, harnesses, and reasoning variants
+- Threads launched / completed / retried / timed out (exit 124) / never started
+- OpenCode `session.cost` sum when available (or agentsview usage for the run window)
+- Distinct `--out` paths and any clobbered/overwritten results
+
+**Scoring hygiene** (re-derive; do not trust hand-carried tallies):
+
+- Recompute comparison tables from `results/*.out` (`grep '^VERDICT:'` or task-equivalent markers) before every summary PUT/post.
+- A late exit-124 thread with a complete `.out` counts as completed; re-stat before marking a model incomplete.
+- A retry and its original are independent if both complete with different findings — read both files.
+- Self-duplicates of an already-posted finding from the same agent move only thread counts, not Unique/Shared confirmed columns.
 
 ### Step 10: Post or Display Results
 

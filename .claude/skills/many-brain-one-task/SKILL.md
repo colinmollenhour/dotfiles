@@ -33,12 +33,11 @@ Print the same resolved participant list in the pre-flight output. Never infer a
 
 ### Built-in defaults
 
-Primary models:
-  - Opus (via Claude CLI)
+Primary models (only when no profile is selected):
+  - Opus (via Claude CLI / native Agent)
   - GPT (via OpenCode)
-  - Gemini (via OpenCode)
   - Grok (via Grok CLI when `grok` is available; otherwise OpenCode `colin-mbot-grok`)
-Backup models (via OpenCode unless noted): MiMo, GLM, Qwen, Kimi; Grok CLI is preferred over OpenCode for Grok.
+Backup models: **Grok first**. Do **not** add Gemini, Kimi, GLM, MiMo, or Qwen as default primaries or backups unless the user or profile explicitly names them.
 
 ## Step 2: Pick the harness for each participant
 
@@ -155,9 +154,9 @@ If `--dry-run` is present, do not launch participants. Still resolve the exact p
 
 ## Step 4: Launch and persist every participant
 
-Launch independent participants in parallel. If one fails, record the failure and substitute a configured backup.
+Launch independent participants in parallel. If one fails, record the failure and substitute a configured backup (see [Retry policy](#retry-policy) — do not unbounded-retry the same model).
 
-Every participant, including native Claude/Pi/Grok subagents, MUST have its complete final assistant output copied to `results/<role>-<participant>.out`. Do not leave native-agent results only in transient task notifications, tool output, or a harness session. Store stderr or failure diagnostics separately and write metadata containing:
+Every participant, including native Claude/Pi/Grok subagents, MUST have its complete final assistant output on disk at `results/<role>-<participant>.out`. Do not leave native-agent results only in transient task notifications, tool output, or a harness session. Prefer instructing the child to write that path itself; otherwise copy the full result to disk **immediately** when the child returns. The parent chat must not keep full review bodies — after persisting, retain only a ≤500-character status (path, exit, candidate/verdict counts). Store stderr or failure diagnostics separately and write metadata containing:
 
 - Requested and actual model/provider when the harness reports them
 - Harness and reasoning effort
@@ -167,6 +166,8 @@ Every participant, including native Claude/Pi/Grok subagents, MUST have its comp
 - Whether a backup was used
 
 Treat a participant as successful only when the process/session completed and the persisted output contains non-whitespace assistant text. Structured issue markers such as `<<<ISSUE>>>...<<<END>>>` are recommended for deterministic aggregation.
+
+When the parent maintains a run `STATE.json` (ultra-review and similar long multi-slot jobs), **only the orchestrator writes that file** — never a subagent.
 
 ### Grok
 
@@ -233,8 +234,18 @@ If `botctl` is missing, fall back to the `claude-cli` skill / `claude --print` p
 **Claude Code host** — prefer the native `Agent` tool for in-process Claude participants:
 
 ```ts
-Agent({ subagent_type: "general-purpose", model: "opus", run_in_background: true, description: "...", prompt: "..." })
+// Discovery / validation / integration / summarization: effort high (not max).
+Agent({
+  subagent_type: "general-purpose",
+  model: "opus",
+  // When the host exposes effort/thinking controls on Agent, set high.
+  run_in_background: true,
+  description: "...",
+  prompt: "Write your FULL review to <results-path>.out. Return to the parent only a ≤500-char status: path + counts. ...",
+})
 ```
+
+For discovery, validation, integration, and summarization Claude children, use reasoning effort **`high`** (CLI: `--effort high`; do not use `max`/`xhigh` unless the profile explicitly requires it). Keep the parent orchestrator at the host default.
 
 If the `Agent` tool is unavailable, fall back to **`botctl prompt`** (preferred) or the `claude` CLI.
 
@@ -252,7 +263,7 @@ botctl prompt \
   --verbose \
   -- \
   --model opus \
-  --effort max \
+  --effort high \
   --session-id "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
   --name "MBOT: Code review for X"
 
@@ -280,7 +291,7 @@ Rules:
 #### `claude --print` fallback
 
 ```bash
-claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort max --append-system-prompt .tmp/ultra-review/prompts/state.full.md -- "PROMPT_HERE"
+claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort high --append-system-prompt .tmp/ultra-review/prompts/state.full.md -- "PROMPT_HERE"
 ```
 
 Use this only when `botctl` is unavailable or the profile explicitly requires headless `claude --print`.
@@ -317,7 +328,7 @@ occtl run \
   --title "ultra-review !2514 contracts/Gemini-3.1-Pro" \
   --file .tmp/ultra-review-2514/prompts/contracts.full.md \
   --out .tmp/ultra-review-2514/results/contracts-gemini.out \
-  --timeout 540000 \
+  --timeout 1200000 \
   -- "Perform the code review exactly as instructed."
 ```
 
@@ -327,7 +338,7 @@ If there is no running server (or the profile asks for one fresh server per agen
 occtl run --spawn --model openai/gpt-5.4 \
   --file .tmp/ultra-review-2514/prompts/failure.full.md \
   --out .tmp/ultra-review-2514/results/failure-gpt.out \
-  --timeout 540000 \
+  --timeout 1200000 \
   -- "Perform the code review exactly as instructed."
 ```
 
@@ -344,7 +355,7 @@ bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
   --title "ultra-review !2514 contracts/Gemini-3.1-Pro" \
   --file .tmp/ultra-review-2514/prompts/contracts.full.md \
   --attach http://seamus:4095 \
-  --timeout-ms 540000 \
+  --timeout-ms 1200000 \
   --out .tmp/ultra-review-2514/results/contracts-gemini.out \
   -- "Perform the code review exactly as instructed."
 ```
@@ -360,12 +371,12 @@ What the script does **not** handle: choosing the model, choosing whether to att
 | Model                            | `--model`                  | `--model`                               | Required. Prefer coding plans over `openrouter/` and `opencode/`. |
 | Reasoning variant                | `--variant`                | `--variant`                             | Provider-specific (`xhigh`, `high`, `max`, `minimal`). |
 | Agent name override              | `--agent`                  | `--agent`                               | Rare. Default agent is fine. |
-| Session title in OpenCode UI     | `--title`                  | `--title`                               | Use a stable prefix so batch runs are groupable. |
+| Session title in OpenCode UI     | `--title`                  | `--title`                               | Prefer structured titles for cost reporting: `ultra\|{project}\|!{iid}\|{bucketOr-}\|{role}\|{model}\|retry{N}` (required for Seamus ultra). |
 | Prompt file (repeatable)         | `--file`                   | `--file`                                | Files are concatenated into one text part with the trailing positional appended. |
 | Attach to running server         | env vars (see attach docs) | `--attach <url>`                        | `occtl` auto-detects from `OPENCODE_SERVER_HOST`/`PORT`. |
 | Server password                  | `--password`               | `--password`                            | Env fallback: `OPENCODE_SERVER_PASSWORD`. |
 | Working dir override             | (n/a)                      | `--dir <path>`                          | `run-opencode.ts` auto-adds `--dir .` in attach mode. |
-| Script timeout (ms)              | `--timeout`                | `--timeout-ms`                          | Keep below the Bash tool timeout so sidecars get written before kill. |
+| Script timeout (ms)              | `--timeout`                | `--timeout-ms`                          | Default for large reviews: **1200000 (20 min)**. Keep below the Bash tool timeout so sidecars get written before kill. |
 | Assistant output file            | `--out`                    | `--out`                                 | Sidecar `<out>.session` is always written. |
 | Stderr capture file              | `--stderr`                 | `--stderr`                              | Use on failures for diagnosis. |
 | Output format                    | (always API)               | `--format default\|json`                | `json` is default in `run-opencode.ts`; passes events through and extracts `text`. |
@@ -376,6 +387,20 @@ What the script does **not** handle: choosing the model, choosing whether to att
 | Short positional message         | `-- <msg>`                 | `-- <msg>`                              | Keep brief; real instructions go in `--file`. |
 
 Both exit `0` on success, `1` on empty/no-text response or generic failure, `2` on invalid arguments, `124` on timeout.
+
+Default OpenCode wall-clock for large review/critique runs: **20 minutes** (`1200000` ms). Host Bash `timeout` must be **higher** (use `1320000` / 22 min) so sidecars (`.out`, `.err`, `.session`) flush before the wrapper is killed.
+
+### Retry policy
+
+Per slot `(role × model × bucket|integration)`:
+
+1. **At most one launch + one retry** of the same model. Prefer a configured **backup model** over a second retry of the same model. Backups must come from the profile (or built-in Grok); never invent experimental substitutes.
+2. Retry only when `.out` is missing or empty **and** contains no complete `VERDICT:` (or equivalent task marker) line.
+3. Give **every** re-launch a **distinct `--out` path** (e.g. `.retry.out`). Never overwrite a completed result.
+4. Exit **124** (timeout) with a complete `.out` body is **success** — do not re-launch; fold the result in.
+5. Absence of `.out`/`.err`/`.session` sidecars means the thread **never started** — fix the launch, do not wait forever on a Monitor.
+6. Before scoring a model incomplete, re-stat and re-read `results/*.out` (late writers and 124-with-body are common).
+7. Honor the profile wall-clock (default **20 minutes** per OpenCode thread). After budget + one retry, mark the slot failed/incomplete and continue — do not invent multi-hour curl/Monitor harvest fleets.
 
 ### codex
 
@@ -445,4 +470,4 @@ Multi-agent runs hit the same set of Claude Code Bash-tool guards every time. Ea
 | `<<EOF … EOF` heredocs | Trips the bash sandbox via `/proc/self/fd/3` | Use the Write tool to create the file, then reference its path |
 | `bash foo.sh` / `./foo.sh` | Wrapper scripts trip the sandbox even with `dangerouslyDisableSandbox: true` | Invoke the interpreter directly: `bun foo.ts`, `node foo.mjs`, `python3 foo.py` (these aren't classified as wrappers) |
 | `cd /tmp/foo && …` | The session has a working-directory allowlist that may not include the target | Use absolute paths in every command instead of `cd` |
-| Bash tool param `timeout_ms: …` | Returns `InputValidationError: An unexpected parameter timeout_ms was provided` | Use `timeout` (milliseconds). Default 120000; pass `timeout: 600000` for a 10-minute cap. |
+| Bash tool param `timeout_ms: …` | Returns `InputValidationError: An unexpected parameter timeout_ms was provided` | Use `timeout` (milliseconds). Default 120000; for MBOT OpenCode threads pass `timeout: 1320000` (22 min) so it outlives the 20-minute script timeout. |
