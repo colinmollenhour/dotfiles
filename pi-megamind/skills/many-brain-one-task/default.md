@@ -1,16 +1,7 @@
-Use native participants from the current host by default.
+Use the following:
 
-When the host is OMP:
+- Claude CLI with the latest available Opus model at maximum reasoning effort
+- OpenCode with OpenAI/GPT-5.6 Sol at high reasoning effort (agent `colin-mbot-gpt`)
+- Grok CLI with Grok 4.5 at high reasoning effort; fall back to OpenCode agent `colin-mbot-grok` when the first-party CLI is unavailable
 
-- Launch three OMP-native participants in one `task` batch as `omp-primary`, `omp-secondary`, and `omp-tertiary`.
-- Give them distinct roles appropriate to the task. Use the task agent types advertised by the current OMP session.
-- Keep Megamind in the current visible `Main` session; children only return bounded opinions or work products.
-- Omit the `model` field unless the user or profile pins an OMP model id or model role.
-
-When the host is Pi:
-
-- Use Pi with the current/default model as `pi-primary`, `pi-secondary`, and `pi-tertiary`.
-- Prefer Pi child agents through `pi-fast-subagent` when its `subagent` tool is available.
-- Otherwise run each participant with `pi --print < .tmp/<run-id>/<participant>.md` and save stdout under `.tmp/<run-id>/results/`.
-
-If the user names explicit agents, models, or harnesses, honor those instead of these defaults.
+Resolve and record the exact model/provider IDs before launch. Prefer Grok CLI (or OpenCode `colin-mbot-grok`) as the backup when a primary cannot run. Do not use Kimi as a default or backup participant unless the user explicitly names it.

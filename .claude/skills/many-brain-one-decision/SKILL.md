@@ -182,7 +182,7 @@ OPENCODE_SERVER_HOST=seamus OPENCODE_SERVER_PORT=4095 OPENCODE_SERVER_PASSWORD=$
   --variant high \
   --title "MBOD round 1 gpt tech-bro" \
   --file .tmp/many-brain-one-decision/<slug>/round-1/gpt-tech-bro.md \
-  --timeout 540000 \
+  --timeout 1200000 \
   --out .tmp/many-brain-one-decision/<slug>/round-1/results/gpt-tech-bro.out \
   -- "Participate in the decision debate exactly as instructed."
 ```
@@ -196,7 +196,7 @@ bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/run-opencode.ts" \
   --title "MBOD round 1 gpt tech-bro" \
   --file .tmp/many-brain-one-decision/<slug>/round-1/gpt-tech-bro.md \
   --attach http://seamus:4095 \
-  --timeout-ms 540000 \
+  --timeout-ms 1200000 \
   --out .tmp/many-brain-one-decision/<slug>/round-1/results/gpt-tech-bro.out \
   -- "Participate in the decision debate exactly as instructed."
 ```

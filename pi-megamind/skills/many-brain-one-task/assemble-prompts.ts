@@ -3,21 +3,21 @@
  * assemble-prompts.ts — concatenate N role templates with a shared
  * context suffix (e.g. MR-specific bucket).
  *
- * The ultra-review flow writes a shared "bucket" file (MR metadata +
- * diff reference) and three role-specific instruction files
- * (bugs/runtime/craft). Each role prompt sent to opencode is
- * `role-X.md + bucket.md`. This helper does all N concatenations in
- * one call and prints a JSON summary, replacing an error-prone chain
+ * The ultra-review flow writes a shared change-index file (MR metadata,
+ * exact diff references, and repository context) and role-specific
+ * instruction files (state/contracts/failure). Each role prompt is
+ * `role-X.md + bucket-index.md`. This helper does all N concatenations
+ * in one call and prints a JSON summary, replacing an error-prone chain
  * of `cat` calls.
  *
  * Usage:
  *
- *   bun /absolute/path/to/pi-megamind/skills/many-brain-one-task/assemble-prompts.ts \
- *     --append .tmp/ultra-review-2514/bucket.md \
- *     --out-dir .tmp/ultra-review-2514 \
- *     .tmp/ultra-review-2514/role-bugs.md:bugs.full.md \
- *     .tmp/ultra-review-2514/role-runtime.md:runtime.full.md \
- *     .tmp/ultra-review-2514/role-craft.md:craft.full.md
+ *   bun "${CLAUDE_SKILL_DIR}/assemble-prompts.ts" \
+ *     --append .tmp/ultra-review-2514/context/bucket-index.md \
+ *     --out-dir .tmp/ultra-review-2514/prompts \
+ *     .tmp/ultra-review-2514/context/role-state.md:state.full.md \
+ *     .tmp/ultra-review-2514/context/role-contracts.md:contracts.full.md \
+ *     .tmp/ultra-review-2514/context/role-failure.md:failure.full.md
  *
  * Each positional is `<source>:<output-name>`. For every positional the
  * helper writes `<out-dir>/<output-name>` = contents of <source>
@@ -27,10 +27,10 @@
  *
  * stdout summary:
  *   {
- *     "out_dir": ".tmp/ultra-review-2514",
+ *     "out_dir": ".tmp/ultra-review-2514/prompts",
  *     "append_bytes": 12345,
  *     "outputs": [
- *       {"out": "bugs.full.md", "source": "role-bugs.md", "bytes": 15678},
+ *       {"out": "state.full.md", "source": "role-state.md", "bytes": 15678},
  *       …
  *     ]
  *   }
