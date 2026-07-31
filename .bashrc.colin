@@ -512,12 +512,14 @@ _x11_find_display() {
 _x11_save_display() {
   local d="${1:-$DISPLAY}"
   [ -n "$d" ] || return 1
-  umask 077
-  {
-    printf 'export DISPLAY=%q\n' "$d"
-    # Only set XAUTHORITY if you use a non-default path
-    [ -n "${XAUTHORITY:-}" ] && printf 'export XAUTHORITY=%q\n' "$XAUTHORITY"
-  } > "$HOME/.xdisplay"
+  (
+    umask 077
+    {
+      printf 'export DISPLAY=%q\n' "$d"
+      # Only set XAUTHORITY if you use a non-default path
+      [ -n "${XAUTHORITY:-}" ] && printf 'export XAUTHORITY=%q\n' "$XAUTHORITY"
+    } > "$HOME/.xdisplay"
+  )
 }
 
 # Call this after re-SSH / when xcalc says "Can't open display"
