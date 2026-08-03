@@ -375,7 +375,7 @@ What the script does **not** handle: choosing the model, choosing whether to att
 | Delete session after run         | `--ephemeral`              | (n/a)                                   | Default keeps the session for token-usage audit. |
 | Short positional message         | `-- <msg>`                 | `-- <msg>`                              | Keep brief; real instructions go in `--file`. |
 
-Both exit `0` on success, `1` on empty/no-text response or generic failure, `2` on invalid arguments, `124` on timeout.
+Both exit `0` on success, `1` on empty/no-text response or generic failure, `2` on invalid arguments, and `124` on timeout. `run-opencode.ts` exits `130` on external SIGINT and `143` on external SIGTERM after synchronously flushing partial output.
 
 Default OpenCode wall-clock for large review/critique runs: **20 minutes** (`1200000` ms). Host Bash `timeout` must be **higher** (use `1320000` / 22 min) so sidecars (`.out`, `.err`, `.session`) flush before the wrapper is killed.
 
@@ -386,7 +386,7 @@ Per slot `(role × model × bucket|integration)`:
 1. **At most one launch + one retry** of the same model. Prefer a configured **backup model** over a second retry of the same model.
 2. Retry only when `.out` is missing or empty **and** contains no complete `VERDICT:` (or equivalent task marker) line.
 3. Give **every** re-launch a **distinct `--out` path** (e.g. `.retry.out`). Never overwrite a completed result.
-4. Exit **124** (timeout) with a complete `.out` body is **success** — do not re-launch; fold the result in.
+4. Exit **124** (timeout), **130** (external SIGINT), or **143** (external SIGTERM) with a complete `VERDICT:` body is **success** — do not re-launch; fold the result in. Exit 130/143 with an incomplete body is a retry candidate under rule 1.
 5. Absence of `.out`/`.err`/`.session` sidecars means the thread **never started** — fix the launch, do not wait forever on a Monitor.
 6. Before scoring a model incomplete, re-stat and re-read `results/*.out` (late writers and 124-with-body are common).
 

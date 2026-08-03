@@ -151,27 +151,22 @@ let stdoutBuf = ""
 let stderrBuf = ""
 let timedOut = false
 let closed = false
+let persisted = false
+let persistedExitCode: number | undefined
 child.stdout.on("data", (b: Buffer) => { stdoutBuf += b.toString() })
 child.stderr.on("data", (b: Buffer) => { stderrBuf += b.toString() })
 child.on("error", (err) => die(`failed to spawn opencode: ${err.message}`, 127))
 
-const timer = timeoutMs > 0 ? setTimeout(() => {
-  timedOut = true
-  child.kill("SIGTERM")
-  setTimeout(() => {
-    if (!closed) child.kill("SIGKILL")
-  }, 5000).unref()
-}, timeoutMs) : undefined
+function writeTo(path: string, body: string): void {
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, body)
+}
 
-child.on("close", (code) => {
-  closed = true
-  if (timer) clearTimeout(timer)
+function persist(exitCode: number, note?: string): void {
+  if (persisted) return
+  persisted = true
+
   let output = stdoutBuf
-  const writeTo = (path: string, body: string): void => {
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, body)
-  }
-
   const sessionIds = new Set<string>()
   if (values.format === "json") {
     // `--format json` emits newline-delimited events; concatenate every
@@ -193,14 +188,12 @@ child.on("close", (code) => {
     output = parts.join("")
   }
 
-  let exitCode = code ?? 1
   let stderrOutput = stderrBuf
   const sessionIdList = Array.from(sessionIds)
-
-  if (timedOut) {
-    exitCode = 124
+  if (timedOut && exitCode === 124) {
     stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: opencode timed out after ${timeoutMs}ms.\nmodel: ${values.model}${sessionIdList.length ? `\nsession_ids: ${sessionIdList.join(",")}` : ""}\nstdout_bytes: ${Buffer.byteLength(stdoutBuf)}\nstderr_bytes: ${Buffer.byteLength(stderrBuf)}\n`
   }
+  if (note) stderrOutput += `${stderrOutput ? "\n\n" : ""}${note}\n`
 
   if (exitCode === 0 && values.format === "json" && output.trim() === "" && sessionIdList.length && !values["no-session-fallback"]) {
     // In attach mode some OpenCode builds only stream lifecycle/tool events to
@@ -215,6 +208,7 @@ child.on("close", (code) => {
     stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: provider returned no text; there could be an availability issue or the account spending limits may have been reached for this provider.\nmodel: ${values.model}${sessionIdList.length ? `\nsession_ids: ${sessionIdList.join(",")}` : ""}\nstdout_bytes: ${Buffer.byteLength(stdoutBuf)}\nstderr_bytes: ${Buffer.byteLength(stderrBuf)}${rawPreview ? `\nraw_stdout_preview:\n${rawPreview}` : ""}\n`
   }
 
+  persistedExitCode = exitCode
   if (values.out && values.format === "json") {
     writeTo(`${values.out}.raw.jsonl`, stdoutBuf)
     if (sessionIdList.length) writeTo(`${values.out}.session`, `${sessionIdList.join("\n")}\n`)
@@ -225,6 +219,29 @@ child.on("close", (code) => {
 
   if (values.stderr) writeTo(values.stderr, stderrOutput)
   else if (stderrOutput && exitCode !== 0) process.stderr.write(stderrOutput)
+}
 
-  process.exit(exitCode)
+const timer = timeoutMs > 0 ? setTimeout(() => {
+  timedOut = true
+  child.kill("SIGTERM")
+  setTimeout(() => {
+    if (!closed) child.kill("SIGKILL")
+  }, 5000).unref()
+}, timeoutMs) : undefined
+
+for (const sig of ["SIGTERM", "SIGINT"] as const) {
+  process.on(sig, () => {
+    const exitCode = 128 + (sig === "SIGTERM" ? 15 : 2)
+    child.kill(sig)
+    persist(exitCode, `run-opencode: received ${sig}; flushed partial output.`)
+    process.exit(exitCode)
+  })
+}
+
+child.on("close", (code) => {
+  closed = true
+  clearTimeout(timer)
+  const exitCode = timedOut ? 124 : code ?? 1
+  persist(exitCode)
+  process.exit(persistedExitCode ?? exitCode)
 })
