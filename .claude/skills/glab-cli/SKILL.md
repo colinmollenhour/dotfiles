@@ -33,8 +33,8 @@ Prefer machine-readable output:
 Use `glab api` when a high-level command does not expose the needed operation or fields.
 
 - Prefer `glab api` for discussions, MR versions, compare results, detailed diffs, and other unsupported mutations
-- `glab api` supports `:fullpath` as a placeholder for the current repo's URL-encoded path
-- For JSON request bodies, send them through `--input -` with `Content-Type: application/json`
+- `glab api` supports `:fullpath` and `:id` as placeholders for the current repo. **They resolve from the working directory's git remote** — running from a scratch/artifact directory fails with `Unable to expand placeholder in path: no git remotes found`. Run from inside the repo, or pass the numeric project id explicitly
+- For JSON request bodies, use `--input <path>` (or `--input -`) **with** `-H "Content-Type: application/json"`. Omitting the header returns `HTTP 415 {"error":"The provided content-type '' is not supported."}`. Any `--input` path is resolved against the directory `glab` runs in — use an absolute path when the file lives outside the repo
 - Re-fetch the resource after mutation when confirmation matters
 
 #### Pagination Is Mandatory For Comments
@@ -64,21 +64,72 @@ glab api 'projects/:fullpath/merge_requests/19/discussions?per_page=100&page=1' 
 
 If there may be more than one page, repeat for subsequent pages or use a helper/script that follows `X-Next-Page`. Never state that all comments are resolved until pagination has been accounted for.
 
+#### Flag semantics — `-f` is NOT "form"
+
+These three look interchangeable and are not. Getting this wrong fails quietly, not loudly.
+
+| Flag | Meaning | `@file` behavior |
+|---|---|---|
+| `-f` / `--raw-field` | Add a **string** parameter | **None.** `-f description=@body.md` sends the literal text `@body.md` |
+| `--form` | **Multipart** form field (no short flag) | `--form "file=@path"` uploads the file. Forces POST |
+| `--input <path>` | Use a file as the raw request body | n/a — pair with `-H "Content-Type: application/json"` |
+
+There is no `-F` shorthand for `--form`. Reaching for `-F`/`-f` to attach a file is the usual cause of "the API returned 200 but my content is literally `@file.md`".
+
 #### File Uploads (MR attachments)
 
-`glab api` cannot send multipart form data — `-F "file=@artifact.zip"` does **not** upload the file (it fails confusingly, e.g. `404 Project Not Found`). To attach an image, archive, or other artifact to an MR description or note, use `curl` against the project uploads endpoint with the token from `glab`:
+`glab api` **can** send multipart — use the long `--form` flag. No `curl` or manual token extraction needed:
 
 ```bash
-# Extract the token into a shell variable WITHOUT printing it.
-# Careful: -h means --help in glab; use --hostname. `glab config get token` may return a non-usable blob — use auth status.
-TOKEN=$(glab auth status --hostname gitlab.example.com --show-token 2>&1 \
-  | sed -n 's/.*Token[^:]*: //p' | grep -v '^\*' | head -1 | tr -d '[:space:]')
-
-curl -s -X POST -H "PRIVATE-TOKEN: $TOKEN" --form "file=@artifact.zip" \
-  "https://gitlab.example.com/api/v4/projects/<group>%2F<repo>/uploads"
+glab api projects/:id/uploads -X POST --form "file=@diagram.png"
 ```
 
-The response's `markdown` field is a ready-to-use project-relative snippet. Images render inline; archives and other files render as attachment links. Add the returned Markdown to the description with `glab mr update <iid> --description "$(cat description.md)"`. Never echo the token into command output.
+Response fields, and **which one to embed**:
+
+| Field | Value | Use it? |
+|---|---|---|
+| `markdown` | `![name](/uploads/<hash>/<file>)` | **Yes** — ready to paste |
+| `url` | `/uploads/<hash>/<file>` | **Yes** — what `markdown` wraps |
+| `full_path` | `/-/project/<id>/uploads/<hash>/<file>` | **No — renders broken** |
+
+**Never embed `full_path`.** It looks more explicit and therefore safer; it is not. GitLab treats it as a *repository-relative* path and rewrites it against the default branch, producing `/<group>/<repo>/-/blob/main/-/project/<id>/uploads/...` — a blob URL that does not exist. The description saves fine and the image is broken.
+
+Because the correct `/uploads/<hash>/<file>` form resolves **relative to the project containing the description**, an upload from project A embedded in project B's MR silently 404s. Upload separately per project when posting the same asset to more than one MR.
+
+#### Verify that embedded media actually renders
+
+A link being present in a description is not the same as a link that renders, and a 200 from the uploads endpoint proves nothing about it. Before calling an attachment task done, render the snippet through GitLab's own markdown engine in project context:
+
+```bash
+# Run from INSIDE the repo — glab picks the host from the local remote.
+# Outside it, glab falls back to gitlab.com and returns `404 Project Not Found`
+# for a self-hosted project, which looks like a broken link but is a host mixup.
+cd /path/to/repo && glab api /markdown -X POST -f gfm=true -f project=<group>/<repo> \
+  -f 'text=![x](/uploads/<hash>/<file>)'
+```
+
+- Correct → `data-canonical-src="/uploads/<hash>/<file>"` in the returned HTML, and `data-src` expanded to `https://<host>/-/project/<id>/uploads/...`
+- Broken → the `href` contains `/-/blob/`, meaning GitLab resolved it as a repo path
+
+Note the asymmetry that makes `full_path` tempting: GitLab *emits* `/-/project/<id>/uploads/...` as the resolved absolute URL, so it looks like the canonical form. It is an output, not an input — authored as a relative markdown path it gets resolved against the repository instead.
+
+Do **not** try to validate an upload URL with `curl -H "PRIVATE-TOKEN: ..."`. Upload routes are served to browser **sessions**, not API tokens; you will get a 302 or the login HTML regardless of whether the file exists. That is a misleading signal — use the markdown render instead.
+
+Images render inline; archives and other files render as attachment links. Never echo a token into command output.
+
+#### Long MR descriptions from a file
+
+`glab mr create` has **no** `--description-file` flag; only `-d/--description` (a string, or `-` to open an editor). For a long body, avoid `-d "$(cat body.md)"` — command substitution is blocked in some sandboxes and mangles quoting. Create the MR first, then set the description via the API with a JSON payload:
+
+```bash
+# Build {"description": "<file contents>"} without shell quoting problems
+node -e 'const fs=require("fs");fs.writeFileSync("/abs/body.json",JSON.stringify({description:fs.readFileSync("/abs/body.md","utf8")}))'
+
+glab api projects/:id/merge_requests/<iid> -X PUT \
+  -H "Content-Type: application/json" --input /abs/body.json
+```
+
+Run it from inside the repo so `:id` resolves, and use absolute paths for the payload. Re-read the returned `description` to confirm the content landed rather than a literal `@path` string.
 
 ### Step 4: Avoid interactive flows
 
