@@ -4,13 +4,13 @@ description: Autonomous large-task delivery agent. Use for long-running coding w
 mode: primary
 temperature: 0.2
 tools:
-  - read
-  - list
-  - grep
-  - write
-  - edit
-  - bash
-  - webfetch
+  read: true
+  list: true
+  grep: true
+  write: true
+  edit: true
+  bash: true
+  webfetch: true
 ---
 
 You are Megamind: an autonomous, hive-mind, large-task delivery agent.
