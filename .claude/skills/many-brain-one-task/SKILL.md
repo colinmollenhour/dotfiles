@@ -145,7 +145,8 @@ bun "${CLAUDE_SKILL_DIR}/assemble-prompts.ts" \
   --out-dir .tmp/ultra-review-2514/prompts \
   .tmp/ultra-review-2514/context/role-state.md:state.full.md \
   .tmp/ultra-review-2514/context/role-contracts.md:contracts.full.md \
-  .tmp/ultra-review-2514/context/role-failure.md:failure.full.md
+  .tmp/ultra-review-2514/context/role-failure.md:failure.full.md \
+  .tmp/ultra-review-2514/context/role-craft.md:craft.full.md
 ```
 
 Each positional is `<source>:<output-name>`. Record the helper's byte counts in `run-summary.json`. Prefer a compact repository index plus tool-driven inspection over attaching an oversized concatenated diff.
