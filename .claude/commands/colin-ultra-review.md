@@ -46,9 +46,11 @@ Use the **Many Brain One Task (MBOT)** skill with task type `code-review`.
 - **Do not add experimental models** (including Kimi, GLM, or other off-profile models) or raise reasoning effort to `xhigh`/`max` unless the user or profile explicitly asks. Prefer the profile's named backup (usually Grok) when a primary cannot run — never invent a substitute lineup.
 - Default OpenCode effort for ultra is **`high`**. When spawning Claude subagents for **discovery, validation, integration, or summarization**, use effort **`high`** (not `max`/`xhigh`). The parent orchestrator stays at the host default (often medium) and does not need max thinking.
 - Follow MBOT's retry policy: max one retry per slot, distinct `--out` paths, treat exit 124 with a complete `.out` as success. Enforce the profile wall-clock (default 20 min); do not invent multi-hour harvest loops.
+- On backup reassignment: new out path for the **actual** model, **rewrite** any baked path in the prompt, update plan/`STATE.json`/`*.meta.json` with `planned_model` → `actual_model` before launch. Follow MBOT **Retry policy → Backup / reassignment procedure**.
+- OpenCode / Grok / botctl launches use the **harness-owned** emit-final-message trailer; native Claude `Agent` uses Write + ≤500-char return only.
 - Use fresh independent sessions with read-only repository tools.
 - Persist every prompt, raw participant output, error log, and metadata file under the run directory before aggregation.
-- Use MBOT display names in summaries and posted comments.
+- Use MBOT display names in summaries and posted comments — names must match `meta.actual_model`, not a stale path token.
 
 ### Participant allocation
 
@@ -64,11 +66,14 @@ A `failure` thread that returns no scale/cost assessment is incomplete. Retry it
 
 The parent session is a **thin control plane**. Disk under `.tmp/ultra-<id>/` (or the run-id directory) is durable memory. Auto-compact stays enabled — stay under the limit by not filling chat with review bodies.
 
-1. **Only the orchestrator (parent) writes `STATE.json`.** Subagents never write or "helpfully update" it. Update `STATE.json` after every phase transition (`preflight` → `launch` → `harvest` → `validate` → `converge` → `post`). Fields: phase, base/head SHAs, slot status map, next actions, paths to candidates/findings/verdicts.
-2. **Reviewer outputs go to disk only.** Discovery, validation, integration, and summarization write full text to `results/<slot>.out` (+ sidecars). Instruct native `Agent` / CLI children to write that file themselves (or have the parent copy their result to the path immediately) and return **≤500 characters** to the parent: status, out path, candidate/verdict counts.
+1. **Only the orchestrator (parent) writes `STATE.json`.** Subagents never write or "helpfully update" it. Update `STATE.json` after every phase transition (`preflight` → `launch` → `harvest` → `validate` → `converge` → `post`). Fields: phase, base/head SHAs, slot status map (planned vs actual model per slot), next actions, paths to candidates/findings/verdicts.
+2. **Reviewer outputs go to disk only.** Discovery, validation, integration, and summarization write full text to `results/<slot>.out` (+ sidecars + `*.meta.json`). Follow MBOT's **output delivery contracts** — do not mix them:
+   - **Native Claude `Agent` only (agent-owned):** child Writes the full body to the slot path and returns **≤500 characters** to the parent (status, path, counts).
+   - **OpenCode / Grok CLI / botctl / pi print (harness-owned):** the complete body is the **final assistant message** (or stdout). The harness writes `--out`. Never instruct these participants to Write the harness `--out` path and return a short status — that clobbers the full review (observed with GPT-5.6-Sol).
 3. **Parent never pastes full `.out` contents into chat.** Prefer `ls`/`stat`, `jq`, `rg '^VERDICT:'`, or a short harvest into `candidates.json` / `verdicts.json` / `findings-all.json`. When validating, pass **paths** in the subagent prompt, not embedded blobs.
 4. **On auto-compact or resume:** read only `STATE.json` plus structured JSON artifacts. Do not rebuild history from the compaction narrative alone.
 5. You may still finess launches, retries, and aggregation in the LLM (no mandatory external driver script). Keep finesse in **small tool rounds that write/read files**, not in growing assistant prose.
+6. **Slot paths and attribution.** Prefer slot-keyed result paths (`results/validate-6.out`, `results/b1-state.out`) with performer recorded in `*.meta.json` (`planned_model`, `actual_model`, `backup_used`). If paths keep a model suffix, every backup reassignment must use a new path for the **actual** model and **rewrite any output path baked into the prompt**. Scoring tables use `actual_model` from meta — never credit Opus because a backup wrote into a file still named `-opus.out`.
 
 ## Role Library
 
@@ -309,6 +314,12 @@ Run another fresh full-state integration pass in each convergence round. Use new
 
 Merge candidates by root cause, then independently validate each candidate. Prefer a different model or fresh reviewer session. Batch related candidates by subsystem when that improves context.
 
+When building validation prompts and plan entries:
+
+- Prefer **slot-keyed** out paths (`results/validate-N.out`) so reassignment does not leave Grok/GPT bodies under `-opus.out` names. Put `planned_model` / `actual_model` in the plan and `*.meta.json`.
+- If you still embed a model-suffixed path in the prompt, **rewrite that path when reassigning** to the actual performer (MBOT backup procedure). Never launch a backup against a prompt that still names the failed primary's out path.
+- Use the correct delivery contract for the validator harness (Write+status for native Agent; emit-final-message for OpenCode/Grok).
+
 The validator must:
 
 1. Restate the invariant and identify the changed behavior responsible.
@@ -421,13 +432,16 @@ Report the clean convergence round, or state that the configured cap was reached
 - Resolved model IDs, providers, harnesses, and reasoning variants
 - Threads launched / completed / retried / timed out (exit 124) / never started
 - OpenCode `session.cost` sum when available (or agentsview usage for the run window)
-- Distinct `--out` paths and any clobbered/overwritten results
+- Distinct `--out` paths and any clobbered/overwritten results (and recoveries from session)
+- Reassignments: each `planned_model → actual_model` with prompt rewrite status and final out path
 
 **Scoring hygiene** (re-derive; do not trust hand-carried tallies):
 
 - Recompute comparison tables from `results/*.out` (`grep '^VERDICT:'` or task-equivalent markers) before every summary PUT/post.
+- Attribute every row to `meta.actual_model` (or updated plan entry). If basename model ≠ actual performer, remap before scoring and list the remap in run accounting — do not leave Opus credited for Grok/GPT validation work.
 - A late exit-124 thread with a complete `.out` counts as completed; re-stat before marking a model incomplete.
-- A retry and its original are independent if both complete with different findings — read both files.
+- A short harness-owned `.out` without task markers, with a `.session` sidecar present, is a recovery candidate (`occtl last`) before retry/backup — not automatic failure.
+- A retry and its original are independent if both complete with different findings — read both files; incomplete primaries marked `supersedes` do not take credit from the backup body.
 - Self-duplicates of an already-posted finding from the same agent move only thread counts, not Unique/Shared confirmed columns.
 
 ### Step 10: Post or Display Results

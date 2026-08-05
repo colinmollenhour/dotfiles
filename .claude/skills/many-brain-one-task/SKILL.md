@@ -131,9 +131,10 @@ Recommended layout:
   context/
   prompts/
   results/
-    <role>-<participant>.out
-    <role>-<participant>.err
-    <role>-<participant>.meta.json
+    <slot>.out                 # prefer slot-keyed (no model token)
+    <slot>.err
+    <slot>.meta.json           # planned_model + actual_model + paths
+    # legacy OK: <slot>-<model>.out when tooling already uses it
   run-summary.json
 ```
 
@@ -157,16 +158,73 @@ If `--dry-run` is present, do not launch participants. Still resolve the exact p
 
 Launch independent participants in parallel. If one fails, record the failure and substitute a configured backup (see [Retry policy](#retry-policy) — do not unbounded-retry the same model).
 
-Every participant, including native Claude/Pi/Grok subagents, MUST have its complete final assistant output on disk at `results/<role>-<participant>.out`. Do not leave native-agent results only in transient task notifications, tool output, or a harness session. Prefer instructing the child to write that path itself; otherwise copy the full result to disk **immediately** when the child returns. The parent chat must not keep full review bodies — after persisting, retain only a ≤500-character status (path, exit, candidate/verdict counts). Store stderr or failure diagnostics separately and write metadata containing:
+Every participant, including native Claude/Pi/Grok subagents, MUST have its complete review body on disk at a stable **slot path** under `results/`. Do not leave results only in transient task notifications, tool output, or a harness session. The parent chat must not keep full review bodies — after persisting, retain only a ≤500-character status (path, exit, candidate/verdict counts).
 
-- Requested and actual model/provider when the harness reports them
-- Harness and reasoning effort
-- Start/end time and exit status
-- Session/thread ID
-- Prompt path and output path
-- Whether a backup was used
+### Output delivery contracts (do not mix)
 
-Treat a participant as successful only when the process/session completed and the persisted output contains non-whitespace assistant text. Structured issue markers such as `<<<ISSUE>>>...<<<END>>>` are recommended for deterministic aggregation.
+There are two incompatible ways to get a body onto disk. Pick **one** per participant based on who owns the result file:
+
+| Owner | Mechanisms | Body delivery | Final message / parent return |
+|---|---|---|---|
+| **Harness-owned** | `occtl run --out`, `run-opencode.ts --out`, Grok CLI stdout redirect, `botctl prompt` stdout, `pi --print` stdout | Complete review in the **final assistant message** (or stdout). Harness is the sole writer of `.out`. | Full body (not a status stub) |
+| **Agent-owned** | Native Claude `Agent` tool only | Child **Write**s the full review to the slot path | ≤500-char status: path + counts |
+
+**Never** tell a harness-owned participant to Write the same path the harness will overwrite. Observed failure (GPT-5.6-Sol): model Write'd a full review to `--out`, then returned a short status as the final message; `occtl run` / `run-opencode.ts` clobbered the file with that status. Fix: harness-owned prompts must say the complete review is the final assistant message and forbid writing the `--out` path.
+
+#### Harness-owned delivery footer (append to every OpenCode / Grok / botctl / pi print prompt)
+
+```markdown
+## Output delivery (required)
+
+This run uses a **harness-owned** result file. Put the full review (all
+VERDICT / ISSUE / task markers) in your **final assistant message**.
+Do not Write or Edit the results path — the launcher captures your final
+message into that file when the session ends and will overwrite any
+earlier Write to the same path.
+```
+
+OpenCode trailing positional (always include; keep the long instructions in `--file`):
+
+```text
+Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file.
+```
+
+#### Agent-owned delivery (native Claude `Agent` only)
+
+```text
+Write your FULL review to <absolute-slot-path>.out.
+Return to the parent only a ≤500-char status: path + candidate/verdict counts.
+```
+
+### Slot identity, paths, and attribution
+
+Treat **slot id**, **out path**, and **performer model** as three separate fields. Do not encode the performer solely in the filename and then score from that basename.
+
+- **Preferred path shape (slot-keyed):** `results/<slot>.out` where `<slot>` is stable work identity without a model token — e.g. `b1-state`, `validate-6`, `integration`. Model names live in meta, not in the path.
+- **Legacy path shape (model-suffixed):** `results/<slot>-<model>.out` (e.g. `validate-6-opus.out`) is still accepted when existing tooling uses it. If you keep this shape, **every reassignment must change the path to the actual model and rewrite any baked path in the prompt** (see [Retry policy](#retry-policy)).
+- **Meta is source of truth for who worked:** write `results/<slot>.meta.json` (or `<out-basename>.meta.json`) **before or immediately after** each launch with at least:
+
+```json
+{
+  "slot": "validate-6",
+  "phase": "validation",
+  "planned_model": "opus",
+  "actual_model": "grok",
+  "display_name": "Grok-4.5",
+  "provider_model_id": "…",
+  "harness": "grok-cli",
+  "backup_used": true,
+  "prompt": ".tmp/<run-id>/prompts/validate-6.md",
+  "out": ".tmp/<run-id>/results/validate-6.out",
+  "session_id": "…",
+  "exit": 0,
+  "supersedes": null
+}
+```
+
+Also record: reasoning effort, start/end time, and whether a backup was used. Scoring, Unique/Shared tables, and "who validated cluster X" **must** use `actual_model` from meta (or an updated plan entry) — never parse the performer from the `.out` basename alone. A file still named `-opus.out` may contain Grok/GPT work if a prompt was not rewritten on reassignment.
+
+Treat a participant as successful only when the process/session completed and the persisted output contains non-whitespace assistant text (task markers such as `VERDICT:` / `<<<ISSUE>>>` when the task requires them). Structured issue markers such as `<<<ISSUE>>>...<<<END>>>` are recommended for deterministic aggregation.
 
 When the parent maintains a run `STATE.json` (ultra-review and similar long multi-slot jobs), **only the orchestrator writes that file** — never a subagent.
 
@@ -242,7 +300,8 @@ Agent({
   // When the host exposes effort/thinking controls on Agent, set high.
   run_in_background: true,
   description: "...",
-  prompt: "Write your FULL review to <results-path>.out. Return to the parent only a ≤500-char status: path + counts. ...",
+  // Agent-owned path only — do not use this Write+status pattern for OpenCode.
+  prompt: "Write your FULL review to <absolute-slot-path>.out. Return to the parent only a ≤500-char status: path + counts. ...",
 })
 ```
 
@@ -330,7 +389,7 @@ occtl run \
   --file .tmp/ultra-review-2514/prompts/contracts.full.md \
   --out .tmp/ultra-review-2514/results/contracts-gemini.out \
   --timeout 1200000 \
-  -- "Perform the code review exactly as instructed."
+  -- "Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
 ```
 
 If there is no running server (or the profile asks for one fresh server per agent for isolation), add `--spawn`. `occtl` picks a free port, isolates `XDG_STATE_HOME`, runs the prompt, and SIGTERM/SIGKILLs the child on exit:
@@ -340,7 +399,7 @@ occtl run --spawn --model openai/gpt-5.4 \
   --file .tmp/ultra-review-2514/prompts/failure.full.md \
   --out .tmp/ultra-review-2514/results/failure-gpt.out \
   --timeout 1200000 \
-  -- "Perform the code review exactly as instructed."
+  -- "Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
 ```
 
 #### `run-opencode.ts` (fallback)
@@ -358,10 +417,12 @@ bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
   --attach http://seamus:4095 \
   --timeout-ms 1200000 \
   --out .tmp/ultra-review-2514/results/contracts-gemini.out \
-  -- "Perform the code review exactly as instructed."
+  -- "Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
 ```
 
 In `json` mode (the default) with `--out`, the script also writes `<out>.raw.jsonl` with raw OpenCode events and `<out>.session` with any discovered OpenCode session ids. If OpenCode exits 0 but produces no non-whitespace text, the script exits non-zero and reports that the provider may be unavailable or spend-limited.
+
+When `--out` already contains a **rich** body (task markers / large) and the harness-captured final message is a **thin** status stub, `run-opencode.ts` keeps the existing file, writes the stub to `<out>.final-message`, and notes the clobber avoidance on stderr. Prefer correct harness-owned prompts so this defense is never needed.
 
 What the script does **not** handle: choosing the model, choosing whether to attach, writing the prompt file. Those are still caller decisions.
 
@@ -385,7 +446,7 @@ What the script does **not** handle: choosing the model, choosing whether to att
 | Raw assistant JSON               | `--raw <path>`             | (sidecar `<out>.raw.jsonl` in json mode) | — |
 | Spawn ephemeral server           | `--spawn`, `--spawn-port`  | (n/a; script uses `--dangerously-skip-permissions` for local) | `occtl` tears down the child on exit. |
 | Delete session after run         | `--ephemeral`              | (n/a)                                   | Default keeps the session for token-usage audit. |
-| Short positional message         | `-- <msg>`                 | `-- <msg>`                              | Keep brief; real instructions go in `--file`. |
+| Short positional message         | `-- <msg>`                 | `-- <msg>`                              | Always the harness-owned emit-final-message trailer (above). Real instructions go in `--file`. |
 
 Both exit `0` on success, `1` on empty/no-text response or generic failure, `2` on invalid arguments, and `124` on timeout. `run-opencode.ts` exits `130` on external SIGINT and `143` on external SIGTERM after synchronously flushing partial output.
 
@@ -393,15 +454,26 @@ Default OpenCode wall-clock for large review/critique runs: **20 minutes** (`120
 
 ### Retry policy
 
-Per slot `(role × model × bucket|integration)`:
+Per slot `(role × model × bucket|integration|validate-N)`:
 
 1. **At most one launch + one retry** of the same model. Prefer a configured **backup model** over a second retry of the same model. Backups must come from the profile (or built-in Grok); never invent experimental substitutes.
 2. Retry only when `.out` is missing or empty **and** contains no complete `VERDICT:` (or equivalent task marker) line.
-3. Give **every** re-launch a **distinct `--out` path** (e.g. `.retry.out`). Never overwrite a completed result.
+3. Give **every** re-launch a **distinct `--out` path** (e.g. `.retry.out` or a new slot-keyed attempt). Never overwrite a completed result.
 4. Exit **124** (timeout), **130** (external SIGINT), or **143** (external SIGTERM) with a complete `VERDICT:` body is **success** — do not re-launch; fold the result in. Exit 130/143 with an incomplete body is a retry candidate under rule 1.
 5. Absence of `.out`/`.err`/`.session` sidecars means the thread **never started** — fix the launch, do not wait forever on a Monitor.
 6. Before scoring a model incomplete, re-stat and re-read `results/*.out` (late writers and 124-with-body are common).
 7. Honor the profile wall-clock (default **20 minutes** per OpenCode thread). After budget + one retry, mark the slot failed/incomplete and continue — do not invent multi-hour curl/Monitor harvest fleets.
+
+#### Backup / reassignment procedure (mandatory)
+
+When substituting a backup or reassigning a slot to a different model:
+
+1. Choose the backup from the profile (or built-in Grok). Do not invent substitutes.
+2. Allocate a **new out path** for the actual performer. Prefer slot-keyed `results/<slot>.out` (model only in meta). If you use model-suffixed names, the new path must include the **actual** model (`validate-6-grok.out`), not the planned one (`validate-6-opus.out`).
+3. **Rewrite or regenerate the prompt** so any baked output path and delivery contract match this launch. Never re-run a backup against a prompt that still says `Write … to …-opus.out` when Grok/GPT is launching. Observed failure: validation prompts baked `validate-N-opus.out`; reassigned Grok/GPT wrote into those `-opus.out` files and scoring would have credited Opus without a post-hoc remap.
+4. Update plan / `STATE.json` / `*.meta.json` **before launch**: `planned_model`, `actual_model`, `out`, `prompt`, `backup_used`, and optional `supersedes` (path of an incomplete primary partial).
+5. On harvest: attribute via `meta.actual_model`. If a rich body exists under a path whose basename model ≠ actual performer, record a remap in run accounting and score the actual model — do not invent a permanent hand-maintained `REASSIGNED` table as the only fix.
+6. Incomplete primary partials may stay on disk for forensics; mark them superseded in meta so they do not steal credit.
 
 ### codex
 
@@ -443,9 +515,13 @@ Guidelines:
 
 ## Step 5: Gather, verify, and summarize
 
-Read results only from the persisted files under `.tmp/<run-id>/results/`; this proves every claimed participant completed and makes later validation reproducible. Compare the result set against `participants.json`. Missing, empty, or failed primary outputs must be reported with their backup status.
+Read results only from the persisted files under `.tmp/<run-id>/results/`; this proves every claimed participant completed and makes later validation reproducible. Compare the result set against `participants.json` and each slot's `*.meta.json`. Missing, empty, or failed primary outputs must be reported with their backup status and **actual** performer.
 
-Write `run-summary.json` with participant outcomes, prompt/output paths, candidate counts, and any task-specific validation results. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models, and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
+**Attribution:** per-model tables, Unique/Shared columns, and validation credit use `meta.actual_model` (or the updated plan entry), never the model token in a filename alone. Report every reassignment as `planned → actual` with paths. Flag any basename model ≠ `actual_model` mismatch in run accounting.
+
+**Thin `.out` recovery (OpenCode):** if `.out` is short / lacks task markers but `.session` (or `<out>.session`) exists, try `occtl last <session> --text-only` (or full messages) before retrying or marking incomplete. If recovery yields a rich body, write it to the slot `.out` (or `.recovered.out` and update meta) and count the slot complete.
+
+Write `run-summary.json` with participant outcomes, planned vs actual models, prompt/output paths, candidate counts, reassignments, clobber/recovery events, and any task-specific validation results. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models, and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
 
 # Caveats
 
@@ -456,6 +532,9 @@ These apply across OpenCode invocations regardless of which path (`occtl run` or
 - **Model availability varies by plan.** `opencode models` lists everything the install knows about, but some return `Error: Model is disabled` at runtime (e.g. `opencode/gpt-5.4-nano` on certain plans). If a profile names a model, verify with a trivial prompt before launching a batch.
 - **`--file` is more reliable than "Read /path/..." in the prompt body.** When the prompt tells the model to use the Read tool to fetch a large file, some models (observed with Gemini 3.1 Pro and GLM 5.1) silently terminate after 3-4 chunk reads without producing any ISSUE blocks. Attaching via `--file` sidesteps that.
 - **Line numbers in code reviews.** When the shared prompt concatenates instructions + AGENTS.md + a large diff, some models (observed with GLM 5.1) report line numbers relative to the prompt file rather than the real source file. During validation, re-anchor any finding whose line number exceeds the actual file length before trusting the citation.
+- **Harness-owned `--out` clobber.** `occtl run` and `run-opencode.ts` write the final assistant message to `--out` unconditionally (with a rich-file defense in `run-opencode.ts`). If the model Write's the full review to that path and returns a short status, the status wins unless the defense keeps the rich file. Use the harness-owned delivery footer; do not apply the native-Agent "Write + ≤500-char return" pattern to OpenCode.
+- **Baked path + backup mis-attribution.** Prompts that embed `…-<model>.out` freeze the planned performer. On reassignment, rewrite the prompt and out path (or use slot-keyed paths + meta). Scoring from basenames will credit the wrong model.
+
 
 # Sandbox-friendly Bash patterns
 

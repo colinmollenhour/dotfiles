@@ -25,7 +25,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { parseArgs } from "node:util"
 
@@ -162,6 +162,55 @@ function writeTo(path: string, body: string): void {
   writeFileSync(path, body)
 }
 
+/** True when content looks like a full review body, not a short status stub. */
+function isRichBody(text: string): boolean {
+  const t = text.trim()
+  if (!t) return false
+  if (/\bVERDICT\s*:/i.test(t)) return true
+  if (/<<<\s*(ISSUE|VERDICT|END)\s*>>>/i.test(t)) return true
+  // Multiple markdown section headers imply structured multi-finding output.
+  if ((t.match(/^#{1,3}\s+\S/gm) || []).length >= 3) return true
+  return t.length >= 2048
+}
+
+/** True when harness text looks like a thin status / clobber risk. */
+function isThinBody(text: string, existing: string): boolean {
+  const t = text.trim()
+  if (!t) return true
+  if (isRichBody(t)) return false
+  if (t.length < 500) return true
+  if (existing.length > 0 && t.length < existing.length / 4) return true
+  return false
+}
+
+/**
+ * Prefer an existing agent-written rich body over a thin final-assistant
+ * message. Models that Write the full review to --out then emit a short
+ * status (observed with GPT-5.6-Sol) would otherwise lose the review when
+ * the harness overwrites --out. Keep the rich file; park the stub.
+ */
+function writeOutPreferRich(path: string, harnessText: string, stderrNotes: string[]): string {
+  let existing = ""
+  if (existsSync(path)) {
+    try {
+      existing = readFileSync(path, "utf8")
+    } catch {
+      existing = ""
+    }
+  }
+  if (isRichBody(existing) && isThinBody(harnessText, existing)) {
+    writeTo(`${path}.final-message`, harnessText)
+    stderrNotes.push(
+      `run-opencode: kept existing rich body at ${path} (${existing.length} bytes); ` +
+        `harness final message was thin (${harnessText.trim().length} bytes) and was written to ${path}.final-message. ` +
+        `Prefer harness-owned prompts that emit the full review as the final assistant message.`,
+    )
+    return existing
+  }
+  writeTo(path, harnessText)
+  return harnessText
+}
+
 function persist(exitCode: number, note?: string): void {
   if (persisted) return
   persisted = true
@@ -202,6 +251,18 @@ function persist(exitCode: number, note?: string): void {
     output = fetchSessionText(sessionIdList)
   }
 
+  // If the model Write'd a full review to --out and returned empty/thin final
+  // text, prefer that existing rich file over failing as "no text".
+  if (exitCode === 0 && values.format === "json" && output.trim() === "" && values.out && existsSync(values.out)) {
+    try {
+      const existing = readFileSync(values.out, "utf8")
+      if (isRichBody(existing)) {
+        output = existing
+        stderrOutput += `${stderrOutput ? "\n\n" : ""}run-opencode: harness final message empty; using existing rich body at ${values.out} (${existing.length} bytes).\n`
+      }
+    } catch { /* keep empty */ }
+  }
+
   if (exitCode === 0 && values.format === "json" && output.trim() === "") {
     exitCode = 1
     const rawPreview = stdoutBuf.trim().slice(0, 4000)
@@ -214,11 +275,18 @@ function persist(exitCode: number, note?: string): void {
     if (sessionIdList.length) writeTo(`${values.out}.session`, `${sessionIdList.join("\n")}\n`)
   }
 
-  if (values.out) writeTo(values.out, output)
-  else process.stdout.write(output)
+  if (values.out) {
+    const clobberNotes: string[] = []
+    writeOutPreferRich(values.out, output, clobberNotes)
+    if (clobberNotes.length) {
+      stderrOutput += `${stderrOutput ? "\n\n" : ""}${clobberNotes.join("\n")}\n`
+    }
+  } else {
+    process.stdout.write(output)
+  }
 
   if (values.stderr) writeTo(values.stderr, stderrOutput)
-  else if (stderrOutput && exitCode !== 0) process.stderr.write(stderrOutput)
+  else if (stderrOutput && (exitCode !== 0 || stderrOutput.includes("run-opencode:"))) process.stderr.write(stderrOutput)
 }
 
 const timer = timeoutMs > 0 ? setTimeout(() => {
