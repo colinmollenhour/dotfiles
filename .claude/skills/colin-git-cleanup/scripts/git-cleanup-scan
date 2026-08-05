@@ -1,0 +1,792 @@
+#!/usr/bin/env python3
+"""Inventory and classify local git branches/worktrees for colin-git-cleanup.
+
+Mechanical evidence only: fetch (optional), branch/worktree inventory, live cwd
+holders, worktrunk prune dry-run, cheap integration checks, and a proposed
+category per branch. Ambiguous leftovers stay in ask/keep for the LLM.
+
+Output: JSON on stdout (default) or a human table with --text.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Any
+
+
+def run(
+    args: list[str],
+    *,
+    cwd: str | None = None,
+    check: bool = False,
+    text: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        check=check,
+        text=text,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def git(repo: str, *args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
+    return run(["git", "-C", repo, *args], check=check)
+
+
+def short_sha(sha: str) -> str:
+    return sha[:12] if sha else ""
+
+
+@dataclass
+class CwdHolder:
+    pid: int
+    cmd: str
+
+
+@dataclass
+class WorktreeInfo:
+    path: str
+    head: str
+    branch: str | None  # None if detached
+    detached: bool = False
+    is_primary: bool = False
+    cwd_holders: list[CwdHolder] = field(default_factory=list)
+
+    @property
+    def busy(self) -> bool:
+        return bool(self.cwd_holders)
+
+
+@dataclass
+class BranchInfo:
+    name: str
+    sha: str
+    upstream: str | None = None
+    upstream_gone: bool = False
+    ahead_of_upstream: int | None = None
+    behind_upstream: int | None = None
+    ahead_of_default: int | None = None
+    behind_default: int | None = None
+    is_current: bool = False
+    is_default: bool = False
+    is_release: bool = False
+    has_worktree: bool = False
+    worktree_path: str | None = None
+    worktree_busy: bool = False
+    worktree_is_primary: bool = False
+    cheap_integration: str | None = None
+    wt_prune_reason: str | None = None
+    deep: dict[str, Any] = field(default_factory=dict)
+    category: str = "ask"  # protect | auto_delete | keep | ask
+    reasons: list[str] = field(default_factory=list)
+    delete_via: str = "none"  # git_branch_D | wt_remove | none
+
+
+def detect_default_branch(repo: str) -> tuple[str, str]:
+    """Return (short_name, fully-qualified origin ref like origin/main)."""
+    # Prefer symbolic-ref of origin/HEAD
+    r = git(repo, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+    if r.returncode == 0 and r.stdout.strip():
+        ref = r.stdout.strip()  # refs/remotes/origin/main
+        short = ref.removeprefix("refs/remotes/origin/")
+        return short, f"origin/{short}"
+
+    r = git(repo, "remote", "show", "origin")
+    if r.returncode == 0:
+        m = re.search(r"HEAD branch:\s+(\S+)", r.stdout)
+        if m:
+            short = m.group(1)
+            return short, f"origin/{short}"
+
+    for candidate in ("main", "master"):
+        r = git(repo, "rev-parse", "--verify", f"origin/{candidate}")
+        if r.returncode == 0:
+            return candidate, f"origin/{candidate}"
+
+    # Last resort: current branch tip as default (still classify carefully)
+    r = git(repo, "branch", "--show-current")
+    short = (r.stdout or "main").strip() or "main"
+    return short, f"origin/{short}"
+
+
+def parse_worktrees(repo: str) -> list[WorktreeInfo]:
+    r = git(repo, "worktree", "list", "--porcelain")
+    if r.returncode != 0:
+        return []
+
+    trees: list[WorktreeInfo] = []
+    cur: dict[str, Any] = {}
+
+    def flush() -> None:
+        nonlocal cur
+        if not cur.get("path"):
+            cur = {}
+            return
+        branch = cur.get("branch")
+        if branch and branch.startswith("refs/heads/"):
+            branch = branch.removeprefix("refs/heads/")
+        trees.append(
+            WorktreeInfo(
+                path=cur["path"],
+                head=cur.get("head", ""),
+                branch=None if cur.get("detached") else branch,
+                detached=bool(cur.get("detached")),
+            )
+        )
+        cur = {}
+
+    for line in r.stdout.splitlines():
+        if not line:
+            flush()
+            continue
+        if line.startswith("worktree "):
+            flush()
+            cur = {"path": line[len("worktree ") :]}
+        elif line.startswith("HEAD "):
+            cur["head"] = line[len("HEAD ") :]
+        elif line.startswith("branch "):
+            cur["branch"] = line[len("branch ") :]
+        elif line == "detached":
+            cur["detached"] = True
+    flush()
+
+    if trees:
+        # Primary = first entry (git worktree list puts main first) or matching repo path
+        repo_real = str(Path(repo).resolve())
+        for i, t in enumerate(trees):
+            try:
+                t.is_primary = Path(t.path).resolve() == Path(repo_real).resolve()
+            except OSError:
+                t.is_primary = i == 0
+        if not any(t.is_primary for t in trees):
+            trees[0].is_primary = True
+
+    return trees
+
+
+def _path_is_within(cwd: Path, target: Path) -> bool:
+    """True if cwd is target or a subdirectory of target."""
+    try:
+        cwd.relative_to(target)
+        return True
+    except ValueError:
+        return False
+
+
+def cwd_holders_for(path: str) -> list[CwdHolder]:
+    """Return processes whose cwd is path or a subdirectory of path."""
+    holders: list[CwdHolder] = []
+    try:
+        target = Path(path).resolve()
+    except OSError:
+        return holders
+
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return holders
+
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        try:
+            cwd = (entry / "cwd").resolve()
+        except OSError:
+            continue
+        if not _path_is_within(cwd, target):
+            continue
+
+        cmd = ""
+        try:
+            raw = (entry / "cmdline").read_bytes()
+            cmd = raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()[:200]
+        except OSError:
+            try:
+                cmd = (entry / "comm").read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                cmd = "?"
+        holders.append(CwdHolder(pid=pid, cmd=cmd or "?"))
+
+    holders.sort(key=lambda h: h.pid)
+    return holders
+
+
+def attach_cwd_holders(worktrees: list[WorktreeInfo]) -> None:
+    for wt in worktrees:
+        # Primary checkout often has many shells; still report, but skill
+        # never auto-removes primary. Busy flag still useful for non-primary.
+        wt.cwd_holders = cwd_holders_for(wt.path)
+
+
+def list_branches(repo: str) -> list[BranchInfo]:
+    fmt = "%(refname:short)\t%(objectname)\t%(upstream:short)\t%(upstream:track)\t%(HEAD)"
+    r = git(repo, "for-each-ref", f"--format={fmt}", "refs/heads")
+    if r.returncode != 0:
+        return []
+
+    branches: list[BranchInfo] = []
+    for line in r.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 5:
+            continue
+        name, sha, upstream, track, head_mark = parts[0], parts[1], parts[2], parts[3], parts[4]
+        upstream = upstream or None
+        track = track or ""
+        gone = "gone" in track.lower()
+        b = BranchInfo(
+            name=name,
+            sha=sha,
+            upstream=upstream,
+            upstream_gone=gone,
+            is_current=(head_mark == "*"),
+            is_release=name.startswith("release/"),
+        )
+        if upstream and not gone:
+            ahead, behind = rev_count_lr(repo, upstream, name)
+            b.ahead_of_upstream = ahead
+            b.behind_upstream = behind
+        branches.append(b)
+    return branches
+
+
+def rev_count_lr(repo: str, left: str, right: str) -> tuple[int | None, int | None]:
+    """left...right → (behind_right=commits only on left, ahead=only on right) as
+    git rev-list --left-right --count A...B → left_only right_only.
+    For A=default B=branch: left=behind_default, right=ahead_of_default.
+    """
+    r = git(repo, "rev-list", "--left-right", "--count", f"{left}...{right}")
+    if r.returncode != 0 or not r.stdout.strip():
+        return None, None
+    parts = r.stdout.strip().split()
+    if len(parts) != 2:
+        return None, None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None, None
+
+
+def cheap_integration(repo: str, branch: str, default_ref: str) -> str | None:
+    """Return reason string if branch content is integrated into default_ref."""
+    br = git(repo, "rev-parse", branch)
+    dr = git(repo, "rev-parse", default_ref)
+    if br.returncode != 0 or dr.returncode != 0:
+        return None
+    bsha, dsha = br.stdout.strip(), dr.stdout.strip()
+    if bsha == dsha:
+        return "same_commit"
+
+    anc = git(repo, "merge-base", "--is-ancestor", branch, default_ref)
+    if anc.returncode == 0:
+        return "ancestor"
+
+    diff = git(repo, "diff", "--numstat", f"{default_ref}...{branch}")
+    if diff.returncode == 0 and not diff.stdout.strip():
+        return "empty_threedot"
+
+    bt = git(repo, "rev-parse", f"{branch}^{{tree}}")
+    dt = git(repo, "rev-parse", f"{default_ref}^{{tree}}")
+    if bt.returncode == 0 and dt.returncode == 0 and bt.stdout.strip() == dt.stdout.strip():
+        return "trees_match"
+
+    # merge-tree: if result tree equals default, branch adds nothing
+    mt = git(repo, "merge-tree", "--write-tree", default_ref, branch)
+    if mt.returncode == 0 and dt.returncode == 0:
+        merged = mt.stdout.strip().splitlines()[0] if mt.stdout.strip() else ""
+        if merged and merged == dt.stdout.strip():
+            return "merge_adds_nothing"
+
+    return None
+
+
+def deep_evidence(repo: str, branch: str, default_ref: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    cherry = git(repo, "cherry", "-v", default_ref, branch)
+    if cherry.returncode == 0:
+        plus = minus = 0
+        samples_plus: list[str] = []
+        for line in cherry.stdout.splitlines():
+            if line.startswith("+"):
+                plus += 1
+                if len(samples_plus) < 5:
+                    samples_plus.append(line[2:].strip()[:120])
+            elif line.startswith("-"):
+                minus += 1
+        out["cherry_plus"] = plus
+        out["cherry_minus"] = minus
+        out["cherry_all_minus"] = plus == 0 and minus >= 0 and (plus + minus) > 0
+        out["cherry_plus_samples"] = samples_plus
+
+    subj = git(repo, "log", "-1", "--format=%s", branch)
+    if subj.returncode == 0:
+        out["tip_subject"] = subj.stdout.strip()
+
+    return out
+
+
+def wt_prune_map(repo: str, min_age: str) -> dict[str, str]:
+    """branch/path → reason from wt step prune --dry-run."""
+    if not shutil.which("wt"):
+        return {}
+
+    # Prefer JSON; fall back to text
+    r = run(
+        ["wt", "-C", repo, "step", "prune", "--dry-run", f"--min-age={min_age}", "--format=json"],
+    )
+    mapping: dict[str, str] = {}
+    if r.returncode == 0 and r.stdout.strip():
+        # Drop worktrunk schema banners on stderr; stdout should be JSON
+        raw = r.stdout.strip()
+        # Sometimes warnings are mixed; find JSON start
+        start = raw.find("[")
+        start_o = raw.find("{")
+        if start == -1 or (start_o != -1 and start_o < start):
+            start = start_o
+        if start >= 0:
+            try:
+                data = json.loads(raw[start:])
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, str):
+                            mapping[item] = "wt_prune"
+                        elif isinstance(item, dict):
+                            name = (
+                                item.get("branch")
+                                or item.get("name")
+                                or item.get("path")
+                                or item.get("worktree")
+                            )
+                            reason = (
+                                item.get("reason")
+                                or item.get("message")
+                                or item.get("why")
+                                or "wt_prune"
+                            )
+                            if name:
+                                mapping[str(name)] = str(reason)
+                    if mapping:
+                        return mapping
+            except json.JSONDecodeError:
+                pass
+
+    r = run(
+        ["wt", "-C", repo, "step", "prune", "--dry-run", f"--min-age={min_age}"],
+    )
+    if r.returncode != 0:
+        return mapping
+
+    # Text lines like: "○ durable-anti-flap — same commit as main"
+    # or "○ monte-carlo-simulation (branch only) — ancestor of main"
+    for line in (r.stdout or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("↳") or line.startswith("▲"):
+            continue
+        # strip leading symbol
+        line = re.sub(r"^[^\w./-]+", "", line)
+        m = re.match(
+            r"^(?P<name>.+?)(?:\s+\(branch only\))?\s+[—\-]\s+(?P<reason>.+)$",
+            line,
+        )
+        if m:
+            name = m.group("name").strip()
+            # strip path if present
+            name = name.split()[0] if " " in name and "/" in name.split()[0] else name
+            mapping[name] = m.group("reason").strip()
+    return mapping
+
+
+def classify(
+    branches: list[BranchInfo],
+    worktrees: list[WorktreeInfo],
+    default_name: str,
+    current: str,
+    wt_map: dict[str, str],
+    repo: str,
+    default_ref: str,
+    deep: bool,
+) -> None:
+    wt_by_branch = {w.branch: w for w in worktrees if w.branch}
+
+    for b in branches:
+        b.is_default = b.name == default_name
+        b.is_current = b.name == current or b.is_current
+        behind, ahead = rev_count_lr(repo, default_ref, b.name)
+        b.behind_default = behind
+        b.ahead_of_default = ahead
+
+        wt = wt_by_branch.get(b.name)
+        if wt:
+            b.has_worktree = True
+            b.worktree_path = wt.path
+            b.worktree_busy = wt.busy
+            b.worktree_is_primary = wt.is_primary
+
+        # Match wt prune by branch name or path
+        if b.name in wt_map:
+            b.wt_prune_reason = wt_map[b.name]
+        elif b.worktree_path and b.worktree_path in wt_map:
+            b.wt_prune_reason = wt_map[b.worktree_path]
+        else:
+            # path basename match (paseo animal names in prune text rarely)
+            for k, v in wt_map.items():
+                if k == b.name or (b.worktree_path and k in b.worktree_path):
+                    b.wt_prune_reason = v
+                    break
+
+        if not b.is_default and not b.is_current:
+            b.cheap_integration = cheap_integration(repo, b.name, default_ref)
+
+        if deep and not b.cheap_integration and not b.is_default and not b.is_current:
+            if b.wt_prune_reason or b.upstream_gone or (b.ahead_of_upstream == 0 and b.upstream):
+                pass  # already have a signal
+            else:
+                b.deep = deep_evidence(repo, b.name, default_ref)
+                if b.deep.get("cherry_all_minus"):
+                    b.cheap_integration = b.cheap_integration or "cherry_all_minus"
+
+        # --- category ---
+        if b.is_default or b.is_current:
+            b.category = "protect"
+            b.reasons.append("current_or_default")
+            b.delete_via = "none"
+            continue
+
+        if b.is_release:
+            b.category = "protect"
+            b.reasons.append("release_line")
+            b.delete_via = "none"
+            continue
+
+        if b.worktree_busy:
+            b.category = "keep"
+            holders = []
+            if wt:
+                holders = [f"{h.pid}:{h.cmd[:60]}" for h in wt.cwd_holders[:5]]
+            b.reasons.append("worktree_live_cwd")
+            if holders:
+                b.reasons.append("holders=" + ";".join(holders))
+            b.delete_via = "none"
+            continue
+
+        # Auto-delete signals
+        auto_reasons: list[str] = []
+        if b.upstream_gone:
+            auto_reasons.append("upstream_gone")
+        if b.upstream and not b.upstream_gone and b.ahead_of_upstream == 0:
+            auto_reasons.append("tracked_0_ahead")
+        if b.cheap_integration:
+            auto_reasons.append(f"integrated:{b.cheap_integration}")
+        if b.wt_prune_reason:
+            auto_reasons.append(f"wt_prune:{b.wt_prune_reason}")
+
+        if auto_reasons:
+            b.category = "auto_delete"
+            b.reasons.extend(auto_reasons)
+            if b.has_worktree and not b.worktree_is_primary:
+                b.delete_via = "wt_remove"
+            else:
+                b.delete_via = "git_branch_D"
+            continue
+
+        # Tracked ahead of upstream
+        if b.upstream and not b.upstream_gone and (b.ahead_of_upstream or 0) > 0:
+            b.category = "ask"
+            b.reasons.append(f"tracked_ahead={b.ahead_of_upstream}")
+            b.delete_via = "none"
+            continue
+
+        # Unique work vs default
+        if (b.ahead_of_default or 0) > 0 and not b.cheap_integration:
+            b.category = "ask"
+            b.reasons.append(f"ahead_of_default={b.ahead_of_default}")
+            if b.deep.get("cherry_plus"):
+                b.reasons.append(f"cherry_plus={b.deep['cherry_plus']}")
+            b.delete_via = "none"
+            continue
+
+        b.category = "ask"
+        b.reasons.append("no_auto_signal")
+        b.delete_via = "none"
+
+
+def build_summary(branches: list[BranchInfo], worktrees: list[WorktreeInfo]) -> dict[str, Any]:
+    by_cat: dict[str, list[str]] = {
+        "protect": [],
+        "auto_delete": [],
+        "keep": [],
+        "ask": [],
+    }
+    for b in branches:
+        by_cat.setdefault(b.category, []).append(b.name)
+
+    busy = [w for w in worktrees if w.busy and not w.is_primary]
+    auto_wt = [
+        b.name
+        for b in branches
+        if b.category == "auto_delete" and b.delete_via == "wt_remove"
+    ]
+    auto_br = [
+        b.name
+        for b in branches
+        if b.category == "auto_delete" and b.delete_via == "git_branch_D"
+    ]
+
+    notes: list[str] = []
+    if busy:
+        notes.append(
+            "Busy worktrees present — do not run blanket `wt step prune`; "
+            "delete branch-only refs only, leave busy worktrees alone."
+        )
+        for w in busy:
+            notes.append(
+                f"busy: {w.branch or '(detached)'} @ {w.path} "
+                f"pids={[h.pid for h in w.cwd_holders]}"
+            )
+
+    blanket_safe = not busy and not auto_wt
+    # blanket wt prune only if no busy and all auto_delete worktrees (if any) idle
+    if auto_wt and not busy:
+        blanket_safe = True  # idle integrated worktrees OK for prune
+    if busy:
+        blanket_safe = False
+
+    return {
+        "protect": by_cat.get("protect", []),
+        "auto_delete": by_cat.get("auto_delete", []),
+        "auto_delete_branch_only": auto_br,
+        "auto_delete_worktree": auto_wt,
+        "keep": by_cat.get("keep", []),
+        "ask": by_cat.get("ask", []),
+        "blanket_wt_prune_safe": blanket_safe,
+        "recommended_actions": _actions(auto_br, auto_wt, blanket_safe, busy),
+        "notes": notes,
+    }
+
+
+def _actions(
+    auto_br: list[str],
+    auto_wt: list[str],
+    blanket_safe: bool,
+    busy: list[WorktreeInfo],
+) -> list[str]:
+    acts: list[str] = []
+    if auto_br:
+        acts.append("git branch -D " + shlex_join(auto_br))
+    if auto_wt and not busy:
+        if blanket_safe and not auto_br:
+            acts.append("wt step prune -y --foreground --min-age=0s")
+        else:
+            for name in auto_wt:
+                acts.append(f"wt remove -y --foreground {name}")
+    elif auto_wt and busy:
+        # only remove idle ones (auto_wt already excludes busy via classify)
+        for name in auto_wt:
+            acts.append(f"wt remove -y --foreground {name}")
+    return acts
+
+
+def shlex_join(items: list[str]) -> str:
+    import shlex
+
+    return " ".join(shlex.quote(x) for x in items)
+
+
+def to_jsonable(
+    repo: str,
+    default_name: str,
+    default_ref: str,
+    current: str,
+    fetched: bool,
+    worktrees: list[WorktreeInfo],
+    branches: list[BranchInfo],
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "repo": repo,
+        "current_branch": current,
+        "default_branch": default_name,
+        "default_ref": default_ref,
+        "fetched": fetched,
+        "worktrunk_available": bool(shutil.which("wt")),
+        "worktrees": [
+            {
+                "path": w.path,
+                "head": w.head,
+                "branch": w.branch,
+                "detached": w.detached,
+                "is_primary": w.is_primary,
+                "busy": w.busy,
+                "cwd_holders": [asdict(h) for h in w.cwd_holders],
+            }
+            for w in worktrees
+        ],
+        "branches": [
+            {
+                "name": b.name,
+                "sha": b.sha,
+                "short_sha": short_sha(b.sha),
+                "upstream": b.upstream,
+                "upstream_gone": b.upstream_gone,
+                "ahead_of_upstream": b.ahead_of_upstream,
+                "behind_upstream": b.behind_upstream,
+                "ahead_of_default": b.ahead_of_default,
+                "behind_default": b.behind_default,
+                "is_current": b.is_current,
+                "is_default": b.is_default,
+                "is_release": b.is_release,
+                "has_worktree": b.has_worktree,
+                "worktree_path": b.worktree_path,
+                "worktree_busy": b.worktree_busy,
+                "cheap_integration": b.cheap_integration,
+                "wt_prune_reason": b.wt_prune_reason,
+                "deep": b.deep,
+                "category": b.category,
+                "reasons": b.reasons,
+                "delete_via": b.delete_via,
+            }
+            for b in branches
+        ],
+        "summary": summary,
+    }
+
+
+def print_text(data: dict[str, Any]) -> None:
+    s = data["summary"]
+    print(f"repo: {data['repo']}")
+    print(f"current: {data['current_branch']}  default: {data['default_ref']}  fetched: {data['fetched']}")
+    print(f"worktrunk: {data['worktrunk_available']}")
+    print()
+    print("Worktrees:")
+    for w in data["worktrees"]:
+        flag = "PRIMARY" if w["is_primary"] else ("BUSY" if w["busy"] else "idle")
+        print(f"  [{flag}] {w['branch'] or 'detached'}  {w['path']}")
+        for h in w["cwd_holders"]:
+            print(f"           pid={h['pid']}  {h['cmd'][:100]}")
+    print()
+    print("Branches:")
+    for b in data["branches"]:
+        print(
+            f"  {b['category']:12} {b['name']:40} {b['short_sha']}  "
+            f"via={b['delete_via']:12}  {', '.join(b['reasons'])}"
+        )
+    print()
+    print("Summary:")
+    for key in (
+        "protect",
+        "auto_delete",
+        "auto_delete_branch_only",
+        "auto_delete_worktree",
+        "keep",
+        "ask",
+    ):
+        vals = s.get(key) or []
+        print(f"  {key}: {len(vals)}  {vals}")
+    print(f"  blanket_wt_prune_safe: {s.get('blanket_wt_prune_safe')}")
+    for n in s.get("notes") or []:
+        print(f"  note: {n}")
+    if s.get("recommended_actions"):
+        print("Recommended (after user confirm):")
+        for a in s["recommended_actions"]:
+            print(f"  {a}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Scan local git branches/worktrees for safe cleanup candidates."
+    )
+    ap.add_argument("-C", "--repo", default=None, help="Repository path (default: cwd)")
+    ap.add_argument(
+        "--no-fetch",
+        action="store_true",
+        help="Skip git fetch origin --prune",
+    )
+    ap.add_argument(
+        "--min-age",
+        default="0s",
+        help="Min age for wt step prune dry-run (default: 0s)",
+    )
+    ap.add_argument(
+        "--deep",
+        action="store_true",
+        help="Run git cherry deep evidence on non-integrated leftovers",
+    )
+    ap.add_argument(
+        "--text",
+        action="store_true",
+        help="Human-readable table instead of JSON",
+    )
+    args = ap.parse_args(argv)
+
+    repo = args.repo or os.getcwd()
+    r = git(repo, "rev-parse", "--show-toplevel")
+    if r.returncode != 0:
+        print(f"error: not a git repository: {repo}", file=sys.stderr)
+        return 2
+    repo = r.stdout.strip()
+
+    fetched = False
+    if not args.no_fetch:
+        fr = git(repo, "fetch", "origin", "--prune", "--quiet")
+        fetched = fr.returncode == 0
+        if fr.returncode != 0:
+            print(
+                f"warning: git fetch failed: {fr.stderr.strip() or fr.stdout.strip()}",
+                file=sys.stderr,
+            )
+
+    default_name, default_ref = detect_default_branch(repo)
+    # Ensure default_ref exists
+    if git(repo, "rev-parse", "--verify", default_ref).returncode != 0:
+        # fall back to local default branch
+        default_ref = default_name
+
+    cur_r = git(repo, "branch", "--show-current")
+    current = (cur_r.stdout or "").strip()
+
+    worktrees = parse_worktrees(repo)
+    attach_cwd_holders(worktrees)
+    branches = list_branches(repo)
+    wt_map = wt_prune_map(repo, args.min_age)
+
+    classify(
+        branches,
+        worktrees,
+        default_name,
+        current,
+        wt_map,
+        repo,
+        default_ref,
+        deep=args.deep,
+    )
+    summary = build_summary(branches, worktrees)
+    data = to_jsonable(
+        repo,
+        default_name,
+        default_ref,
+        current,
+        fetched,
+        worktrees,
+        branches,
+        summary,
+    )
+
+    if args.text:
+        print_text(data)
+    else:
+        json.dump(data, sys.stdout, indent=2, sort_keys=False)
+        sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

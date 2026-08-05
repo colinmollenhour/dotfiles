@@ -987,6 +987,15 @@ install_agents() {
   install_file ".opencode/agents/megamind.md" "$SCRIPT_DIR/.opencode/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
   install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.grok/agents/megamind.md"
 
+  # Helper CLIs used by skills (git-cleanup-scan, etc.)
+  local scan_src=".claude/skills/colin-git-cleanup/scripts/git-cleanup-scan"
+  if [[ -f "$SCRIPT_DIR/$scan_src" ]]; then
+    install_file "$scan_src" "$SCRIPT_DIR/$scan_src" "$HOME/.local/bin/git-cleanup-scan"
+    if [[ "$DRY_RUN" == false && -f "$HOME/.local/bin/git-cleanup-scan" ]]; then
+      chmod +x "$HOME/.local/bin/git-cleanup-scan"
+    fi
+  fi
+
   if command -v omp >/dev/null 2>&1; then
     if [[ "$DRY_RUN" == true ]]; then
       dry_run_msg "omp install $SCRIPT_DIR/pi-megamind"

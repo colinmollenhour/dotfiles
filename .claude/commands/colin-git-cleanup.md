@@ -1,6 +1,6 @@
 ---
 description: Clean up local git branches and stale worktrees (squash-aware; prefers worktrunk when available)
-allowed-tools: Bash(git *), Bash(wt *), Bash(glab *), mcp_question
+allowed-tools: Bash(git *), Bash(wt *), Bash(glab *), Bash(git-cleanup-scan *), Bash(*git-cleanup-scan*), mcp_question
 ---
 
 # Context
@@ -10,10 +10,13 @@ Default remote branch: !`git remote show origin | grep 'HEAD branch' | awk '{pri
 Total local branches: !`git branch --list | wc -l`
 Worktrees: !`git worktree list | wc -l`
 Worktrunk available: !`command -v wt >/dev/null && echo yes || echo no`
+Scan helper: !`command -v git-cleanup-scan >/dev/null && echo PATH || (test -x "$HOME/.agents/skills/colin-git-cleanup/scripts/git-cleanup-scan" && echo skill-scripts || echo missing)`
 
 # Your task
 
 Help the user clean up stale **local branches** and, when useful, **stale worktrees**. Prefer **worktrunk (`wt`)** over raw git when it is installed — it understands squash merges and can remove worktree + branch together.
+
+**Prefer the mechanical scanner over hand-rolled inventory.** Run `git-cleanup-scan` first (see Step 1). It fetches, lists branches/worktrees, attaches live `/proc/*/cwd` holders, runs cheap integration + optional `wt step prune --dry-run`, and emits JSON categories (`protect` / `auto_delete` / `keep` / `ask`) plus `blanket_wt_prune_safe`. You still present the plan, handle ambiguous `ask` leftovers (deep patch-id / MR corroboration), get confirmation, and execute.
 
 ## Colin's typical preferences (defaults)
 
@@ -22,20 +25,22 @@ These are the usual defaults from real cleanup sessions. Override only when `$AR
 ### Always protect
 - Never delete `master`, `main`, or the **current** branch.
 - Never delete a branch that is **checked out in another worktree** via `git branch -D` alone — use `wt remove` (or remove the worktree first).
+- **Never remove a worktree that has live processes using it as `cwd`** (agents, shells, MCP servers, etc.) — even if content is integrated into the default branch. Same-commit-as-main is irrelevant while agents still hold the tree.
 - **Keep `release/*` worktrees/branches** unless the user explicitly asks to remove a specific release line.
 
 ### Auto-delete (no need to re-confirm each name once the plan is accepted)
 1. **Gone** — upstream shows `[gone]` (remote branch deleted). Safe; usually squash-merged MRs.
 2. **Tracked, 0 ahead of upstream** — live remote still exists and local has no unpushed commits. Safe to drop the local ref; can always `git switch <branch>` / re-fetch later. *This is the main "thin the local branch list" cleanup.*
 3. **Content-integrated into the default branch** (cheap + deep checks below) — including untracked / no-upstream branches.
-4. **Worktrees whose only MR is already merged** — remove with `wt remove -y` (add `-f` if dirty, `-D` if git still thinks unmerged).
-5. **Detached stale review worktrees** the user names (e.g. old ultra-review sandboxes).
+4. **Worktrees whose only MR is already merged** *and* with **no live cwd users** — remove with `wt remove -y` (add `-f` if dirty, `-D` if git still thinks unmerged).
+5. **Detached stale review worktrees** the user names (e.g. old ultra-review sandboxes), only if the cwd test is clean.
 
 ### Ask before deleting
 1. **Tracked, ahead of upstream** — has local-only commits. List with ahead count; default **keep**.
 2. **Untracked / no upstream that still fail deep checks** — default **keep** (WIP, `backup/*` restack snapshots, open bugfix stacks).
 3. **Worktrees tied to open MRs** — keep; optionally show `glab mr list --source-branch <branch>`.
-4. Anything the checks are unsure about.
+4. **Worktrees with live cwd processes** (agents) — **keep**; list PIDs/commands. Do not auto-delete; user may force after stopping agents.
+5. Anything the checks are unsure about.
 
 ### Default branch name
 Many ShipStream repos use **`master`** as `origin` HEAD (not `main`). Detect via remote HEAD; do not assume `main`. Some worktrees (e.g. knowledge-base) track a different remote (`kb-remote`); do not judge those against `origin/master`.
@@ -49,11 +54,40 @@ Do **not** treat "tracked and 0 ahead of *feature* remote" as "merged to master"
 ### Prefer worktrunk first
 When `wt` is available:
 - `wt step prune --dry-run` (add `--min-age=0s` to include young worktrees) previews integrated worktrees **and** branch-only refs.
-- `wt step prune -y --foreground` bulk-removes safe candidates.
+- `wt step prune -y --foreground` bulk-removes safe candidates — **only after** excluding worktrees that fail the active-cwd test below. If any prune candidate has live cwd users, do **not** run blanket prune; delete branch-only refs with `git branch -D` and leave the busy worktree alone.
 - `wt list` / `wt list --branches` shows `_` (same commit) and `⊂` (content integrated).
-- `wt remove [-f] [-D] -y --foreground <branch-or-path>` for targeted worktree+branch removal.
+- `wt remove [-f] [-D] -y --foreground <branch-or-path>` for targeted worktree+branch removal (after cwd test is clean).
 
 Worktrunk's six checks (cheapest first): same commit → ancestor → empty 3-dot → trees match → merge-adds-nothing → patch-id match.
+
+### Active-cwd / live-agent test (required before any worktree remove)
+
+Integration alone is **not** enough to remove a worktree. Paseo / Claude / other agents often sit on a worktree whose branch already matches `main` (same commit). Removing it mid-session kills the agent.
+
+For **every** worktree path that is a prune/`wt remove` candidate (everything except the primary checkout you are running from, if it is `main`/`master`):
+
+```bash
+# Quick scan (human-readable)
+ls -la /proc/*/cwd 2>/dev/null | grep -F '<worktree-path>'
+
+# Enumerate holders with PID + command
+for p in /proc/[0-9]*; do
+  cwd=$(readlink "$p/cwd" 2>/dev/null) || continue
+  case "$cwd" in
+    <worktree-path>|<worktree-path>/*)
+      pid=${p#/proc/}
+      cmd=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null | head -c 200)
+      echo "pid=$pid cwd=$cwd cmd=$cmd"
+      ;;
+  esac
+done
+```
+
+- **Any hit** (e.g. `claude`, `ssrag-mcp`, `node`, a long-lived shell) → **keep** that worktree + its branch. Report PIDs/commands in the summary. Do not call `wt remove` / include it in `wt step prune`.
+- **No hits** → worktree is idle; integration/MR rules may auto-delete as usual.
+- Re-run the test immediately before execute — agents can start between inventory and confirmation.
+
+Example from a real session: `durable-anti-flap` @ same commit as `main`, `wt step prune` wanted it gone, but `/proc/*/cwd` showed live `claude` + `ssrag-mcp` under `~/.paseo/worktrees/.../upbeat-elephant`. Correct verdict: **keep worktree**; only delete other integrated **branch-only** refs.
 
 ### Cheap git checks (always run; fast)
 Against `origin/<default>` (call it `D`):
@@ -128,21 +162,51 @@ Use as evidence in the summary; only delete when A/B/C (or cheap checks / `wt`) 
 
 ---
 
-## Step 1: Fetch and prune
+## Step 1: Run `git-cleanup-scan` (required)
+
+Resolve the binary (first hit wins):
 
 ```bash
-git fetch origin --prune --quiet
+command -v git-cleanup-scan \
+  || echo "$HOME/.local/bin/git-cleanup-scan" \
+  || echo "$HOME/.agents/skills/colin-git-cleanup/scripts/git-cleanup-scan"
 ```
 
-## Step 2: Inventory
+Then from the repo root:
 
-Collect:
-- Local branches (`git branch -vv` / `git for-each-ref`)
-- Worktrees (`git worktree list --porcelain`)
-- Optional: `wt list --format json` and `wt step prune --dry-run --format json --min-age=0s`
-- Optional for worktrees: open/merged MRs via `glab mr list --source-branch <branch> --all -F json`
+```bash
+git-cleanup-scan              # JSON (default); includes fetch --prune
+git-cleanup-scan --text       # human table for the user-facing summary
+git-cleanup-scan --deep       # also run git cherry on non-integrated leftovers
+git-cleanup-scan --no-fetch   # offline re-scan
+```
 
-### Branch categories
+Trust `summary.*` and per-branch `category` / `reasons` / `delete_via` / `worktree_busy` as the inventory source of truth. Do **not** re-derive cwd holders or cheap integration by hand unless the helper is missing.
+
+If the helper is **missing**, fall back to the manual inventory + Active-cwd test below (and tell the user the skill scripts are not installed — `./install.sh --agents` from colin-dotfiles).
+
+### JSON fields you must honor
+
+| Field | Meaning |
+|-------|---------|
+| `summary.auto_delete_branch_only` | Safe `git branch -D` candidates |
+| `summary.auto_delete_worktree` | Idle integrated worktrees → `wt remove` |
+| `summary.keep` | Includes **live-cwd** worktrees — never auto-remove |
+| `summary.ask` | Need deep checks / human judgment |
+| `summary.protect` | `main`/`master`/current/`release/*` |
+| `summary.blanket_wt_prune_safe` | If **false**, never run blanket `wt step prune` |
+| `summary.recommended_actions` | Suggested commands after confirm (still confirm first) |
+| `summary.notes` | Busy worktree warnings with PIDs |
+
+## Step 2: Optional enrichment
+
+Only when needed for `ask` leftovers or user questions:
+
+- `glab mr list --source-branch <branch> --all -F json` (merged vs open)
+- Deep patch-id checks (B/C below) if scan was run without `--deep` or cherry was inconclusive
+- Manual Active-cwd re-check immediately before `wt remove` (agents can start after scan)
+
+### Branch categories (policy; scan already applies these)
 
 | # | Category | Typical action |
 |---|----------|----------------|
@@ -151,30 +215,34 @@ Collect:
 | 3 | **Tracked, ahead** of upstream | Ask (default keep) |
 | 4 | **Untracked** — cheap or deep integrated | Auto-delete |
 | 5 | **Untracked** — still unique after deep checks | Ask (default keep) |
-| 6 | **Worktree** | Skip `git branch -D`; manage with `wt remove` / prune |
-| 7 | **release/*** | Keep unless user asks |
+| 6 | **Worktree, idle** (no live cwd) | Skip `git branch -D`; manage with `wt remove` / prune |
+| 7 | **Worktree, live agents** (cwd holders) | **Keep**; never auto-remove |
+| 8 | **release/*** | Keep unless user asks |
 
 ## Step 3: Present summary
 
-Show counts per category, planned auto-deletes, and keep-lists with **why** (e.g. `cherry +1 unique`, `patch-id match 0f18649633`). Tables beat walls of text.
-
-For worktrees: branch, path, last commit date, ahead/behind default, 3-dot files/lines, merge clean?, open/merged MR?, integrated?
+Show counts per category, planned auto-deletes, and keep-lists with **why** (from scan `reasons`, plus any deep-check notes). Tables beat walls of text. Include busy worktree PID/cmd from scan when present.
 
 ## Step 4: Confirm and execute
 
 1. If the plan matches typical prefs, one confirmation is enough for the whole auto-delete set.
-2. Use `git branch -D` for branch-only deletes (squash merges will not show as `--merged`).
-3. Use `wt remove` / `wt step prune` when a worktree is involved.
-4. Batch deletes where possible.
-5. Finish with `git branch -vv`, worktree list, and counts removed.
+2. Prefer `summary.recommended_actions` after confirm — or equivalent `git branch -D` / `wt remove` commands. Squash merges will not show as `--merged`; use `-D`.
+3. If `blanket_wt_prune_safe` is false, **never** run `wt step prune -y`; only branch-only deletes and explicit idle `wt remove` targets.
+4. Re-run `git-cleanup-scan --no-fetch` (or cwd test) right before removing a worktree.
+5. Batch deletes where possible.
+6. Finish with `git branch -vv`, worktree list, and counts removed.
 
-## Worktrunk cheat sheet
+## Scanner + worktrunk cheat sheet
 
 ```bash
+git-cleanup-scan                     # primary inventory (JSON)
+git-cleanup-scan --text              # human table
+git-cleanup-scan --deep              # + git cherry on leftovers
+
 wt list                              # worktree status
-wt step prune --dry-run              # preview integrated WT + branches (default min-age 1d)
-wt step prune --dry-run --min-age=0s # include young worktrees
-wt step prune -y --foreground        # apply
+wt step prune --dry-run              # preview (scan already incorporates this)
+wt step prune --dry-run --min-age=0s
+wt step prune -y --foreground        # ONLY if scan.summary.blanket_wt_prune_safe
 wt remove -y feature                 # remove one WT; delete branch if integrated
 wt remove -y -f -D feature           # dirty WT + force-delete unmerged branch
 wt remove -y -f /path/to/detached    # path for detached HEAD worktrees
@@ -203,6 +271,8 @@ git log origin/master --oneline --grep='first line of subject' -i
 - Gone remotes cannot be re-checked out by the same name; typical pref is **delete gone**.
 - After large prunes, background `wt remove` may leave trash under `.git/wt/trash/` (auto-swept ~24h); prefer `--foreground` when you want a definitive finish.
 - Always run **deep checks** on untracked leftovers before saying they still have unique work — cheap 3-dot alone lies after squash + follow-up commits on the same files.
+- **Never trust `wt step prune` alone for worktrees** — it does not know about live agents. `git-cleanup-scan` attaches cwd holders and sets `blanket_wt_prune_safe=false` when busy; honor that. If the helper is missing, run the `/proc/*/cwd` test by hand.
+- Scanner lives at `~/.agents/skills/colin-git-cleanup/scripts/git-cleanup-scan` and is installed to `~/.local/bin/git-cleanup-scan` by `install.sh --agents`.
 
 # Special Instructions
 
