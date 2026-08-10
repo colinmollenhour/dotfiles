@@ -1,0 +1,25 @@
+{
+  "providers": {
+    "impl": "codex/gpt-5.6-sol",
+    "ui": "claude/claude-opus-5",
+    "research": "codex/gpt-5.6-sol",
+    "planning": "claude/claude-fable-5",
+    "audit": "codex/gpt-5.6-sol"
+  },
+  "roles": {
+    "megamind": {
+      "provider": "opencode/xai/grok-4.5",
+      "settings": {
+        "modeId": "megamind",
+        "thinkingOptionId": "high"
+      }
+    }
+  },
+  "preferences": [
+    "When a task calls for the Megamind role, use roles.megamind.provider and roles.megamind.settings exactly as configured.",
+    "Use Claude Opus for UI/UX, writing, naming, and open-ended product or architectural judgment. Use Codex for implementation, repository research, debugging, and evidence-driven audits.",
+    "Use worktree isolation for parallel tasks that may write to the same repository. Use the current workspace for read-only work or explicitly coordinated edits.",
+    "Prefer audit agents that did not implement the change so reviews remain independent.",
+    "Agents should read repository instructions, preserve unrelated user changes, run focused verification proportional to risk, and report concrete evidence with their conclusions."
+  ]
+}
