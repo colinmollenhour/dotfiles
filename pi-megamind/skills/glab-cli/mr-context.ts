@@ -9,7 +9,7 @@
  *
  * Usage (invoked inline from the Claude Code Bash tool):
  *
- *   bun /absolute/path/to/pi-megamind/skills/glab-cli/mr-context.ts \
+ *   bun "${CLAUDE_SKILL_DIR}/mr-context.ts" \
  *     --project shipstream/server \
  *     --mr 2514 \
  *     --out-dir .tmp/mr-2514-context

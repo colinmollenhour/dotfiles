@@ -179,7 +179,7 @@ pip install package-name
 For complex scenarios, see [reference.md](reference.md).
 ```
 
-### Step 7: Add supporting files (optional)
+### Step 7: Add supporting files (optional) + token budget
 
 Create additional files for progressive disclosure:
 
@@ -196,6 +196,30 @@ Run the helper script:
 \`\`\`bash
 python scripts/helper.py input.txt
 \`\`\`
+```
+
+#### Token-efficiency budget (required for new/edited skills)
+
+Skills are loaded into the agent context. Bloat here multiplies every session.
+
+| Artifact | Soft cap | Hard expectation |
+|---|---|---|
+| `SKILL.md` | **~8 KB (~2k tokens)** | Triggers, steps, script entrypoints, top pitfalls only |
+| `reference.md` | unlimited | Flags, edge cases — **Read only on demand** |
+| `scripts/*` | prefer scripts | Anything mechanical or multi-round-trip CLI |
+
+**Rules:**
+
+1. If an agent would run the same 3+ CLI calls every time → write a script that writes artifacts to disk and prints a JSON summary.
+2. If you wrote the same `.tmp/*.ts` helper in two real sessions → promote it into `scripts/` and delete the ad-hoc pattern from instructions.
+3. Happy-path workflows (commit/ship, gather PR/MR context, list+close jobs) must **not** require loading an encyclopedia skill.
+4. Put exact argv for the top 5 operations in a short cheat sheet at the top of `SKILL.md` so agents stop running `--help`.
+5. Encode pitfalls in scripts when possible (pagination, wrong flags) instead of hoping the model rereads prose.
+
+Validate size before finishing:
+
+```bash
+wc -c path/to/SKILL.md   # prefer < 8000; investigate if > 16000
 ```
 
 ### Step 8: Validate the Skill
@@ -218,6 +242,8 @@ Check these requirements:
 - [ ] Concrete examples provided
 - [ ] Edge cases handled
 - [ ] Dependencies listed (if any)
+- [ ] `SKILL.md` within token budget (~8KB soft cap) or justified
+- [ ] Multi-step CLI work has a `scripts/` helper when it saves round trips
 
 ✅ **Testing**:
 - [ ] Description matches user questions

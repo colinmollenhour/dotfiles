@@ -23,10 +23,12 @@ Determine the hosting platform first, then load `gh-cli` for GitHub Actions or `
 
 ## Step 2: Get Failure Logs
 
-Use the loaded platform CLI skill for the exact failure-log command. Prefer the failing job's log/trace over broad pipeline output.
+Prefer a single gather script so logs land on disk without chat spam:
 
-- GitHub: the preferred command is `gh run view <run-id> --log-failed`
-- GitLab: the preferred command is `glab ci trace <job-id> --branch <branch>`
+- **GitLab:** `bun "${HOME}/.agents/skills/glab-cli/ci-fail.ts" --project <G/R> --branch <branch> --out-dir .tmp/ci-fail` then Read only the relevant `traces/*.log` tails
+- **GitHub:** `gh run view <run-id> --log-failed` (or `gh run list --branch …` then view)
+
+Fall back to the platform CLI skill only when the script is insufficient.
 
 ## Step 3: Analyze and Fix
 

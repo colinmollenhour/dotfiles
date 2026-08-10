@@ -78,6 +78,15 @@ if (values.format !== "default" && values.format !== "json") die(`--format must 
 const timeoutMs = Number(values["timeout-ms"] ?? "0")
 if (!Number.isFinite(timeoutMs) || timeoutMs < 0) die(`--timeout-ms must be a non-negative number (got ${JSON.stringify(values["timeout-ms"])})`)
 
+// Guard: flags must never appear as positionals after `--` (common mbot-run footgun).
+const flagLike = positionals.filter((p) => p.startsWith("--"))
+if (flagLike.length) {
+  die(
+    `flag-like positionals after --: ${flagLike.join(" ")}. ` +
+      `Put --variant/--title/--attach/--timeout-ms BEFORE --, not after.`,
+  )
+}
+
 const message = positionals.join(" ").trim() || "Follow the attached file's instructions exactly."
 
 const args: string[] = ["run", "--model", values.model]
@@ -90,7 +99,11 @@ if (values.attach) {
   // Attach mode needs an absolute directory. Relative paths can resolve on the
   // attached server side (for example as /home/colin) instead of the caller's
   // project/worktree, which makes agents load the wrong context.
-  args.push("--attach", values.attach)
+  let attach = values.attach.trim()
+  if (attach && !attach.startsWith("http://") && !attach.startsWith("https://")) {
+    attach = `http://${attach}`
+  }
+  args.push("--attach", attach.replace(/\/$/, ""))
   args.push("--dir", values.dir ? resolve(values.dir) : process.cwd())
   if (values.password) args.push("--password", values.password)
 } else {

@@ -9,7 +9,8 @@ Workflow for creating and updating ClickUp tasks via the `cup` CLI.
 
 Composes with:
 
-- **`clickup`** — full `cup` CLI reference (all commands, flags, syntax). Consult it for anything not stated here; do not duplicate its content into this file.
+- **`cup-recipes`** — run `bash "${CLAUDE_SKILL_DIR}/scripts/cup-recipes"` for the token-cheap cheat sheet. Prefer this over `cup --help` or loading any encyclopedic ClickUp skill.
+- **`clickup`** (thin) — only when you need a broader cup map; do **not** load huge generated manuals.
 - **`shipstream-clickup`** (in the ShipStream repo) — workspace identifiers: custom field IDs, option IDs, task type IDs, team member user IDs.
 
 **Prerequisite:** `cup auth` must return an authenticated user. If it fails, halt and tell the user to run `cup init` to configure their API token.
