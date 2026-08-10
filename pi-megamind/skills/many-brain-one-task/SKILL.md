@@ -40,10 +40,12 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id> --timeout-ms 1200000
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" status --run-dir .tmp/<run-id>
+   # Wall time + agentsview cost rollup (optional but preferred for ultra summaries):
+   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
    ```
    Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`.
    Meta records `actual_harness`, `attach_mode`, `actual_model`. Prefer **run-opencode.ts** (not bare occtl) unless harness is explicitly `occtl`.
-6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`.
+6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`.
 
 ## OpenCode reliability (hard)
 

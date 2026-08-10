@@ -517,7 +517,14 @@ Read results only from the persisted files under `.tmp/<run-id>/results/`; this 
 
 **Thin `.out` recovery (OpenCode):** if `.out` is short / lacks task markers but `.session` (or `<out>.session`) exists, try `occtl last <session> --text-only` (or full messages) before retrying or marking incomplete. If recovery yields a rich body, write it to the slot `.out` (or `.recovered.out` and update meta) and count the slot complete.
 
-Write `run-summary.json` with participant outcomes, planned vs actual models, prompt/output paths, candidate counts, reassignments, clobber/recovery events, and any task-specific validation results. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models, and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
+Write `run-summary.json` with participant outcomes, planned vs actual models, prompt/output paths, candidate counts, reassignments, clobber/recovery events, and any task-specific validation results. Prefer including per-model wall time and cost via the bundled helper:
+
+```bash
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
+# → .tmp/<run-id>/agentsview-usage.json  (also: agentsview-usage.ts)
+```
+
+It reads meta + `.session` sidecars, queries `agentsview session usage`, rediscovers OpenCode sessions by structured title prefix (`first_message`), and rolls up wall/cost by model. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models (candidates / confirmed / rejected / unique / shared / precision / wall / cost), and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
 
 # Caveats
 

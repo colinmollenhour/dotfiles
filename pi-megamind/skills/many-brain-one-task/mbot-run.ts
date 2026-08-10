@@ -18,6 +18,7 @@
  *   bun mbot-run.ts harvest --run-dir .tmp/ultra-N
  *   bun mbot-run.ts status --run-dir .tmp/ultra-N
  *   bun mbot-run.ts barrier --run-dir .tmp/ultra-N [--timeout-ms 1200000]
+ *   bun mbot-run.ts usage --run-dir .tmp/ultra-N [--title-prefix P] [--since 14d]
  *
  * Plan JSON:
  * {
@@ -1198,6 +1199,7 @@ if (!command || command === "-h" || command === "--help") {
   mbot-run.ts harvest --run-dir <dir>
   mbot-run.ts status --run-dir <dir>
   mbot-run.ts barrier --run-dir <dir> [--timeout-ms N] [--poll-ms N]
+  mbot-run.ts usage --run-dir <dir> [--title-prefix P] [--since 14d] [--include-claude-children] [--parent-session-id ID] [--out path]
 `)
   process.exit(command ? 0 : 2)
 }
@@ -1214,6 +1216,12 @@ const { values } = parseArgs({
     password: { type: "string" },
     "timeout-ms": { type: "string" },
     "poll-ms": { type: "string" },
+    "title-prefix": { type: "string" },
+    since: { type: "string" },
+    out: { type: "string" },
+    "include-claude-children": { type: "boolean" },
+    "parent-session-id": { type: "string", multiple: true },
+    "no-agentsview": { type: "boolean" },
   },
 }) as {
   values: {
@@ -1225,7 +1233,40 @@ const { values } = parseArgs({
     password?: string
     "timeout-ms"?: string
     "poll-ms"?: string
+    "title-prefix"?: string
+    since?: string
+    out?: string
+    "include-claude-children"?: boolean
+    "parent-session-id"?: string | string[]
+    "no-agentsview"?: boolean
   }
+}
+
+const AGENTSVIEW_USAGE = join(SCRIPT_DIR, "agentsview-usage.ts")
+
+function cmdUsage(opts: {
+  runDir: string
+  titlePrefix?: string
+  since?: string
+  out?: string
+  includeClaudeChildren?: boolean
+  parentSessionIds?: string[]
+  noAgentsview?: boolean
+}): void {
+  const args = [AGENTSVIEW_USAGE, "--run-dir", opts.runDir]
+  if (opts.titlePrefix) args.push("--title-prefix", opts.titlePrefix)
+  if (opts.since) args.push("--since", opts.since)
+  if (opts.out) args.push("--out", opts.out)
+  if (opts.includeClaudeChildren) args.push("--include-claude-children")
+  for (const id of opts.parentSessionIds || []) {
+    args.push("--parent-session-id", id)
+  }
+  if (opts.noAgentsview) args.push("--no-agentsview")
+  const r = spawnSync("bun", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "inherit", "inherit"],
+  })
+  process.exit(r.status ?? 1)
 }
 
 if (command === "init") {
@@ -1255,6 +1296,19 @@ if (command === "init") {
   const timeoutMs = values["timeout-ms"] ? Number(values["timeout-ms"]) : DEFAULT_SLOT_TIMEOUT_MS
   const pollMs = values["poll-ms"] ? Number(values["poll-ms"]) : 5000
   await cmdBarrier(values["run-dir"], timeoutMs, pollMs)
+} else if (command === "usage") {
+  if (!values["run-dir"]) die("--run-dir is required")
+  const p = values["parent-session-id"]
+  const parentSessionIds = Array.isArray(p) ? p : p ? [p] : []
+  cmdUsage({
+    runDir: values["run-dir"],
+    titlePrefix: values["title-prefix"],
+    since: values.since,
+    out: values.out,
+    includeClaudeChildren: Boolean(values["include-claude-children"]),
+    parentSessionIds,
+    noAgentsview: Boolean(values["no-agentsview"]),
+  })
 } else {
   die(`unknown command: ${command}`)
 }

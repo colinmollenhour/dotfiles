@@ -1,5 +1,5 @@
 ---
-allowed-tools: Read, Write, Glob, Grep, Agent, Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which *), Bash(mkdir *), Bash(cp *), Bash(wc *), Bash(bun *), Bash(occtl *), Bash(botctl *), Bash(claude *), Bash(grok *), Bash(codex *), mcp__github_inline_comment__create_inline_comment
+allowed-tools: Read, Write, Glob, Grep, Agent, Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which *), Bash(mkdir *), Bash(cp *), Bash(wc *), Bash(bun *), Bash(occtl *), Bash(botctl *), Bash(claude *), Bash(grok *), Bash(codex *), Bash(agentsview *), Bash(timeout *), mcp__github_inline_comment__create_inline_comment
 description: Multi-model, repository-aware bug review with focused discovery, evidence validation, and convergence rounds
 argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [--re-review] [--max-rounds=N] [--no-post] [--no-summary]"
 ---
@@ -31,6 +31,7 @@ Resolve `CLAUDE_SKILL_DIR` to the installed skill roots (`~/.claude/skills/...` 
 | Launch batch | `bun …/many-brain-one-task/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (`concurrency` default 3 on attach) |
 | Fail-closed wait | `bun …/mbot-run.ts barrier --run-dir .tmp/ultra-N` — **never** `until test -s empty.out` |
 | Harvest | `bun …/many-brain-one-task/mbot-run.ts harvest --run-dir .tmp/ultra-N` |
+| Usage (wall + cost) | `bun …/many-brain-one-task/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) — separates **parent** orchestrator vs **slice** participants in `by_role` |
 
 OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang.
 
@@ -55,7 +56,7 @@ Task type `code-review`. Profile: user `--profile X`, else `code-review.md`; Sea
 ### Allocation
 
 - `state` / `contracts` / `failure`: full participants × each bucket  
-- `craft`: one participant (Claude/Opus slot; else profile backup) per bucket  
+- `craft`: one participant (Grok slot; else Claude/Opus slot, else profile backup) per bucket — Grok carries the fewest discovery threads in the default lineup and is fast enough that the extra per-bucket thread does not extend wall-clock  
 - `merits`: full participants, **once**, whole-change (no prior review comments in input)  
 - `integration`: full participants, whole-change  
 - Thread budget: `((3 × participants) + 1) × buckets` + merits fan-out + integration fan-out  
@@ -147,15 +148,89 @@ Never reject for single-model or lack of consensus. Slot-keyed validator outs; r
 
 ### 9. Summary artifacts
 
-Write `prepared-summary.md` + `run-summary.json` under the run dir before declaring complete. Recompute tables from `results/*.out` + `meta.actual_model`. Include per-agent / per-role / per-round tables, merits heading, rejected register (≤12), open questions, run accounting. Skip if `--no-summary`.
+Skip if `--no-summary`. Before declaring complete, write both artifacts under the run dir and make them agree with `results/*.out` + `*.meta.json`:
 
-Publication headings (verbatim):
+1. `prepared-summary.md` — full summary body (every comparison/severity table + Merits / Rejected / Open questions / Gate). In `--no-post`, display this body; do not replace it with a narrative-only recap.
+2. `run-summary.json` — machine-readable accounting (see fields below).
+
+Recompute every tally from disk (`rg '^VERDICT:'` / task markers + `meta.actual_model`). Never trust hand-carried chat tallies. Attribute via `meta.actual_model` (planned→actual reassignments are scored to the actual performer).
+
+#### Required comparison tables (verbatim section titles)
+
+**## Model comparison** (per `actual_model` / display name; one row per participant):
+
+| Column | Definition |
+|---|---|
+| Candidates | Distinct candidates emitted |
+| Confirmed | Candidates confirmed by validation |
+| Rejected | Candidates disproved |
+| Unresolved | Candidates lacking enough evidence |
+| Unique confirmed | Confirmed issues found only by this agent |
+| Shared confirmed | Confirmed issues also found by another agent |
+| Precision | `confirmed / (confirmed + rejected)`, or `—` when denominator is 0 |
+| Wall time | Sum of slot durations for this agent (`ended_at − started_at` from meta; see wall-time rules) |
+| Cost | Sum of agentsview session costs for this agent’s slots (USD); `—` when unavailable |
+| Peak ctx (max / avg) | Max and mean `peak_context_tokens` across that agent’s matched sessions (from agentsview) |
+| Compactions | Sum of `compaction_count` (and note mid-task if non-zero) across matched sessions |
+
+Also include **## Role comparison** (candidates / confirmed / rejected / unresolved / unique-to-role) and **## Per-round** (new candidates / new confirmed / rejected / unresolved). Add **Posted findings by severity** when posting.
+
+Publication headings (verbatim, no numeric prefixes; merits verdict on the `## Merits — …` line):
 
 ```text
 ## Merits — <verdict>
 ## Rejected on validation — recorded so they are not re-raised
 ## Open questions
 ```
+
+Merits: ≤3 items, one paragraph each; on split verdicts use the least favourable and report the split. Rejected register: ≤12 rows, only re-raise-worthy claims with concrete refutation; call out invented symbols/lines. Open questions: one line per unresolved candidate that needs a missing instrument.
+
+#### Wall time
+
+- Prefer `meta.started_at` / `meta.ended_at` (or `completed_at`) per slot. Duration = end − start.
+- If meta lacks times, use agentsview `started_at` / `ended_at` for the matched session.
+- Report **per-agent wall** (sum of that agent’s slot durations — concurrent slots sum; this is agent-minutes, not calendar span) and **run wall** (calendar: earliest slot start → latest slot end).
+- Also note threads that hit the profile wall-clock / exit 124 separately (timeouts ≠ wall column).
+
+#### Cost + wall via agentsview (required when the CLI is available)
+
+Do **not** hand-roll jq loops or trust OpenCode UI `$0.0000` session.cost. Use the bundled helper (meta + `.session` sidecars + title rediscovery + optional Claude children):
+
+```bash
+bun …/many-brain-one-task/mbot-run.ts usage --run-dir .tmp/ultra-N
+# optional: --title-prefix 'ultra|shipstream/server|!2783' --since 14d --include-claude-children
+# writes .tmp/ultra-N/agentsview-usage.json and prints the same JSON on stdout
+```
+
+The helper resolves session ids from `results/*.meta.json` / `*.out.session`, normalizes `ses_…` → `opencode:ses_…`, calls `agentsview session usage` + `session get`, rediscovers OpenCode sessions whose `first_message` starts with the structured title prefix, and rolls up per-slot / per-model **wall, cost, peak context, and compactions**. Fold `totals` and `by_model` into `run-summary.json` (`cost.*`, `wall.*`, `peak_context_*`, `compaction_*`). Mark unmatched slots explicitly rather than inventing zeros. If agentsview is missing, pass `--no-agentsview` (wall from meta only) or accept `cost_source: unavailable` — do not block publication solely on cost.
+
+Context signals (from agentsview when matched) — **always separate parent vs slice** (same model family can be both the orchestrator and a participant):
+
+- `by_role.parent` — orchestrator session(s): peak context + compaction counts answer “did the parent drown in context?”
+- `by_role.slice` — participant threads only: peak min/avg/max answer “are slices too big or too small?”
+- `by_model_slices` — per-model rollup with parents excluded (so Opus parent does not inflate Opus slice peaks)
+- `parents[]` / `slices[]` — raw rows
+
+Call out under run accounting:
+
+1. **Parent:** if `compaction_count`/`mid_task_compaction_count` > 0 or peak ≥ ~200k — control plane is context-stressed; trust disk artifacts over chat memory.  
+2. **Slices:** peak max ≥ ~250k → packs too large; peak avg < ~40k and max < ~60k → possibly under-fed; mid-range → size OK.
+
+#### Run accounting (in prepared-summary + run-summary.json)
+
+- Resolved model IDs, providers, harnesses, reasoning variants (planned → actual when reassigned)
+- Threads: planned primary slots / completed / retried / timed out (exit 124) / never started / backups used
+- Wall: run calendar span + per-agent agent-minutes
+- Cost: total USD + per-model + session match rate (agentsview)
+- Peak context: run max/avg + per-model max/avg; flag models that compacted mid-task
+- Compactions: total + mid-task counts per model (from agentsview `session get`)
+- Distinct `--out` paths and any clobber/recovery/remap events
+
+`run-summary.json` must also record: `buckets`, `participants`, `bucket_slots = buckets × ((3 × participants) + 1)`, `merits_slots`, `integration_slots`, `planned_primary_slots`, with retries/timeouts/incomplete/auxiliary slots counted separately so they do not inflate the planned primary total.
+
+**Scoring hygiene:** exit 124 with a complete `.out` = completed; re-stat before marking incomplete; retry + original both score if both rich; self-duplicates of an already-posted finding affect thread counts only, not Unique/Shared.
+
+When posting the summary comment, include the Model comparison table (with wall + cost columns) and a short run-accounting note under it — not a prose-only recap.
 
 ### 10. Post or display
 
@@ -179,7 +254,9 @@ Apply `:Reviewed-By-AI-Ultra` after post (not in git-diff / cancel).
 
 ## Notes
 
-- Dependencies: `gh` or `glab`, `jq`, `git`, `bun`  
+- Dependencies: `gh` or `glab`, `jq`, `git`, `bun`; optional `agentsview` for per-session cost/wall (preferred when present)
 - Create a todo list before starting  
 - Ultra and `/colin-review` are independent comment streams  
 - Benchmark with pinned base/head snapshots; never claim improvement from unvalidated finding count alone  
+- Structured OpenCode `--title` (`ultra|…`) is required so agentsview can re-find sessions when meta.session_id is missing  
+
