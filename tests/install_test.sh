@@ -56,26 +56,28 @@ home="$TEST_ROOT/dotfiles-home"
 mkdir -p "$home"
 
 output="$(run_install "$home" --dotfiles --no-input --dry-run --quiet)"
-assert_contains "$output" "Files that would be written (12):"
-assert_contains "$output" "Would create: 12"
+assert_contains "$output" "Files that would be written (13):"
+assert_contains "$output" "Would create: 13"
 assert_file_missing "$home/.bashrc.colin"
 assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
 
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
-assert_contains "$output" "Files written (12):"
-assert_contains "$output" "Created: 12"
+assert_contains "$output" "Files written (13):"
+assert_contains "$output" "Created: 13"
 assert_contains "$output" "Replaced: 0"
+assert_files_equal "$ROOT_DIR/.paseo/orchestration-preferences.json" \
+  "$home/.paseo/orchestration-preferences.json"
 
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Files written (0):"
-assert_contains "$output" "Unchanged (same hash and mtime): 12"
+assert_contains "$output" "Unchanged (same hash and mtime): 13"
 assert_contains "$output" "Replaced: 0"
 
 touch -d '2035-01-01 00:00:00 UTC' "$home/.config/starship.toml"
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Files written (1):"
 assert_contains "$output" "$home/.config/starship.toml"
-assert_contains "$output" "Unchanged (same hash and mtime): 11"
+assert_contains "$output" "Unchanged (same hash and mtime): 12"
 assert_contains "$output" "Replaced: 1"
 
 touch -d '2035-01-01 00:00:00 UTC' "$home/.config/docker-fzf.bash"
@@ -88,7 +90,7 @@ printf '\n# local customization\n' >> "$home/.config/starship.toml"
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Skipping file modified since the last install: $home/.config/starship.toml"
 assert_contains "$output" "Files written (0):"
-assert_contains "$output" "Unchanged (same hash and mtime): 11"
+assert_contains "$output" "Unchanged (same hash and mtime): 12"
 assert_contains "$output" "Replaced: 0"
 assert_contains "$(<"$home/.config/starship.toml")" "# local customization"
 
@@ -101,6 +103,7 @@ output="$(run_uninstall "$home" --dotfiles --bashrc --gitconfig --force --no-inp
 assert_contains "$output" "Files removed ("
 assert_file_missing "$home/.bashrc.colin"
 assert_file_missing "$home/.gitconfig.colin"
+assert_file_missing "$home/.paseo/orchestration-preferences.json"
 assert_file_missing "$home/.bashrc"
 assert_file_missing "$home/.gitconfig"
 assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
@@ -163,4 +166,3 @@ assert_file_missing "$all_home/.opencode"
 assert_file_missing "$all_home/.local/share/colin-dotfiles/manifest"
 
 printf 'install.sh and uninstall.sh regression tests passed\n'
-
