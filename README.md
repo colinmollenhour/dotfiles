@@ -462,6 +462,7 @@ Sorted roughly by capability:
 | `colin-mbot-grok` | xAI Grok 4.6 (OpenCode fallback; prefer `grok` CLI when available) |
 | `colin-mbot-sonnet` | Anthropic Claude Sonnet 5 |
 | `colin-mbot-glm` | Zhipu GLM 5.2 |
+| `colin-mbot-gemini-flash` | Gemini 3.7 Flash (OpenRouter) |
 | `colin-mbot-gemini-pro` | Gemini 3.1 Pro (OpenRouter) |
 | `colin-mbot-gemini-pro-zen` | Gemini 3.1 Pro through OpenCode Zen |
 | `colin-mbot-qwen` | Alibaba Qwen 3.8 Max |
