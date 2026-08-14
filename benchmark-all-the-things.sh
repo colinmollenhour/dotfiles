@@ -625,16 +625,23 @@ run_logged() {
   return "$rc"
 }
 
+# Match an lscpu-style "Key: value" line by literal field name (the text
+# before the first colon). A name like "L1d" also matches "L1d cache".
+# Do not pass regex here: mawk warns on \( when the pattern is set via -v.
 awk_first() {
-  local file="$1" pattern="$2" field="${3:-2}"
+  local file="$1" label="$2"
   [[ -f "$file" ]] || { printf ''; return; }
-  awk -F: -v pat="$pattern" -v f="$field" '
-    $0 ~ pat {
-      val = $0
-      sub(/^[^:]+:[[:space:]]*/, "", val)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
-      print val
-      exit
+  awk -F: -v label="$label" '
+    {
+      key = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+      if (key == label || substr(key, 1, length(label) + 1) == label " ") {
+        val = $0
+        sub(/^[^:]+:[[:space:]]*/, "", val)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+        print val
+        exit
+      }
     }
   ' "$file"
 }
@@ -748,21 +755,21 @@ collect_cpu() {
     run_root dmidecode -t processor > "$RAW/dmidecode-processor.txt" 2>&1 || true
   fi
 
-  model="$(awk_first "$RAW/lscpu.txt" '^Model name')"
+  model="$(awk_first "$RAW/lscpu.txt" 'Model name')"
   [[ -n "$model" ]] || model="$(awk -F: '/model name/ { gsub(/^[[:space:]]+/, "", $2); print $2; exit }' /proc/cpuinfo)"
-  cores="$(awk_first "$RAW/lscpu.txt" '^Core\(s\) per socket')"
-  sockets="$(awk_first "$RAW/lscpu.txt" '^Socket\(s\)')"
-  threads="$(awk_first "$RAW/lscpu.txt" '^CPU\(s\):')"
+  cores="$(awk_first "$RAW/lscpu.txt" 'Core(s) per socket')"
+  sockets="$(awk_first "$RAW/lscpu.txt" 'Socket(s)')"
+  threads="$(awk_first "$RAW/lscpu.txt" 'CPU(s)')"
   [[ -n "$threads" ]] || threads="$(nproc 2>/dev/null || echo 1)"
-  mhz="$(awk_first "$RAW/lscpu.txt" '^CPU MHz')"
-  maxmhz="$(awk_first "$RAW/lscpu.txt" '^CPU max MHz')"
-  virt="$(awk_first "$RAW/lscpu.txt" '^Virtualization:')"
-  flags="$(awk_first "$RAW/lscpu.txt" '^Flags')"
-  [[ -n "$flags" ]] || flags="$(awk '/^flags/ {print; exit}' /proc/cpuinfo)"
-  l1d="$(awk_first "$RAW/lscpu.txt" '^L1d')"
-  l1i="$(awk_first "$RAW/lscpu.txt" '^L1i')"
-  l2="$(awk_first "$RAW/lscpu.txt" '^L2')"
-  l3="$(awk_first "$RAW/lscpu.txt" '^L3')"
+  mhz="$(awk_first "$RAW/lscpu.txt" 'CPU MHz')"
+  maxmhz="$(awk_first "$RAW/lscpu.txt" 'CPU max MHz')"
+  virt="$(awk_first "$RAW/lscpu.txt" 'Virtualization')"
+  flags="$(awk_first "$RAW/lscpu.txt" 'Flags')"
+  [[ -n "$flags" ]] || flags="$(awk '/^flags/ {print; exit }' /proc/cpuinfo)"
+  l1d="$(awk_first "$RAW/lscpu.txt" 'L1d')"
+  l1i="$(awk_first "$RAW/lscpu.txt" 'L1i')"
+  l2="$(awk_first "$RAW/lscpu.txt" 'L2')"
+  l3="$(awk_first "$RAW/lscpu.txt" 'L3')"
 
   if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]]; then
     governor="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true)"
