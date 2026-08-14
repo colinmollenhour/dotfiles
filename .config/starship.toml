@@ -31,11 +31,12 @@ modified = "[פֿ$count ](yellow)"
 staged = '[$count ](green)'
 renamed = "$count "
 untracked = "✨ $count "
-style = "white dimmed"
+# Default fg, not white/bright-black: those vanish on light backgrounds.
+style = "dimmed"
 
 [git_state]
 format = '\([$state( $progress_current/$progress_total)]($style)\) '
-style = "bright-black"
+style = "dimmed"
 
 #[custom.bash]
 #command = "echo 🚀"
