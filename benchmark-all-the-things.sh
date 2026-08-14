@@ -9,7 +9,7 @@
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # --- defaults -------------------------------------------------------------
 OUTPUT_DIR=""
@@ -33,6 +33,7 @@ SKIP_NET=false
 SKIP_CRYPTO=false
 IPERF_HOST=""
 COMPARE_DIRS=()
+REPLAY_DIR=""
 
 SUDO=""
 TMPDIR_BENCH=""
@@ -96,12 +97,14 @@ die() {
 show_help() {
   cat << EOF
 Inventory a server and run comparable CPU, RAM, disk, and network
-benchmarks. Writes a Markdown report plus a scores table you can
+benchmarks. Prints a human verdict (healthy / mixed / broken) with
+expected ranges, and writes a Markdown report plus scores you can
 diff across vendors.
 
 USAGE
   $SCRIPT_NAME [OPTIONS]
   $SCRIPT_NAME --compare DIR [DIR ...]
+  $SCRIPT_NAME --replay DIR
 
 EXAMPLES
   sudo $SCRIPT_NAME
@@ -109,6 +112,7 @@ EXAMPLES
   sudo $SCRIPT_NAME --quick --skip-net
   sudo $SCRIPT_NAME --inventory-only
   $SCRIPT_NAME --compare ./hetzner-ax41 ./ovh-advance-1
+  $SCRIPT_NAME --replay ./hetzner-ax41
 
 OPTIONS
   -o, --output DIR       Report directory (default: ./bench-HOST-TIMESTAMP)
@@ -132,11 +136,13 @@ OPTIONS
   -q, --quiet            Less progress on stderr
       --no-color         Disable color on stderr
       --compare DIR...   Print a comparison table from previous reports
+      --replay DIR       Reprint the human verdict from an existing report
   -h, --help             Show this help
       --version          Show version and exit
 
 REPORT
-  report.md     Human-readable report with hardware, scoreboard, details
+  report.md     Verdict plus hardware, scoreboard, and details
+  verdict.txt   Same rundown printed at the end of a run
   scores.tsv    Stable metrics for --compare / spreadsheets
   hw.tsv        Parsed hardware fields
   raw/          Full tool output (unparsed)
@@ -255,6 +261,74 @@ human_duration() {
   }'
 }
 
+num_lt() { awk -v a="${1:-}" -v b="${2:-}" 'BEGIN { exit !(a+0 < b+0) }'; }
+num_ge() { awk -v a="${1:-}" -v b="${2:-}" 'BEGIN { exit !(a+0 >= b+0) }'; }
+num_gt() { awk -v a="${1:-}" -v b="${2:-}" 'BEGIN { exit !(a+0 > b+0) }'; }
+
+# higher-is-better bands: BAD < t_bad ≤ WEAK < t_weak ≤ OK < t_ok ≤ GOOD < t_good ≤ EXCELLENT
+rate_higher() {
+  local v="$1" t_bad="$2" t_weak="$3" t_ok="$4" t_good="$5"
+  is_number "$v" || { printf 'skip'; return; }
+  if num_lt "$v" "$t_bad"; then printf 'BAD'
+  elif num_lt "$v" "$t_weak"; then printf 'WEAK'
+  elif num_lt "$v" "$t_ok"; then printf 'OK'
+  elif num_lt "$v" "$t_good"; then printf 'GOOD'
+  else printf 'EXCELLENT'
+  fi
+}
+
+# lower-is-better bands: EXCELLENT ≤ t_ex ≤ GOOD ≤ t_good ≤ OK ≤ t_ok ≤ WEAK ≤ t_weak < BAD
+rate_lower() {
+  local v="$1" t_ex="$2" t_good="$3" t_ok="$4" t_weak="$5"
+  is_number "$v" || { printf 'skip'; return; }
+  if num_ge "$t_ex" "$v"; then printf 'EXCELLENT'
+  elif num_ge "$t_good" "$v"; then printf 'GOOD'
+  elif num_ge "$t_ok" "$v"; then printf 'OK'
+  elif num_ge "$t_weak" "$v"; then printf 'WEAK'
+  else printf 'BAD'
+  fi
+}
+
+human_link_speed() {
+  local s="${1-}"
+  [[ -n "$s" && "$s" != "-1" ]] || { printf ''; return; }
+  awk -v s="$s" 'BEGIN {
+    gsub(/[[:space:]]/, "", s)
+    sl = tolower(s)
+    n = sl + 0
+    if (n <= 0) { print s; exit }
+    if (sl ~ /gb/) { printf "%.0f GbE", n; exit }
+    if (n >= 1000) { printf "%.0f GbE", n / 1000; exit }
+    printf "%.0f Mb/s", n
+  }'
+}
+
+fmt_iops() {
+  local n="${1-}"
+  is_number "$n" || { printf '%s' "$n"; return; }
+  awk -v n="$n" 'BEGIN {
+    if (n >= 1000000) printf "%.2fM", n / 1000000
+    else if (n >= 10000) printf "%.0fk", n / 1000
+    else if (n >= 1000) printf "%.1fk", n / 1000
+    else printf "%.0f", n
+  }'
+}
+
+fmt_mib_s() {
+  local n="${1-}"
+  is_number "$n" || { printf '%s' "$n"; return; }
+  awk -v n="$n" 'BEGIN {
+    if (n >= 1024) printf "%.1f GiB/s", n / 1024
+    else printf "%.0f MiB/s", n
+  }'
+}
+
+fmt_mib_as_gib() {
+  local n="${1-}"
+  is_number "$n" || { printf '%s MiB' "$n"; return; }
+  awk -v n="$n" 'BEGIN { printf "%.1f GiB", n / 1024 }'
+}
+
 pkg_installed() {
   dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'
 }
@@ -344,6 +418,9 @@ parse_args() {
         COMPARE_DIRS=("$@")
         return 0
         ;;
+      --replay)
+        [[ $# -ge 2 ]] || die "$1 requires a report directory"
+        REPLAY_DIR="$2"; shift 2 ;;
       --)
         shift
         [[ $# -eq 0 ]] || die "Unexpected positional argument: $1"
@@ -977,6 +1054,7 @@ collect_network_hw() {
     if [[ -L /sys/class/net/$iface/device ]]; then
       pci="$(basename "$(readlink -f "/sys/class/net/$iface/device")" 2>/dev/null || true)"
     fi
+    speed="$(human_link_speed "$speed")"
     printf '%s\t%s\t%s\t%s\n' "$iface" "${speed:-}" "${driver:-}" "${pci:-}" >> "$RAW/nics.tsv"
   done
   hw "net.virtual_ifaces_omitted" "$skipped_nics"
@@ -1464,6 +1542,490 @@ run_sanity() {
   fi
 }
 
+# --- human verdict --------------------------------------------------------
+VERDICT_BAD=0
+VERDICT_WEAK=0
+VERDICT_OK=0
+VERDICT_GOOD=0
+VERDICT_EXCELLENT=0
+
+disk_media_label() {
+  case "$(disk_media)" in
+    nvme) printf 'NVMe' ;;
+    ssd) printf 'SATA SSD' ;;
+    hdd) printf 'HDD' ;;
+    *) printf 'disk' ;;
+  esac
+}
+
+disk_media() {
+  local f="${RAW:-}/disks.tsv" summary
+  if [[ -f "$f" ]]; then
+    if awk -F '\t' '$6=="nvme" { found=1; exit } END { exit !found }' "$f"; then
+      printf 'nvme'; return
+    fi
+    if awk -F '\t' '$5=="0" { found=1; exit } END { exit !found }' "$f"; then
+      printf 'ssd'; return
+    fi
+    if awk -F '\t' '$5=="1" { found=1; exit } END { exit !found }' "$f"; then
+      printf 'hdd'; return
+    fi
+  fi
+  summary="$(hw_get disk.summary)"
+  case "$summary" in
+    *nvme*|*NVMe*|*NVME*) printf 'nvme' ;;
+    *) printf 'unknown' ;;
+  esac
+}
+
+describe_virt() {
+  local virt
+  virt="$(hw_get virt)"
+  case "$virt" in
+    none|"") printf 'a dedicated server (no hypervisor)' ;;
+    kvm|qemu) printf 'a KVM/QEMU virtual machine' ;;
+    vmware) printf 'a VMware guest' ;;
+    microsoft|hyperv) printf 'a Hyper-V guest' ;;
+    xen) printf 'a Xen guest' ;;
+    docker|podman|lxc|lxd) printf 'a container (numbers may reflect the host)' ;;
+    *) printf 'a %s guest' "$virt" ;;
+  esac
+}
+
+nic_blurb() {
+  local f="${RAW:-}/nics.tsv"
+  [[ -f "$f" ]] || { printf ''; return; }
+  awk -F '\t' '
+    $1 != "" {
+      if ($2 != "") printf "%s%s %s", (n++ ? ", " : ""), $1, $2
+      else printf "%s%s", (n++ ? ", " : ""), $1
+    }
+  ' "$f"
+}
+
+max_nic_gbe() {
+  local f="${RAW:-}/nics.tsv"
+  [[ -f "$f" ]] || { printf '0'; return; }
+  awk -F '\t' '
+    {
+      sl = tolower($2); n = sl + 0
+      if (sl ~ /gb/) g = n
+      else if (n >= 1000) g = n / 1000
+      else g = 0
+      if (g > max) max = g
+    }
+    END { printf "%.0f", max + 0 }
+  ' "$f"
+}
+
+verdict_tally() {
+  case "$1" in
+    BAD) VERDICT_BAD=$((VERDICT_BAD + 1)) ;;
+    WEAK) VERDICT_WEAK=$((VERDICT_WEAK + 1)) ;;
+    OK) VERDICT_OK=$((VERDICT_OK + 1)) ;;
+    GOOD) VERDICT_GOOD=$((VERDICT_GOOD + 1)) ;;
+    EXCELLENT) VERDICT_EXCELLENT=$((VERDICT_EXCELLENT + 1)) ;;
+  esac
+}
+
+write_verdict() {
+  local rows="${OUTPUT_DIR}/verdict-rows.tsv"
+  local notes="${OUTPUT_DIR}/verdict-notes.txt"
+  local text="${OUTPUT_DIR}/verdict.txt"
+  : > "$rows"
+  : > "$notes"
+  VERDICT_BAD=0; VERDICT_WEAK=0; VERDICT_OK=0; VERDICT_GOOD=0; VERDICT_EXCELLENT=0
+  [[ -z "$LABEL" ]] && LABEL="$(hw_get label)"
+  [[ -z "$VENDOR" ]] && VENDOR="$(hw_get vendor)"
+
+  local cpu threads cores sockets maxmhz gov virt ram_mib ram_type ram_speed ram_mods
+  local disk_s media host os product vendor_s
+  cpu="$(hw_get cpu.model)"
+  threads="$(hw_get cpu.threads)"
+  cores="$(hw_get cpu.cores_per_socket)"
+  sockets="$(hw_get cpu.sockets)"
+  maxmhz="$(hw_get cpu.max_mhz)"
+  gov="$(hw_get cpu.governor)"
+  virt="$(hw_get virt)"
+  ram_mib="$(hw_get ram.total_mib)"
+  ram_type="$(hw_get ram.type)"
+  ram_speed="$(hw_get ram.speed)"
+  ram_mods="$(hw_get ram.modules)"
+  disk_s="$(hw_get disk.summary)"
+  media="$(disk_media)"
+  host="$(hw_get hostname)"
+  os="$(hw_get os)"
+  product="$(hw_get dmi.product)"
+  vendor_s="$(hw_get vendor)"
+
+  local core_total=""
+  if is_number "$cores" && is_number "$sockets"; then
+    core_total="$(awk -v c="$cores" -v s="$sockets" 'BEGIN { printf "%.0f", c*s }')"
+  elif is_number "$cores" && [[ -z "$sockets" || "$sockets" == "1" ]]; then
+    core_total="$cores"
+  fi
+
+  local cpu_s="$cpu"
+  if [[ -n "$core_total" && -n "$threads" ]]; then
+    cpu_s="${cpu_s}  ·  ${core_total}c / ${threads}t"
+  elif [[ -n "$threads" ]]; then
+    cpu_s="${cpu_s}  ·  ${threads} threads"
+  fi
+  if is_number "$maxmhz"; then
+    cpu_s="${cpu_s}  ·  max $(fmt0 "$maxmhz") MHz"
+  fi
+  if [[ -n "$gov" ]]; then
+    cpu_s="${cpu_s}  ·  ${gov}"
+  fi
+
+  local ram_s=""
+  if is_number "$ram_mib"; then
+    ram_s="$(fmt_mib_as_gib "$ram_mib")"
+  fi
+  [[ -n "$ram_type" ]] && ram_s="${ram_s} ${ram_type}"
+  [[ -n "$ram_speed" ]] && ram_s="${ram_s} ${ram_speed}"
+  if is_number "$ram_mods" && [[ "$ram_mods" != "0" ]]; then
+    ram_s="${ram_s}  ·  ${ram_mods} modules"
+  fi
+  ram_s="$(trim "$ram_s")"
+
+  local net_s
+  net_s="$(nic_blurb)"
+
+  local v cs cm steal load1 seqw seqr rr rr_lat sw sr down up pingg
+  cs="$(score_get cpu.single.eps)"
+  cm="$(score_get cpu.multi.eps)"
+  steal="$(score_get host.steal_pct)"
+  load1="$(score_get host.load1)"
+  seqw="$(score_get mem.seq_write_1m)"
+  seqr="$(score_get mem.seq_read_1m)"
+  rr="$(score_get disk.4k_randread_iops)"
+  rr_lat="$(score_get disk.4k_randread_lat_avg_us)"
+  sw="$(score_get disk.seq_write_1m_mib_s)"
+  sr="$(score_get disk.seq_read_1m_mib_s)"
+  down="$(score_get net.speedtest_down_mbps)"
+  up="$(score_get net.speedtest_up_mbps)"
+  pingg="$(score_get net.ping_cf_avg_ms)"
+
+  # CPU single
+  v="$(rate_higher "$cs" 150 800 2000 3500)"
+  if [[ "$v" != "skip" ]]; then
+    local cs_read="Mid of the usual 800–4500 events/s band for modern server CPUs."
+    case "$v" in
+      EXCELLENT) cs_read="High single-thread score — desktop-class or a strongly boosting server chip." ;;
+      GOOD) cs_read="Healthy single-thread score. Normal for a modern EPYC/Xeon, not a high-clock desktop chip." ;;
+      OK) cs_read="Usable, but on the soft side of the usual 800–4500 events/s band." ;;
+      WEAK) cs_read="Below what a current server CPU usually does. Check governor, steal, and whether the box is already busy." ;;
+      BAD) cs_read="Single-thread CPU looks broken or heavily throttled." ;;
+    esac
+    verdict_tally "$v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "CPU single" "$v" "${cs} events/s" "800–4500 events/s" "$cs_read" >> "$rows"
+  fi
+
+  # CPU multi / scaling
+  if is_number "$cs" && is_number "$cm" && is_number "$threads" && num_gt "$cs" 0; then
+    local ratio scale_v scale_read
+    ratio="$(awk -v a="$cm" -v b="$cs" 'BEGIN { printf "%.1f", a/b }')"
+    scale_v="$(rate_higher "$ratio" 1.5 2.5 4 8)"
+    if is_number "$threads" && num_lt "$threads" 8; then
+      # fewer threads: lower the bar (6c/12t ~6.5× is GOOD, not merely OK)
+      scale_v="$(rate_higher "$ratio" 1.2 2 3.5 6)"
+    fi
+    scale_read="About ${ratio}× the 1-thread score on ${threads} threads."
+    if is_number "$core_total"; then
+      scale_read="${scale_read} Normal-ish scaling for ${core_total} cores / ${threads} threads (SMT will not give 1× per thread)."
+    fi
+    case "$scale_v" in
+      BAD|WEAK) scale_read="${scale_read} Scaling looks poor — steal, a busy box, or a thread-limit?" ;;
+    esac
+    verdict_tally "$scale_v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "CPU ${threads}-thread" "$scale_v" "${cm} events/s (${ratio}×)" "scales with cores/threads" "$scale_read" >> "$rows"
+  elif is_number "$cm"; then
+    printf '%s\t%s\t%s\t%s\t%s\n' "CPU multi" "OK" "${cm} events/s" "" "Multi-thread result (no 1-thread score to compare)." >> "$rows"
+    verdict_tally OK
+  fi
+
+  # RAM
+  v="$(rate_higher "$seqw" 800 4000 8000 20000)"
+  if [[ "$v" != "skip" ]]; then
+    local mem_read="Sequential 1M write. Typical dedicated servers land in 8–40 GiB/s."
+    case "$v" in
+      EXCELLENT) mem_read="Top of the usual 8–40 GiB/s band. Memory subsystem is healthy." ;;
+      GOOD) mem_read="Solid sequential memory write. Nothing looks stuck." ;;
+      OK) mem_read="Adequate, a bit soft for modern DDR4/DDR5 dual-channel." ;;
+      WEAK) mem_read="Slow for server RAM. Check if this is a tiny VPS or a ballooned guest." ;;
+      BAD) mem_read="Memory write looks broken or is not real RAM." ;;
+    esac
+    [[ -n "$ram_type" || -n "$ram_speed" ]] && mem_read="${mem_read} (${ram_type:-RAM} ${ram_speed})"
+    is_number "$seqr" && mem_read="${mem_read} Sequential read was $(fmt_mib_s "$seqr")."
+    verdict_tally "$v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "RAM seq write" "$v" "$(fmt_mib_s "$seqw")" "8–40 GiB/s" "$mem_read" >> "$rows"
+  fi
+
+  # Disk — media-aware
+  local rr_bad rr_weak rr_ok rr_good rr_typ sr_bad sr_weak sr_ok sr_good sr_typ
+  case "$media" in
+    nvme)
+      rr_bad=5000; rr_weak=30000; rr_ok=80000; rr_good=200000
+      rr_typ="NVMe typical 50k–600k IOPS"
+      sr_bad=200; sr_weak=800; sr_ok=1500; sr_good=4000
+      sr_typ="NVMe typical 1500–7000 MiB/s"
+      ;;
+    ssd)
+      rr_bad=2000; rr_weak=8000; rr_ok=20000; rr_good=60000
+      rr_typ="SATA SSD typical 10k–100k IOPS"
+      sr_bad=80; sr_weak=200; sr_ok=400; sr_good=520
+      sr_typ="SATA SSD typical 400–550 MiB/s"
+      ;;
+    hdd)
+      rr_bad=40; rr_weak=80; rr_ok=150; rr_good=220
+      rr_typ="HDD typical 80–250 IOPS"
+      sr_bad=30; sr_weak=80; sr_ok=120; sr_good=180
+      sr_typ="HDD typical 80–220 MiB/s"
+      ;;
+    *)
+      rr_bad=400; rr_weak=2000; rr_ok=20000; rr_good=80000
+      rr_typ="SSD/NVMe typical 10k–600k IOPS"
+      sr_bad=40; sr_weak=200; sr_ok=800; sr_good=2000
+      sr_typ="wide range by media"
+      ;;
+  esac
+
+  v="$(rate_higher "$rr" "$rr_bad" "$rr_weak" "$rr_ok" "$rr_good")"
+  if [[ "$v" != "skip" ]]; then
+    local rr_s rr_read
+    rr_s="$(fmt_iops "$rr") IOPS"
+    is_number "$rr_lat" && rr_s="${rr_s} · $(fmt2 "$rr_lat") µs"
+    local media_l
+    media_l="$(disk_media_label)"
+    rr_read="4k random read, one job, queue depth 32 — not a full saturation test."
+    case "$v" in
+      EXCELLENT) rr_read="Excellent ${media_l} random read. Drive is responding normally." ;;
+      GOOD) rr_read="Solid ${media_l} random read. Safe to treat storage as healthy." ;;
+      OK) rr_read="Acceptable ${media_l} random read. Fine for light use; not a speed demon." ;;
+      WEAK) rr_read="Soft for ${media_l}. Check the fio target is a real disk (not tmpfs) and the drive is not already busy." ;;
+      BAD) rr_read="Random read looks like a dying disk, a hung queue, or the test hit a network/fuse mount." ;;
+    esac
+    verdict_tally "$v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "Disk 4k randread" "$v" "$rr_s" "$rr_typ" "$rr_read" >> "$rows"
+  fi
+
+  v="$(rate_higher "$sr" "$sr_bad" "$sr_weak" "$sr_ok" "$sr_good")"
+  if [[ "$v" != "skip" ]]; then
+    local sr_read media_l
+    media_l="$(disk_media_label)"
+    sr_read="1M sequential read."
+    case "$v" in
+      EXCELLENT) sr_read="Excellent sequential read for ${media_l}." ;;
+      GOOD) sr_read="Healthy sequential read for ${media_l}." ;;
+      OK) sr_read="Adequate sequential read for ${media_l}." ;;
+      WEAK) sr_read="Soft sequential read for ${media_l}." ;;
+      BAD) sr_read="Sequential read is HDD-class or stuck." ;;
+    esac
+    verdict_tally "$v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "Disk seq read" "$v" "$(fmt_mib_s "$sr")" "$sr_typ" "$sr_read" >> "$rows"
+  fi
+
+  if is_number "$sw"; then
+    local sw_read="1M sequential write. On NVMe, write is often lower than read."
+    v="$(rate_higher "$sw" "$sr_bad" "$sr_weak" "$sr_ok" "$sr_good")"
+    [[ "$v" == "skip" ]] && v="OK"
+    if [[ "$media" == "nvme" ]] && is_number "$sr" && num_lt "$sw" "$sr"; then
+      sw_read="Write is lower than read — normal for this class of NVMe, not a red flag by itself."
+    fi
+    case "$v" in
+      BAD) sw_read="Sequential write looks broken." ;;
+      WEAK) sw_read="Soft sequential write. Confirm you are not filling the drive or hitting a QLC cache cliff." ;;
+    esac
+    verdict_tally "$v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "Disk seq write" "$v" "$(fmt_mib_s "$sw")" "$sr_typ" "$sw_read" >> "$rows"
+  fi
+
+  # Network
+  v="$(rate_higher "$down" 5 50 200 800)"
+  if [[ "$v" != "skip" ]]; then
+    local net_read net_res nic_g
+    net_res="$(fmt2 "$down") ↓ Mbps"
+    is_number "$up" && net_res="${net_res} / $(fmt2 "$up") ↑ Mbps"
+    is_number "$pingg" && net_res="${net_res}  ·  $(fmt2 "$pingg") ms to 1.1.1.1"
+    nic_g="$(max_nic_gbe)"
+    net_read="This is the internet path (Speedtest), not a LAN iperf."
+    if is_number "$nic_g" && num_ge "$nic_g" 10 && is_number "$down" && num_lt "$down" 2000; then
+      net_read="The NIC is ${nic_g} GbE; this result is the WAN path, not the port."
+    fi
+    if is_number "$down" && is_number "$up" && num_gt "$down" "$(awk -v u="$up" 'BEGIN { print u*2 }')" && num_gt "$down" 200; then
+      net_read="${net_read} Upload is the soft number — plan, peer, or Speedtest server."
+    fi
+    case "$v" in
+      BAD) net_read="Internet download looks broken or firewalled." ;;
+      WEAK) net_read="Very slow WAN. Fine for a tiny VPS plan; odd on a 1+ GbE dedicated box." ;;
+    esac
+    verdict_tally "$v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "Internet" "$v" "$net_res" "depends on the plan" "$net_read" >> "$rows"
+  fi
+
+  v="$(rate_lower "$steal" 0.5 2 8 15)"
+  if [[ "$v" != "skip" ]]; then
+    local st_read="CPU steal from vmstat. Dedicated metal should be ~0."
+    [[ "$virt" == "none" || -z "$virt" ]] || st_read="CPU steal on a guest. A little is normal; double digits means an oversold host."
+    case "$v" in
+      EXCELLENT) st_read="No steal — the CPU is yours." ;;
+      BAD) st_read="Severe steal. Do not use these numbers as a clean baseline." ;;
+      WEAK) st_read="Noticeable steal. Results will bounce; the host is busy." ;;
+    esac
+    verdict_tally "$v"
+    printf '%s\t%s\t%s\t%s\t%s\n' "CPU steal" "$v" "${steal}%" "~0% on metal, <5% on a decent VPS" "$st_read" >> "$rows"
+  fi
+
+  # Notes
+  if [[ "$gov" == "powersave" ]] && is_number "$maxmhz" && num_gt "$maxmhz" 2000; then
+    printf 'CPU governor is %s; it still listed a max of %s MHz, so this is not obviously throttled.\n' \
+      "$gov" "$(fmt0 "$maxmhz")" >> "$notes"
+  elif [[ "$gov" == "powersave" ]]; then
+    printf 'CPU governor is powersave. If single-thread looks soft, try a performance governor and rerun.\n' >> "$notes"
+  fi
+
+  if is_number "$load1" && is_number "$threads" && num_gt "$load1" "$threads"; then
+    printf 'Load average %s is above thread count %s; this run may be noisy.\n' "$load1" "$threads" >> "$notes"
+  fi
+
+  local fstype
+  fstype="$(hw_get disk.test_fstype)"
+  if [[ "$fstype" == "tmpfs" || "$fstype" == "ramfs" ]]; then
+    printf 'Disk tests ran on %s — those numbers are RAM, not a drive.\n' "$fstype" >> "$notes"
+  fi
+
+  case "${vendor_s,,}" in
+    asrock*|asus*|dell*|supermicro*|gigabyte*|lenovo*|hp|hpe|intel*|tyan*|msi*)
+      if [[ -z "$LABEL" ]]; then
+        printf 'Vendor was taken from the motherboard (%s). Pass --vendor and --label for the hoster/SKU on the comparison line.\n' "$vendor_s" >> "$notes"
+      fi
+      ;;
+  esac
+
+  if [[ -z "$ram_type" || -z "$ram_speed" ]]; then
+    if [[ "$virt" != "none" && -n "$virt" ]]; then
+      printf 'DIMM type and clock were not visible. Normal on a VPS.\n' >> "$notes"
+    else
+      printf 'DIMM type and clock were not visible. Rerun as root if this is bare metal.\n' >> "$notes"
+    fi
+  fi
+
+  local rated overall headline
+  rated=$((VERDICT_BAD + VERDICT_WEAK + VERDICT_OK + VERDICT_GOOD + VERDICT_EXCELLENT))
+  if [[ "$rated" -eq 0 ]]; then
+    overall="INVENTORY ONLY"
+    headline="Hardware snapshot only. No benchmarks were graded."
+  elif [[ "$VERDICT_BAD" -gt 0 ]]; then
+    overall="LOOKS BROKEN"
+    headline="Something looks wrong. Do not treat this as a clean baseline until the bad lines are explained."
+  elif [[ "$VERDICT_WEAK" -gt 0 || "${SANITY_FAILS:-0}" -gt 0 ]]; then
+    overall="MIXED"
+    headline="Mostly usable, but one or more results are below what this hardware usually does. Read the weak lines before you trust it."
+  else
+    overall="LOOKS HEALTHY"
+    headline="Safe to put load on this box. Nothing automatic looks slow or broken."
+  fi
+
+  {
+    printf '%s\n' "$overall"
+    printf '%s\n' "$headline"
+    printf '\n'
+    printf 'This is %s.\n' "$(describe_virt)"
+    [[ -n "$cpu_s" ]] && printf '  CPU     %s\n' "$cpu_s"
+    [[ -n "$ram_s" ]] && printf '  RAM     %s\n' "$ram_s"
+    [[ -n "$disk_s" ]] && printf '  Disk    %s\n' "$disk_s"
+    [[ -n "$net_s" ]] && printf '  Net     %s\n' "$net_s"
+    printf '  Host    %s' "${host:-unknown}"
+    [[ -n "$product" ]] && printf '  ·  %s' "$product"
+    [[ -n "$os" ]] && printf '  ·  %s' "$os"
+    if [[ -n "${STARTED_EPOCH:-}" && -n "${FINISHED_EPOCH:-}" ]] && (( FINISHED_EPOCH > STARTED_EPOCH )); then
+      printf '  ·  %s' "$(human_duration $((FINISHED_EPOCH - STARTED_EPOCH)))"
+    fi
+    printf '\n'
+
+    if [[ -s "$rows" ]]; then
+      printf '\nHow it compares (rough bands for this kind of hardware)\n\n'
+      awk -F '\t' '{
+        printf "  %-16s %-10s %s\n" , $1, $2, $3
+        if ($4 != "") printf "  %-16s %s\n", "", $4
+        if ($5 != "") printf "  %-16s %s\n", "", $5
+        printf "\n"
+      }' "$rows"
+    fi
+
+    if [[ -s "$notes" ]]; then
+      printf 'Notes\n'
+      sed 's/^/  · /' "$notes"
+      printf '\n'
+    fi
+
+    if [[ -f "$OUTPUT_DIR/report.md" ]]; then
+      printf 'Full tables: %s/report.md\n' "$OUTPUT_DIR"
+    fi
+  } > "$text"
+
+  printf '%s\n' "$overall" > "${OUTPUT_DIR}/verdict.overall"
+  printf '%s\n' "$headline" > "${OUTPUT_DIR}/verdict.headline"
+}
+
+colorize_verdict() {
+  if [[ ! -t 1 || -z "$C_GREEN" ]]; then
+    cat
+    return
+  fi
+  sed \
+    -e "s/LOOKS HEALTHY/${C_GREEN}${C_BOLD}LOOKS HEALTHY${C_RESET}/g" \
+    -e "s/LOOKS BROKEN/${C_RED}${C_BOLD}LOOKS BROKEN${C_RESET}/g" \
+    -e "s/\bMIXED\b/${C_YELLOW}${C_BOLD}MIXED${C_RESET}/g" \
+    -e "s/INVENTORY ONLY/${C_CYAN}${C_BOLD}INVENTORY ONLY${C_RESET}/g" \
+    -e "s/\bEXCELLENT\b/${C_GREEN}EXCELLENT${C_RESET}/g" \
+    -e "s/\bGOOD\b/${C_GREEN}GOOD${C_RESET}/g" \
+    -e "s/\bWEAK\b/${C_YELLOW}WEAK${C_RESET}/g" \
+    -e "s/\bBAD\b/${C_RED}BAD${C_RESET}/g"
+}
+
+print_verdict() {
+  local f="${OUTPUT_DIR}/verdict.txt"
+  [[ -f "$f" ]] || return 0
+  printf '\n'
+  colorize_verdict < "$f"
+}
+
+write_verdict_markdown() {
+  local rows="${OUTPUT_DIR}/verdict-rows.tsv"
+  local notes="${OUTPUT_DIR}/verdict-notes.txt"
+  local overall headline
+  [[ -f "${OUTPUT_DIR}/verdict.overall" ]] || return 0
+  overall="$(cat "${OUTPUT_DIR}/verdict.overall")"
+  headline="$(cat "${OUTPUT_DIR}/verdict.headline")"
+  rpt "## Verdict"
+  rpt_blank
+  rpt "**${overall}** — ${headline}"
+  rpt_blank
+  rpt "This is $(describe_virt)."
+  rpt_blank
+  rpt "- **CPU:** $(hw_get cpu.model) · $(hw_get cpu.threads) threads · max $(hw_get cpu.max_mhz) MHz"
+  rpt "- **RAM:** $(fmt_mib_as_gib "$(hw_get ram.total_mib)") $(hw_get ram.type) $(hw_get ram.speed)"
+  rpt "- **Disk:** $(hw_get disk.summary)"
+  rpt_blank
+  if [[ -s "$rows" ]]; then
+    rpt "| Area | Grade | Result | Typical | Reading |"
+    rpt "| --- | --- | --- | --- | --- |"
+    awk -F '\t' '{
+      gsub(/\|/, "\\|")
+      printf "| %s | **%s** | %s | %s | %s |\n", $1, $2, $3, $4, $5
+    }' "$rows" >> "$OUTPUT_DIR/report.md"
+    rpt_blank
+  fi
+  if [[ -s "$notes" ]]; then
+    rpt "Notes:"
+    rpt_blank
+    sed 's/^/- /' "$notes" >> "$OUTPUT_DIR/report.md"
+    rpt_blank
+  fi
+}
+
 # --- report ---------------------------------------------------------------
 rpt() { printf '%s\n' "$*" >> "$OUTPUT_DIR/report.md"; }
 
@@ -1510,12 +2072,15 @@ write_report() {
     one="$one · net ${down}/${up} Mbps"
   fi
 
+  write_verdict
+
   rpt "# Server benchmark report"
   rpt_blank
   rpt "\`$one\`"
   rpt_blank
   rpt "Generated by \`${SCRIPT_NAME}\` ${VERSION} on $(date -u -d "@$FINISHED_EPOCH" -Is 2>/dev/null || date -u -Is)."
   rpt_blank
+  write_verdict_markdown
   rpt "## Summary"
   rpt_blank
   rpt "| Field | Value |"
@@ -1729,25 +2294,7 @@ print_cleanup_hint() {
 }
 
 print_scoreboard() {
-  [[ -f "$SCORES_FILE" ]] || return 0
-  awk -F '\t' '$4 != "info" && $1 !~ /^#/ && $1 != "" { found=1; exit } END { exit !found }' "$SCORES_FILE" || return 0
-  printf '\n'
-  printf '%sScoreboard%s\n' "$C_BOLD" "$C_RESET"
-  {
-    printf 'Metric\tValue\tUnit\n'
-    awk -F '\t' '$4 != "info" && $1 !~ /^#/ { printf "%s\t%s\t%s\n", ($5==""?$1:$5), $2, $3 }' "$SCORES_FILE"
-  } | {
-    if have column; then
-      column -t -s $'\t'
-    else
-      cat
-    fi
-  }
-  printf '\n'
-  if [[ -f "$OUTPUT_DIR/one-liner.txt" ]]; then
-    printf '%s\n' "$(cat "$OUTPUT_DIR/one-liner.txt")"
-  fi
-  printf '\nReport: %s/report.md\n' "$OUTPUT_DIR"
+  print_verdict
 }
 
 # --- lifecycle ------------------------------------------------------------
@@ -1859,11 +2406,35 @@ run_benchmarks() {
   run_sanity
 }
 
+run_replay() {
+  local dir="$1"
+  [[ -d "$dir" ]] || die "Not a directory: $dir"
+  [[ -f "$dir/scores.tsv" ]] || die "No scores.tsv in $dir"
+  [[ -f "$dir/hw.tsv" ]] || die "No hw.tsv in $dir"
+  OUTPUT_DIR="$(cd "$dir" && pwd)"
+  SCORES_FILE="$OUTPUT_DIR/scores.tsv"
+  HW_FILE="$OUTPUT_DIR/hw.tsv"
+  RAW="$OUTPUT_DIR/raw"
+  SANITY_FILE="$OUTPUT_DIR/sanity.tsv"
+  [[ -f "$SANITY_FILE" ]] || SANITY_FILE="/dev/null"
+  if [[ -f "$OUTPUT_DIR/meta.env" ]]; then
+    # shellcheck disable=SC1091
+    STARTED_ISO="$(awk -F= '/^started=/ { sub(/^started=/, ""); print; exit }' "$OUTPUT_DIR/meta.env")"
+  fi
+  write_verdict
+  print_verdict
+}
+
 main() {
   parse_args "$@"
 
   if ((${#COMPARE_DIRS[@]})); then
     run_compare
+    return 0
+  fi
+
+  if [[ -n "$REPLAY_DIR" ]]; then
+    run_replay "$REPLAY_DIR"
     return 0
   fi
 
