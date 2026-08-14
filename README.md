@@ -459,14 +459,14 @@ Sorted roughly by capability:
 | `colin-mbot-gpt-zen` | GPT 5.6 Sol through OpenCode Zen |
 | `colin-mbot-gpt-terra` | OpenAI GPT 5.6 Terra |
 | `colin-mbot-gpt-terra-zen` | GPT 5.6 Terra through OpenCode Zen |
-| `colin-mbot-grok` | xAI Grok 4.5 (OpenCode fallback; prefer `grok` CLI when available) |
+| `colin-mbot-grok` | xAI Grok 4.6 (OpenCode fallback; prefer `grok` CLI when available) |
 | `colin-mbot-sonnet` | Anthropic Claude Sonnet 5 |
 | `colin-mbot-glm` | Zhipu GLM 5.2 |
 | `colin-mbot-gemini-pro` | Gemini 3.1 Pro (OpenRouter) |
 | `colin-mbot-gemini-pro-zen` | Gemini 3.1 Pro through OpenCode Zen |
-| `colin-mbot-qwen` | Alibaba Qwen 3.7 Max |
-| `colin-mbot-kimi` | Moonshot Kimi K2.7 Code |
-| `colin-mbot-mimo` | Xiaomi MiMo V2 Pro |
+| `colin-mbot-qwen` | Alibaba Qwen 3.8 Max |
+| `colin-mbot-kimi` | Moonshot Kimi K3 |
+| `colin-mbot-mimo` | Xiaomi MiMo V2.5 Pro |
 | `colin-mbot-deepseek` | DeepSeek v4 Pro |
 | `colin-mbot-minimax` | MiniMax M3 |
 

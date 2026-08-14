@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Gemini 3.5 Flash - only to be used by the MBOT skill
+description: Many brain, one task with Gemini 3.6 Flash - only to be used by the MBOT skill
 mode: subagent
-model: openrouter/google/gemini-3.5-flash
+model: openrouter/google/gemini-3.6-flash
 tools:
   write: false
   edit: false
