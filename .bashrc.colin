@@ -37,7 +37,7 @@
 #   vd                   run visidata via docker image unless visidata is present in path
 #
 # Scripts/Functions
-#   bench                run a quick performance benchmark
+#   bench                hardware + CPU/RAM/disk/net benchmarks (benchmark-all-the-things.sh)
 #   docker-rmi-dangling  remove 'dangling' docker images
 #   docker-rmv-dangling  remove 'dangling' docker volumes
 #   docker-volume-copy   create a copy of a docker volume
@@ -346,7 +346,7 @@ alias lg='lazygit'
 alias lt='npx localtunnel'
 alias share-file='npx remote-share-cli'
 alias share-dir='npx share-cli'
-alias bench='bash <(wget --no-check-certificate -O - https://raw.github.com/mgutz/vpsbench/master/vpsbench)'
+alias bench='~/.local/colin-dotfiles/benchmark-all-the-things.sh'
 alias fix-x='eval "$(tmux showenv -s DISPLAY)"'
 
 # Override claude defaults
