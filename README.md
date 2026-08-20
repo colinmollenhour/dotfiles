@@ -324,7 +324,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 - **`gh-cli`** — GitHub operations through `gh` (PRs, issues, runs, inline comments, raw API).
 - **`glab-cli`** — GitLab operations through `glab` (MRs, pipelines, discussions, raw API).
-- **`clickup-tasks`** — Create and update ClickUp tasks, custom fields, sprint work. Supports both CLI and MCP backends.
+- **`clickup-task-authoring`** — Author a ClickUp task from a conversation, plan, or spec as CUFM via `cup task-sync`: fidelity ledger, rich description structure, ShipStream field conventions, post-write audit. CUFM syntax and task-sync flags live in the `clickup` skill shipped with `cup` (`cup skill`).
 - **`github-security-advisories`** — End-to-end GitHub Security Advisory (GHSA) handling: validate a report, prepare advisory fields, push fixes to the GHSA private fork.
 
 ### Code generation and review
