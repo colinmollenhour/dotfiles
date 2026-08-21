@@ -84,6 +84,9 @@ interface Slot {
 
 interface Plan {
   run_dir: string
+  /** Project directory the participants run in. Defaults to run_dir. Set this
+   *  to the repo root when prompts cite repo-relative paths. */
+  project_dir?: string
   attach?: string
   password?: string
   timeout_ms?: number
@@ -519,6 +522,7 @@ async function launchSlot(
   preflight: OpencodePreflight | null,
 ): Promise<Meta> {
   const runDir = resolve(plan.run_dir)
+  const projectDir = plan.project_dir ? resolve(plan.project_dir) : runDir
   const promptPath = abs(runDir, slot.prompt)
   const outPath = abs(runDir, slot.out)
   const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
@@ -615,7 +619,7 @@ async function launchSlot(
       "Agent",
     ]
     if (slot.provider_model_id) args.push("-m", slot.provider_model_id)
-    const r = await runCmd("grok", args, { cwd: runDir, timeoutMs })
+    const r = await runCmd("grok", args, { cwd: projectDir, timeoutMs })
     code = r.code
     stderr = r.stderr
     writeFileSync(outPath, r.stdout)
@@ -638,11 +642,16 @@ async function launchSlot(
       return m
     }
 
-    if (preflight?.model_resolved) {
+    // A slot's own model always wins. preflight.model_resolved comes from the
+    // single smoke probe, so letting it through here would silently collapse a
+    // multi-model plan onto one model.
+    if (actualModel) {
+      if (preflight?.attach_url) {
+        const avail = await listAttachModels(preflight.attach_url)
+        actualModel = resolveModelId(actualModel, avail)
+      }
+    } else if (preflight?.model_resolved) {
       actualModel = preflight.model_resolved
-    } else if (preflight?.attach_url) {
-      const avail = await listAttachModels(preflight.attach_url)
-      actualModel = resolveModelId(actualModel, avail)
     }
 
     const useAttach = mode === "attach" && Boolean(preflight?.attach_url || plan.attach)
@@ -664,7 +673,7 @@ async function launchSlot(
       if (plan.password) args.push("--password", plan.password)
       args.push("--", HARNESS_FOOTER)
       const r = await runCmd("occtl", args, {
-        cwd: runDir,
+        cwd: projectDir,
         env: attachEnv(attachUrl),
         timeoutMs: timeoutMs + 120_000,
       })
@@ -684,7 +693,7 @@ async function launchSlot(
         "--timeout-ms",
         String(timeoutMs),
         "--dir",
-        runDir,
+        projectDir,
       ]
       if (slot.variant) args.push("--variant", slot.variant)
       if (slot.title) args.push("--title", slot.title)
@@ -693,7 +702,7 @@ async function launchSlot(
       args.push("--", HARNESS_FOOTER)
 
       const r = await runCmd("bun", args, {
-        cwd: runDir,
+        cwd: projectDir,
         env: attachEnv(attachUrl),
         timeoutMs: timeoutMs + 120_000,
       })
