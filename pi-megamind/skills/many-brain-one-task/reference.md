@@ -47,12 +47,12 @@ The host harness (you, the one running this skill right now) limits which models
 | Pi          | any other model family    | Follow the profile's requested CLI/harness. If unspecified in the Pi package, use Pi itself as the participant. |
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to **`botctl prompt`** (via `botctl-prompt` skill) or the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
 | Claude Code | Grok                     | `grok` CLI (preferred). OpenCode `colin-mbot-grok` only if `grok` is missing/unauthenticated or the profile forces OpenCode. See [Grok](#grok). |
-| Claude Code | other non-Claude         | `occtl run` (preferred); `run-opencode.ts` fallback.                                                       |
+| Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll `occtl` / `run-opencode.ts`.                       |
 | OpenCode    | Claude (Opus/Sonnet/Haiku) | **`botctl prompt`** (preferred when available) or `claude` CLI — never `colin-mbot-*` for Claude. See [Claude](#claude-opus--sonnet--haiku). |
-| OpenCode    | Grok                     | `grok` CLI (preferred). Fall back to `colin-mbot-grok` / `occtl run` only when Grok CLI is unavailable or the profile says OpenCode. See [Grok](#grok). |
+| OpenCode    | Grok                     | `grok` CLI (preferred). Fall back to `colin-mbot-grok` / `mbot-run` only when Grok CLI is unavailable or the profile says OpenCode. See [Grok](#grok). |
 | OpenCode    | other non-Claude         | `task` tool with a `colin-mbot-*` `subagent_type` (e.g. `colin-mbot-glm` for GLM). Auto-selects model.     |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
-| Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `occtl run` / `run-opencode.ts`, `pi`, `codex`, `gemini`). |
+| Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `mbot-run` for OpenCode, `pi`, `codex`, `gemini`). |
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
@@ -107,9 +107,9 @@ Profiles may include an attach directive instructing every OpenCode invocation t
 
 **URL normalization:** prefix `http://` if scheme is missing (`seamus:4095` → `http://seamus:4095`). Default OpenCode port is `4096`.
 
-**Password:** optional. If present, pass `--password X` (works for both `occtl run` and `run-opencode.ts`). Otherwise the tools fall back to `OPENCODE_SERVER_PASSWORD` from the environment.
+**Password:** optional. Put it on the plan (`"password"`) or in `OPENCODE_SERVER_PASSWORD`. `mbot-run` passes `--password` / `--attach host:port` to the launcher.
 
-**Plumbing the directive:** `occtl` has no `--attach` flag — it auto-detects from `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`. Set those once on each `occtl` call (single-statement env-prefix form — see [Sandbox-friendly Bash patterns](#sandbox-friendly-bash-patterns)). `run-opencode.ts` accepts `--attach <url>` directly.
+**Plumbing the directive:** put `attach` on `plan.json` (`"attach": "http://seamus:4095"` or `"seamus:4095"`). `mbot-run` passes `occtl run --attach host:port` (or `run-opencode.ts --attach <url>` if occtl is unavailable). Do not set `OPENCODE_SERVER_*` yourself and do not invoke either launcher from the parent session.
 
 ### Resolving OpenCode model names
 
@@ -162,10 +162,10 @@ There are two incompatible ways to get a body onto disk. Pick **one** per partic
 
 | Owner | Mechanisms | Body delivery | Final message / parent return |
 |---|---|---|---|
-| **Harness-owned** | `occtl run --out`, `run-opencode.ts --out`, Grok CLI stdout redirect, `botctl prompt` stdout, `pi --print` stdout | Complete review in the **final assistant message** (or stdout). Harness is the sole writer of `.out`. | Full body (not a status stub) |
+| **Harness-owned** | `mbot-run` (`--out`), Grok CLI stdout redirect, `botctl prompt` stdout, `pi --print` stdout | Complete review in the **final assistant message** (or stdout). Harness is the sole writer of `.out`. | Full body (not a status stub) |
 | **Agent-owned** | Native Claude `Agent` tool only | Child **Write**s the full review to the slot path | ≤500-char status: path + counts |
 
-**Never** tell a harness-owned participant to Write the same path the harness will overwrite. Observed failure (GPT-5.6-Sol): model Write'd a full review to `--out`, then returned a short status as the final message; `occtl run` / `run-opencode.ts` clobbered the file with that status. Fix: harness-owned prompts must say the complete review is the final assistant message and forbid writing the `--out` path.
+**Never** tell a harness-owned participant to Write the same path the harness will overwrite. Observed failure (GPT-5.6-Sol): model Write'd a full review to `--out`, then returned a short status as the final message; the launcher clobbered the file with that status. Fix: harness-owned prompts must say the complete review is the final assistant message and forbid writing the `--out` path.
 
 #### Harness-owned delivery footer (append to every OpenCode / Grok / botctl / pi print prompt)
 
@@ -182,7 +182,7 @@ earlier Write to the same path.
 OpenCode trailing positional (always include; keep the long instructions in `--file`):
 
 ```text
-Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file.
+Emit the COMPLETE result as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file.
 ```
 
 #### Agent-owned delivery (native Claude `Agent` only)
@@ -249,7 +249,7 @@ Save the returned summary/result under `.tmp/<run-id>/results/<participant>.out`
 grok version            # must exit 0
 ```
 
-Optional: `grok models` when the profile names a non-default model id. Cache success as `GROK_VIA=cli`. If `grok version` fails, set `GROK_VIA=opencode` and use the OpenCode path (`colin-mbot-grok` / `occtl run`) for Grok participants.
+Optional: `grok models` when the profile names a non-default model id. Cache success as `GROK_VIA=cli`. If `grok version` fails, set `GROK_VIA=opencode` and use the OpenCode path (`colin-mbot-grok` / `mbot-run`) for Grok participants.
 
 #### Headless launch
 
@@ -354,99 +354,25 @@ Use this only when `botctl` is unavailable or the profile explicitly requires he
 
 ### OpenCode
 
-OpenCode invocations have two implementations: `occtl run` (preferred) and `run-opencode.ts` (fallback). Decide which to use **once**, at the start of the batch, with a preflight check; reuse the same one for every OpenCode-backed agent in the run.
-
-#### Preflight (run once at the start of the batch)
+The parent session never invokes `occtl`, `opencode`, or `run-opencode.ts` for MBOT/MBOD slots. Write a `plan.json` with `harness: "opencode"` (or `"occtl"` — same path) and run:
 
 ```bash
-occtl --version            # prints version, exits 0 on success
-occtl ping                 # prints "OK <url>", exits 0 on success
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
 ```
 
-Treat `occtl` as available only when **both** checks pass and the printed version compares ≥ `1.2.0` (`occtl run` was added in 1.2.0; `1.2.x`, `1.3.x`, `2.x` qualify; `1.1.x` does not). Cache the decision (e.g. `OPENCODE_VIA=occtl` or `OPENCODE_VIA=run-opencode-ts`).
+`mbot-run` picks the transport once during smoke:
 
-If the profile contains an attach directive, set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` from it before `ping` so the check exercises the real target.
+1. **`occtl run --attach host:port`** when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`.
+2. **`run-opencode.ts`** only if occtl is missing or too old.
 
-When `occtl` wins, also load its bundled skill for the full surface (sessions, send, attach, worktrees, Ralph Mode):
+Do not cache `OPENCODE_VIA` in the parent, do not `occtl ping` as a preflight, and do not load `occtl view-skill` for MBOT slots. Timeout recovery (`occtl last` after 124 / thin `.out`) is inside `launch` and `harvest`.
 
-```bash
-occtl view-skill | head -200
-```
+Default OpenCode wall-clock: **20 minutes** (`timeout_ms: 1200000` on the plan). `mbot-run` kills the child 2 minutes after that. If you ever wrap `mbot-run` in the host Bash tool, give Bash **22 minutes** (`timeout: 1320000`) so sidecars flush.
 
-#### `occtl run` (preferred)
+`occtl run --timeout` is **milliseconds**. Other occtl commands (`send`, `stream`, `wait-for-idle`) take **seconds**. That mismatch is why the parent must not call occtl itself.
 
-`occtl run` creates a session, sends the prompt, waits for `session.idle`, and writes the assistant text — all through the OpenCode HTTP API. None of the `opencode run` subprocess workarounds (`--dir .` flag dance, NDJSON parsing, `XDG_STATE_HOME` EROFS, `--dangerously-skip-permissions`) apply because there's no subprocess.
-
-```bash
-occtl run \
-  --model opencode/gemini-3.1-pro \
-  --variant xhigh \
-  --title "ultra-review !2514 contracts/Gemini-3.1-Pro" \
-  --file .tmp/ultra-review-2514/prompts/contracts.full.md \
-  --out .tmp/ultra-review-2514/results/contracts-gemini.out \
-  --timeout 1200000 \
-  -- "Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
-```
-
-If there is no running server (or the profile asks for one fresh server per agent for isolation), add `--spawn`. `occtl` picks a free port, isolates `XDG_STATE_HOME`, runs the prompt, and SIGTERM/SIGKILLs the child on exit:
-
-```bash
-occtl run --spawn --model openai/gpt-5.4 \
-  --file .tmp/ultra-review-2514/prompts/failure.full.md \
-  --out .tmp/ultra-review-2514/results/failure-gpt.out \
-  --timeout 1200000 \
-  -- "Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
-```
-
-#### `run-opencode.ts` (fallback)
-
-When the preflight finds `occtl` missing, too old, or unable to reach a server, every OpenCode call goes through `run-opencode.ts`. It normalizes the flags that have tripped us in the past (file vs argv, the `--` separator, `--dir .` in attach mode, `--format json` parsing, `--dangerously-skip-permissions` for local spawns).
-
-Invoke inline in a single Bash call (wrapper `.sh` forms trip the Claude Code sandbox even with `dangerouslyDisableSandbox: true`):
-
-```bash
-bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
-  --model opencode/gemini-3.1-pro \
-  --variant xhigh \
-  --title "ultra-review !2514 contracts/Gemini-3.1-Pro" \
-  --file .tmp/ultra-review-2514/prompts/contracts.full.md \
-  --attach http://seamus:4095 \
-  --timeout-ms 1200000 \
-  --out .tmp/ultra-review-2514/results/contracts-gemini.out \
-  -- "Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
-```
-
-In `json` mode (the default) with `--out`, the script also writes `<out>.raw.jsonl` with raw OpenCode events and `<out>.session` with any discovered OpenCode session ids. If OpenCode exits 0 but produces no non-whitespace text, the script exits non-zero and reports that the provider may be unavailable or spend-limited.
-
-When `--out` already contains a **rich** body (task markers / large) and the harness-captured final message is a **thin** status stub, `run-opencode.ts` keeps the existing file, writes the stub to `<out>.final-message`, and notes the clobber avoidance on stderr. Prefer correct harness-owned prompts so this defense is never needed.
-
-What the script does **not** handle: choosing the model, choosing whether to attach, writing the prompt file. Those are still caller decisions.
-
-#### Flag reference (`occtl run` ↔ `run-opencode.ts`)
-
-| Purpose                          | `occtl run`                | `run-opencode.ts`                       | Notes |
-|----------------------------------|----------------------------|-----------------------------------------|-------|
-| Model                            | `--model`                  | `--model`                               | Required. Prefer coding plans over `openrouter/` and `opencode/`. |
-| Reasoning variant                | `--variant`                | `--variant`                             | Provider-specific (`xhigh`, `high`, `max`, `minimal`). |
-| Agent name override              | `--agent`                  | `--agent`                               | Rare. Default agent is fine. |
-| Session title in OpenCode UI     | `--title`                  | `--title`                               | Prefer structured titles for cost reporting: `ultra\|{project}\|!{iid}\|{bucketOr-}\|{role}\|{model}\|retry{N}` (required for Seamus ultra). |
-| Prompt file (repeatable)         | `--file`                   | `--file`                                | Files are concatenated into one text part with the trailing positional appended. |
-| Attach to running server         | env vars (see attach docs) | `--attach <url>`                        | `occtl` auto-detects from `OPENCODE_SERVER_HOST`/`PORT`. |
-| Server password                  | `--password`               | `--password`                            | Env fallback: `OPENCODE_SERVER_PASSWORD`. |
-| Working dir override             | (n/a)                      | `--dir <path>`                          | `run-opencode.ts` auto-adds `--dir .` in attach mode. |
-| Script timeout (ms)              | `--timeout`                | `--timeout-ms`                          | Default for large reviews: **1200000 (20 min)**. Keep below the Bash tool timeout so sidecars get written before kill. |
-| Assistant output file            | `--out`                    | `--out`                                 | Sidecar `<out>.session` is always written. |
-| Stderr capture file              | `--stderr`                 | `--stderr`                              | Use on failures for diagnosis. |
-| Output format                    | (always API)               | `--format default\|json`                | `json` is default in `run-opencode.ts`; passes events through and extracts `text`. |
-| Forward `--thinking`             | `--thinking`               | `--thinking`                            | Rare. |
-| Raw assistant JSON               | `--raw <path>`             | (sidecar `<out>.raw.jsonl` in json mode) | — |
-| Spawn ephemeral server           | `--spawn`, `--spawn-port`  | (n/a; script uses `--dangerously-skip-permissions` for local) | `occtl` tears down the child on exit. |
-| Delete session after run         | `--ephemeral`              | (n/a)                                   | Default keeps the session for token-usage audit. |
-| Short positional message         | `-- <msg>`                 | `-- <msg>`                              | Always the harness-owned emit-final-message trailer (above). Real instructions go in `--file`. |
-
-Both exit `0` on success, `1` on empty/no-text response or generic failure, `2` on invalid arguments, and `124` on timeout. `run-opencode.ts` exits `130` on external SIGINT and `143` on external SIGTERM after synchronously flushing partial output.
-
-Default OpenCode wall-clock for large review/critique runs: **20 minutes** (`1200000` ms). Host Bash `timeout` must be **higher** (use `1320000` / 22 min) so sidecars (`.out`, `.err`, `.session`) flush before the wrapper is killed.
+Exit **124** with a rich body (VERDICT / ISSUE / `BEGIN_MBOD_JSON` / ≥2KB) is **success**. Harvest records `recovered: true` when it salvaged the body from the session after a timeout.
 
 ### Retry policy
 
@@ -515,27 +441,20 @@ Read results only from the persisted files under `.tmp/<run-id>/results/`; this 
 
 **Attribution:** per-model tables, Unique/Shared columns, and validation credit use `meta.actual_model` (or the updated plan entry), never the model token in a filename alone. Report every reassignment as `planned → actual` with paths. Flag any basename model ≠ `actual_model` mismatch in run accounting.
 
-**Thin `.out` recovery (OpenCode):** if `.out` is short / lacks task markers but `.session` (or `<out>.session`) exists, try `occtl last <session> --text-only` (or full messages) before retrying or marking incomplete. If recovery yields a rich body, write it to the slot `.out` (or `.recovered.out` and update meta) and count the slot complete.
+**Thin `.out` recovery (OpenCode):** do not hand-roll `occtl last`. `mbot-run harvest` already salvages from `<out>.session` (abort leftover sessions, then `occtl last`). If `meta.recovered` is true and the body is rich, count the slot complete.
 
-Write `run-summary.json` with participant outcomes, planned vs actual models, prompt/output paths, candidate counts, reassignments, clobber/recovery events, and any task-specific validation results. Prefer including per-model wall time and cost via the bundled helper:
-
-```bash
-bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
-# → .tmp/<run-id>/agentsview-usage.json  (also: agentsview-usage.ts)
-```
-
-It reads meta + `.session` sidecars, queries `agentsview session usage`, rediscovers OpenCode sessions by structured title prefix (`first_message`), and rolls up wall/cost by model. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models (candidates / confirmed / rejected / unique / shared / precision / wall / cost), and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
+Write `run-summary.json` with participant outcomes, planned vs actual models, prompt/output paths, candidate counts, reassignments, clobber/recovery events, and any task-specific validation results. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models, and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
 
 # Caveats
 
-These apply across OpenCode invocations regardless of which path (`occtl run` or `run-opencode.ts`) was chosen.
+These apply to every OpenCode slot `mbot-run` launches.
 
 - **`.tmp/` must be inside the project root, not `$TMPDIR`.** OpenCode has its own permission system (separate from the Claude Code sandbox) that auto-rejects reads outside the project. `$TMPDIR` also resolves to different paths in sandboxed vs sandbox-disabled Bash calls, so files created in one may be invisible to the other.
-- **Sandbox write paths.** `bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" …` from Claude Code may need `dangerouslyDisableSandbox: true` depending on the host's `sandbox.filesystem.allowWrite`. OpenCode writes to `~/.local/share/opencode/`; if that path is not in `allowWrite`, the SQLite `PRAGMA wal_checkpoint` fails. Seamus's `gitlab-settings.json` already allows `~/.local/share`; other hosts may not.
+- **Sandbox write paths.** `bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" …` from Claude Code may need `dangerouslyDisableSandbox: true` depending on the host's `sandbox.filesystem.allowWrite`. OpenCode writes to `~/.local/share/opencode/`; if that path is not in `allowWrite`, the SQLite `PRAGMA wal_checkpoint` fails. Seamus's `gitlab-settings.json` already allows `~/.local/share`; other hosts may not.
 - **Model availability varies by plan.** `opencode models` lists everything the install knows about, but some return `Error: Model is disabled` at runtime (e.g. `opencode/gpt-5.4-nano` on certain plans). If a profile names a model, verify with a trivial prompt before launching a batch.
 - **`--file` is more reliable than "Read /path/..." in the prompt body.** When the prompt tells the model to use the Read tool to fetch a large file, some models (observed with Gemini 3.1 Pro and GLM 5.1) silently terminate after 3-4 chunk reads without producing any ISSUE blocks. Attaching via `--file` sidesteps that.
 - **Line numbers in code reviews.** When the shared prompt concatenates instructions + AGENTS.md + a large diff, some models (observed with GLM 5.1) report line numbers relative to the prompt file rather than the real source file. During validation, re-anchor any finding whose line number exceeds the actual file length before trusting the citation.
-- **Harness-owned `--out` clobber.** `occtl run` and `run-opencode.ts` write the final assistant message to `--out` unconditionally (with a rich-file defense in `run-opencode.ts`). If the model Write's the full review to that path and returns a short status, the status wins unless the defense keeps the rich file. Use the harness-owned delivery footer; do not apply the native-Agent "Write + ≤500-char return" pattern to OpenCode.
+- **Harness-owned `--out` clobber.** `mbot-run` writes the final assistant message to `--out`. If the model Write's the full review to that path and returns a short status, the status can win unless the rich-file defense keeps the existing body. Use the harness-owned delivery footer; do not apply the native-Agent "Write + ≤500-char return" pattern to OpenCode.
 - **Baked path + backup mis-attribution.** Prompts that embed `…-<model>.out` freeze the planned performer. On reassignment, rewrite the prompt and out path (or use slot-keyed paths + meta). Scoring from basenames will credit the wrong model.
 
 

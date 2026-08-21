@@ -4,11 +4,13 @@
  *
  * OpenCode reliability (2026-08):
  * - ALL flags go before `--` (attach/variant/title must not be swallowed)
- * - Prefer run-opencode.ts over occtl (sandbox-friendly)
+ * - Prefer `occtl run --attach host:port` (HTTP API, session sidecar, timeout salvage)
+ * - Fallback: run-opencode.ts when occtl is missing or older than 1.2.0
  * - Attach smoke before fan-out; fall back to local spawn on failure
  * - Pin models against attach /config/providers when possible
  * - Default concurrency 3 for OpenCode (shared server contention)
  * - Fail-closed harvest: empty after launch = failed, not "wait forever"
+ * - Timeout recovery: `occtl last` (abort leftover sessions) before marking timeout
  * - `barrier` command: wait for slots without hanging on permanent empties
  *
  * Commands:
@@ -50,7 +52,9 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const RUN_OPENCODE = join(SCRIPT_DIR, "run-opencode.ts")
 
 const HARNESS_FOOTER =
-  "Emit the COMPLETE review as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
+  "Emit the COMPLETE result as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
+
+const MIN_OCCTL_VERSION = "1.2.0"
 
 const DEFAULT_OPENCODE_CONCURRENCY = 3
 const DEFAULT_SMOKE_TIMEOUT_MS = 45_000
@@ -120,6 +124,7 @@ interface Meta {
   status: SlotStatus
   error?: string
   terminal?: boolean
+  recovered?: boolean
 }
 
 interface State {
@@ -141,6 +146,9 @@ interface OpencodePreflight {
   model_resolved?: string
   models_checked?: number
   prefer_run_opencode: boolean
+  occtl_ok?: boolean
+  occtl_version?: string | null
+  transport?: "occtl" | "run-opencode"
   timestamp: string
 }
 
@@ -179,6 +187,7 @@ function isRich(text: string): boolean {
   if (!t) return false
   if (/\bVERDICT\s*:/i.test(t)) return true
   if (/<<<\s*(ISSUE|VERDICT|END)\s*>>>/i.test(t)) return true
+  if (/BEGIN_MBOD_JSON/i.test(t)) return true
   if ((t.match(/^#{1,3}\s+\S/gm) || []).length >= 3) return true
   return t.length >= 2048
 }
@@ -215,19 +224,136 @@ function normalizeAttachUrl(attach?: string): string | undefined {
   return `http://${t.replace(/\/$/, "")}`
 }
 
-function attachEnv(attach?: string): NodeJS.ProcessEnv {
+function attachEnv(attach?: string, password?: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env }
   const url = normalizeAttachUrl(attach)
-  if (!url) return { ...process.env }
+  if (url) {
+    try {
+      const u = new URL(url)
+      env.OPENCODE_SERVER_HOST = u.hostname
+      env.OPENCODE_SERVER_PORT = u.port || "4096"
+    } catch {
+      /* leave env host/port unset */
+    }
+  }
+  if (password) env.OPENCODE_SERVER_PASSWORD = password
+  return env
+}
+
+function attachHostPort(attach?: string): string | undefined {
+  const url = normalizeAttachUrl(attach)
+  if (!url) return undefined
   try {
     const u = new URL(url)
-    return {
-      ...process.env,
-      OPENCODE_SERVER_HOST: u.hostname,
-      OPENCODE_SERVER_PORT: u.port || "4096",
-    }
+    return u.port ? `${u.hostname}:${u.port}` : u.hostname
   } catch {
-    return { ...process.env }
+    return attach?.replace(/^https?:\/\//, "").replace(/\/$/, "")
   }
+}
+
+function parseSemver(text: string): [number, number, number] | null {
+  const m = text.match(/(\d+)\.(\d+)\.(\d+)/)
+  if (!m) return null
+  return [Number(m[1]), Number(m[2]), Number(m[3])]
+}
+
+function semverGte(a: [number, number, number], b: [number, number, number]): boolean {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true
+    if (a[i] < b[i]) return false
+  }
+  return true
+}
+
+function detectOcctl(): { ok: boolean; version: string | null } {
+  const res = spawnSync("occtl", ["--version"], {
+    encoding: "utf8",
+    timeout: 8000,
+  })
+  if (res.error || res.status !== 0) return { ok: false, version: null }
+  const version = (res.stdout || res.stderr || "").trim() || null
+  const parsed = version ? parseSemver(version) : null
+  const min = parseSemver(MIN_OCCTL_VERSION)
+  if (!parsed || !min || !semverGte(parsed, min)) return { ok: false, version }
+  return { ok: true, version }
+}
+
+function occtlAttachArgs(attach?: string): string[] {
+  const hp = attachHostPort(attach)
+  return hp ? ["--attach", hp] : []
+}
+
+function occtlLastText(sessionId: string, attach?: string, password?: string): string {
+  const args = [
+    "last",
+    sessionId,
+    "--role",
+    "assistant",
+    "--text-only",
+    ...occtlAttachArgs(attach),
+  ]
+  const res = spawnSync("occtl", args, {
+    encoding: "utf8",
+    timeout: 20_000,
+    maxBuffer: 10 * 1024 * 1024,
+    env: attachEnv(attach, password),
+  })
+  const text = (res.stdout || "").trim()
+  if (res.status === 0 && text && text !== "No messages in session.") return text
+  return ""
+}
+
+function occtlAbortSession(sessionId: string, attach?: string, password?: string): void {
+  spawnSync("occtl", ["abort", sessionId, ...occtlAttachArgs(attach)], {
+    encoding: "utf8",
+    timeout: 15_000,
+    env: attachEnv(attach, password),
+  })
+}
+
+function readSessionId(outPath: string, fallback?: string | null): string | null {
+  if (fallback) return fallback
+  const sessionFile = outPath + ".session"
+  if (!existsSync(sessionFile)) return null
+  try {
+    return readFileSync(sessionFile, "utf8").trim().split("\n")[0] || null
+  } catch {
+    return null
+  }
+}
+
+/** Salvage a thin/empty --out from the OpenCode session after timeout or empty JSON. */
+function recoverSlotBody(opts: {
+  outPath: string
+  sessionId?: string | null
+  attach?: string
+  password?: string
+  abortFirst?: boolean
+}): { body: string; recovered: boolean; sessionId: string | null } {
+  let body = ""
+  if (existsSync(opts.outPath)) {
+    try {
+      body = readFileSync(opts.outPath, "utf8")
+    } catch {
+      body = ""
+    }
+  }
+  const sessionId = readSessionId(opts.outPath, opts.sessionId)
+  if (isRich(body) || !sessionId) return { body, recovered: false, sessionId }
+
+  if (opts.abortFirst) occtlAbortSession(sessionId, opts.attach, opts.password)
+  let salvaged = occtlLastText(sessionId, opts.attach, opts.password)
+  if (!isRich(salvaged)) {
+    occtlAbortSession(sessionId, opts.attach, opts.password)
+    const again = occtlLastText(sessionId, opts.attach, opts.password)
+    if (again.length > salvaged.length) salvaged = again
+  }
+  if (salvaged && (isRich(salvaged) || salvaged.trim().length > body.trim().length)) {
+    mkdirSync(dirname(opts.outPath), { recursive: true })
+    writeFileSync(opts.outPath, salvaged)
+    return { body: salvaged, recovered: true, sessionId }
+  }
+  return { body, recovered: false, sessionId }
 }
 
 function runCmd(
@@ -357,6 +483,8 @@ async function smokeOpencode(opts: {
   const available = attachUrl ? await listAttachModels(attachUrl) : []
   const model = resolveModelId(opts.model, available)
 
+  const occtl = detectOcctl()
+  const transport: "occtl" | "run-opencode" = occtl.ok ? "occtl" : "run-opencode"
   const base: OpencodePreflight = {
     mode: opts.forceMode && opts.forceMode !== "auto" ? opts.forceMode : "auto",
     attach: opts.attach,
@@ -365,7 +493,10 @@ async function smokeOpencode(opts: {
     model_requested: opts.model,
     model_resolved: model,
     models_checked: available.length,
-    prefer_run_opencode: true,
+    prefer_run_opencode: transport === "run-opencode",
+    occtl_ok: occtl.ok,
+    occtl_version: occtl.version,
+    transport,
     timestamp: nowIso(),
   }
 
@@ -376,7 +507,6 @@ async function smokeOpencode(opts: {
     return base
   }
   if (opts.forceMode === "local") {
-    // Still smoke local spawn
     const local = await runSmokeOnce({
       runDir,
       model,
@@ -384,6 +514,7 @@ async function smokeOpencode(opts: {
       password: opts.password,
       timeoutMs: opts.timeoutMs,
       tag: "local",
+      transport,
     })
     base.mode = "local"
     base.smoke_ok = local.ok
@@ -402,6 +533,7 @@ async function smokeOpencode(opts: {
       password: opts.password,
       timeoutMs: opts.timeoutMs,
       tag: "attach",
+      transport,
     })
     if (att.ok) {
       base.mode = "attach"
@@ -428,6 +560,7 @@ async function smokeOpencode(opts: {
     password: opts.password,
     timeoutMs: opts.timeoutMs,
     tag: "local",
+    transport,
   })
   base.mode = local.ok ? "local" : "skip"
   base.smoke_ok = local.ok
@@ -448,6 +581,7 @@ async function runSmokeOnce(opts: {
   password?: string
   timeoutMs: number
   tag: string
+  transport: "occtl" | "run-opencode"
 }): Promise<{ ok: boolean; ms: number; error?: string }> {
   const prompt = join(opts.runDir, `smoke-opencode-${opts.tag}.md`)
   const out = join(opts.runDir, "results", `_smoke-${opts.tag}.out`)
@@ -456,32 +590,51 @@ async function runSmokeOnce(opts: {
     prompt,
     "Reply with exactly the single token OPENCODE_SMOKE_OK and nothing else. No tools.\n",
   )
-  const args = [
-    RUN_OPENCODE,
-    "--model",
-    opts.model,
-    "--file",
-    prompt,
-    "--out",
-    out,
-    "--stderr",
-    err,
-    "--timeout-ms",
-    String(opts.timeoutMs),
-    "--dir",
-    opts.runDir,
-  ]
-  // ALL flags before --
-  if (opts.attach) args.push("--attach", opts.attach)
-  if (opts.password) args.push("--password", opts.password)
-  args.push("--", "Reply with exactly OPENCODE_SMOKE_OK")
-
   const t0 = Date.now()
-  const r = await runCmd("bun", args, {
-    cwd: opts.runDir,
-    env: attachEnv(opts.attach),
-    timeoutMs: opts.timeoutMs + 15_000,
-  })
+  const r =
+    opts.transport === "occtl"
+      ? await runCmd("occtl", occtlRunArgs({
+          model: opts.model,
+          promptPath: prompt,
+          outPath: out,
+          errPath: err,
+          timeoutMs: opts.timeoutMs,
+          dir: opts.runDir,
+          attach: opts.attach,
+          password: opts.password,
+          message: "Reply with exactly OPENCODE_SMOKE_OK",
+        }), {
+          cwd: opts.runDir,
+          env: attachEnv(opts.attach, opts.password),
+          timeoutMs: opts.timeoutMs + 15_000,
+        })
+      : await runCmd(
+          "bun",
+          [
+            RUN_OPENCODE,
+            "--model",
+            opts.model,
+            "--file",
+            prompt,
+            "--out",
+            out,
+            "--stderr",
+            err,
+            "--timeout-ms",
+            String(opts.timeoutMs),
+            "--dir",
+            opts.runDir,
+            ...(opts.attach ? ["--attach", opts.attach] : []),
+            ...(opts.password ? ["--password", opts.password] : []),
+            "--",
+            "Reply with exactly OPENCODE_SMOKE_OK",
+          ],
+          {
+            cwd: opts.runDir,
+            env: attachEnv(opts.attach, opts.password),
+            timeoutMs: opts.timeoutMs + 15_000,
+          },
+        )
   const ms = Date.now() - t0
   let body = ""
   if (existsSync(out)) {
@@ -504,6 +657,45 @@ async function runSmokeOnce(opts: {
     ms,
     error: errText || `exit ${r.code}, out_bytes=${body.length}`,
   }
+}
+
+function occtlRunArgs(opts: {
+  model: string
+  promptPath: string
+  outPath: string
+  errPath?: string
+  timeoutMs: number
+  dir: string
+  attach?: string
+  password?: string
+  variant?: string
+  title?: string
+  message: string
+}): string[] {
+  // ALL flags before --
+  const args = ["run", "--model", opts.model]
+  if (opts.variant) args.push("--variant", opts.variant)
+  if (opts.title) args.push("--title", opts.title)
+  args.push(
+    "--file",
+    opts.promptPath,
+    "--out",
+    opts.outPath,
+    "--timeout",
+    String(opts.timeoutMs),
+    "--dir",
+    opts.dir,
+  )
+  if (opts.errPath) args.push("--stderr", opts.errPath)
+  if (opts.attach) {
+    const hp = attachHostPort(opts.attach)
+    if (hp) args.push("--attach", hp)
+  } else {
+    args.push("--spawn")
+  }
+  if (opts.password) args.push("--password", opts.password)
+  args.push("--", opts.message)
+  return args
 }
 
 function loadPreflight(runDir: string): OpencodePreflight | null {
@@ -660,28 +852,37 @@ async function launchSlot(
       : undefined
     attachMode = useAttach ? "attach" : "local"
 
-    // Prefer run-opencode.ts always unless harness is explicitly occtl AND attach works
-    const useOcctl = slot.harness === "occtl" && useAttach
+    const transport =
+      preflight?.transport ?? (detectOcctl().ok ? "occtl" : "run-opencode")
+    const useOcctl = transport === "occtl"
     actualHarness = useOcctl ? "occtl" : "run-opencode"
 
     if (useOcctl) {
-      // ALL flags before --
-      const args = ["run", "--model", actualModel]
-      if (slot.variant) args.push("--variant", slot.variant)
-      if (slot.title) args.push("--title", slot.title)
-      args.push("--file", promptPath, "--out", outPath, "--timeout", String(timeoutMs))
-      if (plan.password) args.push("--password", plan.password)
-      args.push("--", HARNESS_FOOTER)
-      const r = await runCmd("occtl", args, {
-        cwd: projectDir,
-        env: attachEnv(attachUrl),
-        timeoutMs: timeoutMs + 120_000,
-      })
+      const r = await runCmd(
+        "occtl",
+        occtlRunArgs({
+          model: actualModel,
+          promptPath,
+          outPath,
+          errPath,
+          timeoutMs,
+          dir: projectDir,
+          attach: attachUrl,
+          password: plan.password,
+          variant: slot.variant,
+          title: slot.title,
+          message: HARNESS_FOOTER,
+        }),
+        {
+          cwd: projectDir,
+          env: attachEnv(attachUrl, plan.password),
+          timeoutMs: timeoutMs + 120_000,
+        },
+      )
       code = r.code
       stderr = r.stderr
       if (stderr) writeFileSync(errPath, stderr)
     } else {
-      // run-opencode.ts — ALL flags before --
       const args = [
         RUN_OPENCODE,
         "--model",
@@ -703,7 +904,7 @@ async function launchSlot(
 
       const r = await runCmd("bun", args, {
         cwd: projectDir,
-        env: attachEnv(attachUrl),
+        env: attachEnv(attachUrl, plan.password),
         timeoutMs: timeoutMs + 120_000,
       })
       code = r.code
@@ -723,15 +924,6 @@ async function launchSlot(
     return m
   }
 
-  let body = ""
-  if (existsSync(outPath)) {
-    try {
-      body = readFileSync(outPath, "utf8")
-    } catch {
-      body = ""
-    }
-  }
-
   // Also read stderr file if launcher wrote it
   if (!stderr && existsSync(errPath)) {
     try {
@@ -741,6 +933,14 @@ async function launchSlot(
     }
   }
 
+  const recovered = recoverSlotBody({
+    outPath,
+    attach: attachMode === "attach" ? (preflight?.attach_url || plan.attach) : undefined,
+    password: plan.password,
+    abortFirst: code === 124 || code === 130 || code === 143,
+  })
+  const body = recovered.body
+  const sessionId = recovered.sessionId
   const markers = countMarkers(body)
   const rich = isRich(body)
   let status: SlotStatus = "failed"
@@ -750,16 +950,6 @@ async function launchSlot(
   else if (code === 0 && body.trim()) status = "empty"
   else if (code === 0 && !body.trim()) status = "empty"
   else status = "failed"
-
-  let sessionId: string | null = null
-  const sessionFile = outPath + ".session"
-  if (existsSync(sessionFile)) {
-    try {
-      sessionId = readFileSync(sessionFile, "utf8").trim().split("\n")[0] || null
-    } catch {
-      sessionId = null
-    }
-  }
 
   const meta: Meta = {
     ...baseMeta,
@@ -773,6 +963,7 @@ async function launchSlot(
     bytes: body.length,
     markers,
     session_id: sessionId,
+    recovered: recovered.recovered || undefined,
     terminal: isTerminal(status),
     error:
       status === "ok"
@@ -937,7 +1128,11 @@ async function cmdLaunch(planPath: string): Promise<void> {
   process.exit(metas.every((m) => m.terminal) ? (ok ? 0 : 1) : 1)
 }
 
-function harvestOne(outPath: string, slotHint?: string): Meta {
+function harvestOne(
+  outPath: string,
+  slotHint?: string,
+  recover?: { attach?: string; password?: string },
+): Meta {
   const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
   let meta: Meta | null = null
   if (existsSync(metaPath)) {
@@ -949,12 +1144,16 @@ function harvestOne(outPath: string, slotHint?: string): Meta {
   }
   const slot =
     meta?.slot || slotHint || outPath.split("/").pop()?.replace(/\.out$/, "") || "unknown"
-  let body = ""
-  let bytes = 0
-  if (existsSync(outPath)) {
-    body = readFileSync(outPath, "utf8")
-    bytes = body.length
-  }
+
+  const salvaged = recoverSlotBody({
+    outPath,
+    sessionId: meta?.session_id,
+    attach: recover?.attach,
+    password: recover?.password,
+    abortFirst: meta?.status === "timeout" || meta?.status === "empty",
+  })
+  const body = salvaged.body
+  const bytes = body.length
   const markers = countMarkers(body)
   const rich = isRich(body)
 
@@ -981,7 +1180,8 @@ function harvestOne(outPath: string, slotHint?: string): Meta {
     backup_used: Boolean(meta?.backup_used),
     prompt: meta?.prompt || "",
     out: outPath,
-    session_id: meta?.session_id,
+    session_id: salvaged.sessionId || meta?.session_id,
+    recovered: salvaged.recovered || meta?.recovered || undefined,
     exit: meta?.exit ?? null,
     started_at: meta?.started_at,
     ended_at: nowIso(),
@@ -1003,18 +1203,33 @@ function cmdHarvest(runDir: string): void {
   const resultsDir = join(absDir, "results")
   if (!existsSync(resultsDir)) die(`results dir missing: ${resultsDir}`)
 
+  const planPath = join(absDir, "plan.json")
+  const preflight = loadPreflight(absDir)
+  let plan: Plan | null = null
+  if (existsSync(planPath)) {
+    try {
+      plan = readJson<Plan>(planPath)
+    } catch {
+      plan = null
+    }
+  }
+  const recover = {
+    attach: preflight?.attach_url || plan?.attach,
+    password: plan?.password,
+  }
+
   const outs = readdirSync(resultsDir)
     .filter((f) => f.endsWith(".out") && !f.startsWith("_smoke"))
     .map((f) => join(resultsDir, f))
     .sort()
 
-  const metas = outs.map((p) => harvestOne(p))
+  const metas = outs.map((p) => harvestOne(p, undefined, recover))
 
   const state = loadState(absDir)
   for (const [k, m] of Object.entries(state.slots)) {
     if (!metas.find((x) => x.slot === k)) {
       if (m.harness === "external" || m.status === "external") {
-        if (m.out && existsSync(m.out)) metas.push(harvestOne(m.out, k))
+        if (m.out && existsSync(m.out)) metas.push(harvestOne(m.out, k, recover))
         else metas.push({ ...m, terminal: true })
       } else if (m.terminal || isTerminal(m.status)) {
         metas.push(m)

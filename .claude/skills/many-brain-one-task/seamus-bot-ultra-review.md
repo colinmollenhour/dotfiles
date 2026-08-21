@@ -11,7 +11,7 @@ For OpenCode use `--attach seamus:4095`.
 
 ### Required `--title` format (cost reporting)
 
-Every OpenCode / `occtl run` participant title must include:
+Every OpenCode participant title (set on the `mbot-run` plan slot) must include:
 
 ```text
 ultra|{gitlabProjectPath}|!{mrIid}|{bucketOr-}|{role}|{modelShort}|retry{N}

@@ -27,7 +27,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    ```
    Role templates for ultra: [roles/](roles/).
 4. **Write `plan.json`** with one entry per harness-owned slot (`opencode` / `occtl` / `grok`). Native Claude `Agent` slots use `harness: "external"` — launch those via the Agent tool yourself; still list them so harvest scores their `.out`.
-5. **OpenCode preflight + launch + harvest** (do not hand-roll occtl loops)
+5. **OpenCode preflight + launch + harvest.** Do **not** invoke `occtl` or `run-opencode.ts` from this skill — `mbot-run` owns both (occtl by default; run-opencode.ts only as an internal fallback).
    ```bash
    # Optional explicit smoke (launch also smokes automatically when slots use opencode)
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" smoke \
@@ -43,8 +43,8 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    # Wall time + agentsview cost rollup (optional but preferred for ultra summaries):
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
    ```
-   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`.
-   Meta records `actual_harness`, `attach_mode`, `actual_model`. Prefer **run-opencode.ts** (not bare occtl) unless harness is explicitly `occtl`.
+   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://seamus:4095"`.
+   Meta records `actual_harness`, `attach_mode`, `actual_model`. Harvest salvages timed-out sessions via `occtl last` before fail-closing.
 6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`.
 
 ## OpenCode reliability (hard)
@@ -66,26 +66,14 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
 
 | Owner | Mechanisms | Body |
 |---|---|---|
-| **Harness-owned** | `mbot-run` → occtl / run-opencode / grok | Full review = final assistant message / stdout. Harness writes `--out`. |
+| **Harness-owned** | `mbot-run` (OpenCode + Grok) | Full review = final assistant message / stdout. Harness writes `--out`. |
 | **Agent-owned** | Native Claude `Agent` only | Child **Write**s full body to slot path; returns ≤500-char status |
 
 Never tell OpenCode/Grok to Write the harness `--out` path.
 
 ## OpenCode single-slot fallback
 
-If you must launch one OpenCode participant without a plan file:
-
-```bash
-bun "${CLAUDE_SKILL_DIR}/run-opencode.ts" \
-  --model <provider/model> --variant high \
-  --file .tmp/<run-id>/prompts/<slot>.md \
-  --attach http://seamus:4095 \
-  --timeout-ms 1200000 \
-  --out .tmp/<run-id>/results/<slot>.out \
-  -- "Emit the COMPLETE review as your final assistant message. Do not Write the --out path."
-```
-
-Prefer `mbot-run launch` for any batch ≥2.
+One OpenCode participant still goes through `mbot-run` (a one-slot `plan.json`). Do not shell out to `occtl` or `run-opencode.ts` — those skip harvest/timeout salvage.
 
 ## Retry (summary)
 
@@ -96,3 +84,4 @@ Max one retry per slot; prefer profile backup over second same-model retry. New 
 - `.tmp/` lives **inside the project root** (OpenCode rejects paths outside it).
 - Only the **orchestrator** writes `STATE.json` (mbot-run updates it; subagents never do).
 - Do **not** write ad-hoc `launch-*.ts` / `harvest.ts` / `batch.ts` under the run dir — extend `mbot-run.ts` if a gap remains.
+- Do **not** call `occtl` / `opencode` / `run-opencode.ts` from the parent session for MBOT slots. Timeout recovery lives in `mbot-run harvest`.

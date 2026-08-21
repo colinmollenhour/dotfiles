@@ -20,7 +20,7 @@
  *     -- "Perform the code review exactly as instructed."
  *
  * Required: --model, --file, trailing `--`, and a short message (positional).
- * Optional: --no-session-fallback disables occtl fallback for debugging JSON streaming.
+ * Optional: --no-session-fallback disables occtl last salvage (empty JSON and timeouts).
  * See SKILL.md "How to run" for the full option list and the why.
  */
 
@@ -139,16 +139,45 @@ function normalizeAttachForOcctl(attach?: string): string | undefined {
   }
 }
 
+function occtlEnv(): NodeJS.ProcessEnv {
+  const env = { ...spawnEnv }
+  if (values.password) env.OPENCODE_SERVER_PASSWORD = values.password
+  const attach = values.attach
+  if (attach) {
+    try {
+      const raw = attach.startsWith("http") ? attach : `http://${attach}`
+      const u = new URL(raw)
+      env.OPENCODE_SERVER_HOST = u.hostname
+      env.OPENCODE_SERVER_PORT = u.port || "4096"
+    } catch {
+      /* keep existing env */
+    }
+  }
+  return env
+}
+
+function abortSessions(sessionIds: string[]): void {
+  const attach = normalizeAttachForOcctl(values.attach)
+  const env = occtlEnv()
+  for (const sessionId of sessionIds) {
+    const occtlArgs = ["abort", sessionId]
+    if (attach) occtlArgs.push("--attach", attach)
+    spawnSync("occtl", occtlArgs, { encoding: "utf8", env, timeout: 15_000 })
+  }
+}
+
 function fetchSessionText(sessionIds: string[]): string {
   const attach = normalizeAttachForOcctl(values.attach)
+  const env = occtlEnv()
   for (const sessionId of sessionIds) {
     const occtlArgs = ["last", sessionId, "--role", "assistant", "--text-only"]
     if (attach) occtlArgs.push("--attach", attach)
 
     const res = spawnSync("occtl", occtlArgs, {
       encoding: "utf8",
-      env: spawnEnv,
+      env,
       maxBuffer: 10 * 1024 * 1024,
+      timeout: 20_000,
     })
 
     const text = res.stdout.trim()
@@ -257,11 +286,19 @@ function persist(exitCode: number, note?: string): void {
   }
   if (note) stderrOutput += `${stderrOutput ? "\n\n" : ""}${note}\n`
 
-  if (exitCode === 0 && values.format === "json" && output.trim() === "" && sessionIdList.length && !values["no-session-fallback"]) {
-    // In attach mode some OpenCode builds only stream lifecycle/tool events to
-    // stdout (for example `step_start`) and persist the final assistant text in
-    // the session. Treat that as a transport quirk, not a provider failure.
-    output = fetchSessionText(sessionIdList)
+  const needSessionFallback =
+    !values["no-session-fallback"] &&
+    sessionIdList.length > 0 &&
+    (output.trim() === "" || (timedOut && !isRichBody(output)))
+  if (needSessionFallback) {
+    // Attach mode may stream only lifecycle events, or a timeout may kill the
+    // local CLI while the remote session still has text. Abort leftovers, then
+    // harvest `occtl last` — including on exit 124, not only empty exit 0.
+    if (timedOut || exitCode === 124) abortSessions(sessionIdList)
+    const salvaged = fetchSessionText(sessionIdList)
+    if (salvaged.trim() && (isRichBody(salvaged) || salvaged.trim().length > output.trim().length)) {
+      output = salvaged
+    }
   }
 
   // If the model Write'd a full review to --out and returned empty/thin final
