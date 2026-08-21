@@ -10,6 +10,7 @@
 
 .claude/skills/many-brain-one-decision/*.md
 !.claude/skills/many-brain-one-decision/SKILL.md
+!.claude/skills/many-brain-one-decision/defaults.md
 
 pi-megamind/skills/many-brain-one-task/*.md
 !pi-megamind/skills/many-brain-one-task/SKILL.md
