@@ -1,7 +1,7 @@
 ---
-description: Many brain, one task with Claude Sonnet 5 - only to be used by the MBOT skill
+description: Many brain, one task with Claude Fable 5 - only to be used by the MBOT skill
 mode: subagent
-model: claude-code/sonnet
+model: claude-code/fable
 reasoningEffort: high
 tools:
   write: false
