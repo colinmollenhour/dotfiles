@@ -1,17 +1,22 @@
 ---
 description: Clean up local git branches and stale worktrees (squash-aware; prefers worktrunk when available)
-allowed-tools: Bash(git *), Bash(wt *), Bash(glab *), Bash(paseo *), Bash(git-cleanup-scan *), Bash(*git-cleanup-scan*), mcp_question
+allowed-tools: Bash(git *), Bash(wt *), Bash(glab *), Bash(paseo *), Bash(git-cleanup-scan *), Bash(*git-cleanup-scan*), Bash(command -v:*), mcp_question
 ---
 
 # Context
 
-Current branch: !`git branch --show-current`
-Default remote branch: !`git remote show origin | grep 'HEAD branch' | awk '{print $NF}'`
-Total local branches: !`git branch --list | wc -l`
-Worktrees: !`git worktree list | wc -l`
-Worktrunk available: !`command -v wt >/dev/null && echo yes || echo no`
-Paseo available: !`command -v paseo >/dev/null && echo yes || echo no`
-Scan helper: !`command -v git-cleanup-scan >/dev/null && echo PATH || (test -x "$HOME/.agents/skills/colin-git-cleanup/scripts/git-cleanup-scan" && echo skill-scripts || echo missing)`
+Gather the current state first. Run these in a single tool-turn batch:
+
+```bash
+git branch --show-current
+git remote show origin | grep 'HEAD branch' | awk '{print $NF}'
+git branch --list | wc -l
+git worktree list | wc -l
+command -v wt >/dev/null && echo "worktrunk: yes" || echo "worktrunk: no"
+command -v paseo >/dev/null && echo "paseo: yes" || echo "paseo: no"
+command -v git-cleanup-scan >/dev/null && echo "scan: PATH" \
+  || { test -x "$HOME/.agents/skills/colin-git-cleanup/scripts/git-cleanup-scan" && echo "scan: skill-scripts" || echo "scan: missing"; }
+```
 
 # Your task
 

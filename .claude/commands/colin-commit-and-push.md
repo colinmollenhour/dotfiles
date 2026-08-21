@@ -1,39 +1,26 @@
 ---
 description: Commit, push, and open/update a Github PR or GitLab MR (unless otherwise specified)
-allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr comment:*), Bash(gh pr edit:*), Bash(glab mr create:*), Bash(glab mr note:*), Bash(glab mr update:*), Bash(gh pr view:*), Bash(glab mr view:*), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*), Bash(bun *), Bash(which *)
+allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git remote:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr comment:*), Bash(gh pr edit:*), Bash(glab mr create:*), Bash(glab mr note:*), Bash(glab mr update:*), Bash(gh pr view:*), Bash(glab mr view:*), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*), Bash(bun *), Bash(which *)
 argument-hints: Special instructions
 ---
 
 # Context
 
-Current git status:
--------------------------
-!`git status`
--------------------------
+Gather the current state first. Run these in a single tool-turn batch:
 
-Current git diff (staged and unstaged changes):
--------------------------
-!`git diff HEAD --stat`
--------------------------
-
-Current branch: !`git branch --show-current`
-Current git upstream: !`git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo None`
-Git remotes:
-!`git remote -v`
-
-Last 3 commits:
--------------------------
-!`git log -n 3`
--------------------------
-
-Github PR status or GitLab MR status:
--------------------------
-!`gh pr status 2>/dev/null || glab mr view 2>/dev/null | head -n 10 || true`
--------------------------
+```bash
+git status
+git diff HEAD --stat
+git branch --show-current
+git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo None
+git remote -v
+git log -n 3
+gh pr status 2>/dev/null || glab mr view 2>/dev/null | head -n 10 || true
+```
 
 # Your task
 
-Based on the above info and the context of this session:
+Based on that state and the context of this session:
 
 1. Create a new branch if on main/master using `{task-id}_{Screaming-Kebab-Case-short-description}` when related to a task, else `{feature|bug|other}/{Screaming-Kebab-Case-short-description}`.
 2. UNLESS instructed to push to main/master and IF the current remote tracking branch is main/master, then UNSET the upstream (`git branch --unset-upstream`) to avoid pushing the feature branch to main.
