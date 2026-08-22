@@ -1050,8 +1050,32 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
       wallSource = wall != null ? "meta" : "none"
     }
 
-    if (agentsviewAvailable && typeof meta.session_file === "string" && meta.session_file) {
-      syncSessionPath(meta.session_file)
+    if (agentsviewAvailable) {
+      if (typeof meta.session_file === "string" && meta.session_file) {
+        syncSessionPath(meta.session_file)
+      } else if (sessionId && /^ses_/.test(sessionId.replace(/^opencode:/, ""))) {
+        const raw = sessionId.replace(/^opencode:/, "")
+        const name = raw.endsWith(".json") ? raw : `${raw}.json`
+        const root = join(
+          process.env.XDG_DATA_HOME || join(process.env.HOME || "", ".local/share"),
+          "opencode",
+          "storage",
+          "session",
+        )
+        if (existsSync(root)) {
+          try {
+            for (const proj of readdirSync(root)) {
+              const p = join(root, proj, name)
+              if (existsSync(p)) {
+                syncSessionPath(p)
+                break
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
     }
 
     let usage: AgentsviewUsage | null = null
@@ -1370,21 +1394,39 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
   // Auto: sessions that mention this run dir (true orchestrator for this artifact tree)
   const runDirParents = new Set<string>()
   if (agentsviewAvailable && (runBase || runDir)) {
-    const claudeParents = listSessions({
-      agent: "claude",
-      since,
-      includeChildren: false,
-      includeOneShot: true,
-      includeAutomated: true,
-      limit: 200,
-    })
-    for (const s of claudeParents) {
+    const parentCandidates = [
+      ...listSessions({
+        agent: "claude",
+        since,
+        includeChildren: false,
+        includeOneShot: true,
+        includeAutomated: true,
+        limit: 200,
+      }),
+      ...listSessions({
+        agent: "opencode",
+        since,
+        includeChildren: false,
+        includeOneShot: true,
+        includeAutomated: true,
+        limit: 200,
+      }),
+      ...listSessions({
+        since,
+        includeChildren: false,
+        includeOneShot: true,
+        includeAutomated: true,
+        limit: 200,
+      }),
+    ]
+    for (const s of parentCandidates) {
       if (!s.id || s.id.startsWith("agent-")) continue
       const fm = s.first_message || ""
       if (
         (runBase && fm.includes(runBase)) ||
         fm.includes(runDir) ||
-        (runBase && fm.includes(`.tmp/${runBase}`))
+        (runBase && fm.includes(`.tmp/${runBase}`)) ||
+        looksLikeParentPrompt(fm, runDir)
       ) {
         runDirParents.add(s.id)
       }

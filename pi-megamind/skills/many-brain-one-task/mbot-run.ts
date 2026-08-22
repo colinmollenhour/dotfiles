@@ -16,8 +16,9 @@
  * Commands:
  *   bun mbot-run.ts init --run-dir .tmp/ultra-N
  *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://seamus:4095 --model openai/gpt-5.6-sol
- *   bun mbot-run.ts launch --plan .tmp/ultra-N/plan.json
+ *   bun mbot-run.ts launch --plan .tmp/ultra-N/plan.json [--detach]
  *   bun mbot-run.ts harvest --run-dir .tmp/ultra-N
+ *   bun mbot-run.ts candidates --run-dir .tmp/ultra-N
  *   bun mbot-run.ts status --run-dir .tmp/ultra-N
  *   bun mbot-run.ts barrier --run-dir .tmp/ultra-N [--timeout-ms 1200000]
  *   bun mbot-run.ts usage --run-dir .tmp/ultra-N [--title-prefix P] [--since 14d]
@@ -43,17 +44,25 @@
 import { spawn, spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   statSync,
   writeFileSync,
 } from "node:fs"
 import { homedir } from "node:os"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
+import {
+  defaultOpencodeAgent,
+  defaultOpencodeVariant,
+  inferProjectDir,
+  resolvePlanPath,
+} from "./mbot-paths.ts"
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const RUN_OPENCODE = join(SCRIPT_DIR, "run-opencode.ts")
@@ -85,6 +94,8 @@ interface Slot {
   provider_model_id?: string
   harness: "opencode" | "occtl" | "grok" | "external" | string
   variant?: string
+  /** OpenCode agent name. GPT slots default to colin-mbot-gpt. */
+  agent?: string
   title?: string
   prompt: string
   out: string
@@ -104,6 +115,10 @@ interface Plan {
   concurrency?: number
   /** Force OpenCode transport. Default auto (smoke then attach|local). */
   opencode_mode?: OpencodeMode
+  /** Default OpenCode agent when a slot does not set `agent`. */
+  opencode_agent?: string
+  /** Default OpenCode variant when a slot does not set `variant`. */
+  variant?: string
   smoke_timeout_ms?: number
   slots: Slot[]
 }
@@ -172,8 +187,11 @@ function die(msg: string, code = 2): never {
   process.exit(code)
 }
 
-function abs(runDir: string, p: string): string {
-  return isAbsolute(p) ? p : join(runDir, p)
+function abs(runDir: string, p: string, projectDir?: string): string {
+  return resolvePlanPath(p, {
+    runDir,
+    projectDir: projectDir || inferProjectDir(runDir),
+  })
 }
 
 function readJson<T>(path: string): T {
@@ -783,6 +801,15 @@ async function runSmokeOnce(opts: {
   }
 }
 
+function opencodeAgentInstalled(name: string, projectDir: string): boolean {
+  const files = [
+    join(projectDir, ".opencode", "agents", `${name}.md`),
+    join(homedir(), ".opencode", "agents", `${name}.md`),
+    join(homedir(), ".config", "opencode", "agents", `${name}.md`),
+  ]
+  return files.some((p) => existsSync(p))
+}
+
 function occtlRunArgs(opts: {
   model: string
   promptPath: string
@@ -793,12 +820,14 @@ function occtlRunArgs(opts: {
   attach?: string
   password?: string
   variant?: string
+  agent?: string
   title?: string
   message: string
 }): string[] {
   // ALL flags before --
   const args = ["run", "--model", opts.model]
   if (opts.variant) args.push("--variant", opts.variant)
+  if (opts.agent) args.push("--agent", opts.agent)
   if (opts.title) args.push("--title", opts.title)
   args.push(
     "--file",
@@ -838,9 +867,9 @@ async function launchSlot(
   preflight: OpencodePreflight | null,
 ): Promise<Meta> {
   const runDir = resolve(plan.run_dir)
-  const projectDir = plan.project_dir ? resolve(plan.project_dir) : runDir
-  const promptPath = abs(runDir, slot.prompt)
-  const outPath = abs(runDir, slot.out)
+  const projectDir = inferProjectDir(runDir, plan.project_dir)
+  const promptPath = abs(runDir, slot.prompt, projectDir)
+  const outPath = abs(runDir, slot.out, projectDir)
   const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
   const errPath = outPath + ".err"
   mkdirSync(dirname(outPath), { recursive: true })
@@ -875,7 +904,14 @@ async function launchSlot(
   }
 
   function finish(partial: Meta): Meta {
-    const ended = partial.ended_at || nowIso()
+    // External slots with no body yet: do not stamp ended_at = started_at
+    // (that produced wall_ms: 0). Harvest fills wall from file mtime later.
+    const ended =
+      partial.ended_at !== undefined
+        ? partial.ended_at
+        : partial.status === "external" && !partial.bytes
+          ? undefined
+          : nowIso()
     const m: Meta = {
       ...partial,
       title: partial.title || slot.title,
@@ -887,12 +923,37 @@ async function launchSlot(
   }
 
   if (slot.skip || slot.harness === "external") {
+    let body = ""
+    if (existsSync(outPath)) {
+      try {
+        body = readFileSync(outPath, "utf8")
+      } catch {
+        body = ""
+      }
+    }
+    const rich = isRich(body)
+    let ended: string | undefined
+    let wall: number | undefined
+    if (rich) {
+      try {
+        ended = statSync(outPath).mtime.toISOString()
+        wall = wallMs(startedAt, ended)
+      } catch {
+        ended = nowIso()
+        wall = wallMs(startedAt, ended)
+      }
+    }
     return finish({
       ...baseMeta,
       status: slot.harness === "external" ? "external" : "skipped",
+      actual_harness: slot.harness === "external" ? "external" : slot.harness,
       exit: null,
       terminal: true,
       attach_mode: "none",
+      bytes: body.length,
+      markers: countMarkers(body),
+      ended_at: ended,
+      wall_ms: wall,
     })
   }
 
@@ -1033,6 +1094,21 @@ async function launchSlot(
     const useOcctl = transport === "occtl"
     actualHarness = useOcctl ? "occtl" : "run-opencode"
 
+    const variant =
+      slot.variant !== undefined
+        ? defaultOpencodeVariant(slot.variant)
+        : defaultOpencodeVariant(plan.variant)
+    const requestedAgent =
+      slot.agent !== undefined
+        ? slot.agent || undefined
+        : plan.opencode_agent || defaultOpencodeAgent(actualModel)
+    const agentExplicit = slot.agent !== undefined || Boolean(plan.opencode_agent)
+    const agent =
+      requestedAgent &&
+      (agentExplicit || opencodeAgentInstalled(requestedAgent, projectDir))
+        ? requestedAgent
+        : undefined
+
     if (useOcctl) {
       const r = await runCmd(
         "occtl",
@@ -1045,7 +1121,8 @@ async function launchSlot(
           dir: projectDir,
           attach: attachUrl,
           password: plan.password,
-          variant: slot.variant,
+          variant,
+          agent,
           title: slot.title,
           message: HARNESS_FOOTER,
         }),
@@ -1072,7 +1149,8 @@ async function launchSlot(
         "--dir",
         projectDir,
       ]
-      if (slot.variant) args.push("--variant", slot.variant)
+      if (variant) args.push("--variant", variant)
+      if (agent) args.push("--agent", agent)
       if (slot.title) args.push("--title", slot.title)
       if (attachUrl) args.push("--attach", attachUrl)
       if (plan.password) args.push("--password", plan.password)
@@ -1114,7 +1192,7 @@ async function launchSlot(
     abortFirst: code === 124 || code === 130 || code === 143,
   })
   const body = recovered.body
-  const sessionId = capturedSessionId || recovered.sessionId
+  const sessionId = capturedSessionId || recovered.sessionId || readSessionId(outPath)
   const sessionFile = resolveSessionFile(sessionId, actualHarness, projectDir)
   const markers = countMarkers(body)
   const rich = isRich(body)
@@ -1203,6 +1281,69 @@ async function cmdSmoke(opts: {
   process.exit(pf.mode === "skip" ? 1 : 0)
 }
 
+function mergePlanRegistry(runDir: string, incoming: Plan): void {
+  const registryPath = join(runDir, "plan.json")
+  writeJson(join(runDir, "plan-launched.json"), incoming)
+  if (!existsSync(registryPath)) {
+    writeJson(registryPath, incoming)
+    return
+  }
+  let existing: Plan
+  try {
+    existing = readJson<Plan>(registryPath)
+  } catch {
+    writeJson(registryPath, incoming)
+    return
+  }
+  const byId = new Map<string, Slot>()
+  for (const s of existing.slots || []) byId.set(s.slot, s)
+  for (const s of incoming.slots) byId.set(s.slot, s)
+  const merged: Plan = {
+    ...existing,
+    ...incoming,
+    slots: [...byId.values()],
+  }
+  writeJson(registryPath, merged)
+}
+
+function cmdLaunchDetach(planPath: string): void {
+  const absPlan = resolve(planPath)
+  if (!existsSync(absPlan)) die(`plan not found: ${absPlan}`)
+  const incoming = readJson<Plan>(absPlan)
+  if (!incoming.run_dir) die("plan.run_dir is required")
+  const runDir = resolve(incoming.run_dir)
+  mkdirSync(runDir, { recursive: true })
+  const logPath = join(runDir, "launch-detach.log")
+  const pidPath = join(runDir, "launch.pid")
+  const fd = openSync(logPath, "a")
+  const script = fileURLToPath(import.meta.url)
+  const child = spawn(process.execPath, [script, "launch", "--plan", absPlan], {
+    detached: true,
+    stdio: ["ignore", fd, fd],
+    cwd: process.cwd(),
+    env: process.env,
+  })
+  closeSync(fd)
+  if (child.pid == null) die("failed to spawn detached launch")
+  writeFileSync(pidPath, `${child.pid}\n`)
+  child.unref()
+  process.stdout.write(
+    JSON.stringify(
+      {
+        ok: true,
+        detached: true,
+        pid: child.pid,
+        log: logPath,
+        pid_file: pidPath,
+        run_dir: runDir,
+        hint: `bun mbot-run.ts barrier --run-dir ${runDir} --timeout-ms ${incoming.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS}`,
+      },
+      null,
+      2,
+    ) + "\n",
+  )
+}
+
 async function cmdLaunch(planPath: string): Promise<void> {
   if (!existsSync(planPath)) die(`plan not found: ${planPath}`)
   const plan = readJson<Plan>(planPath)
@@ -1212,7 +1353,8 @@ async function cmdLaunch(planPath: string): Promise<void> {
   const runDir = resolve(plan.run_dir)
   mkdirSync(join(runDir, "results"), { recursive: true })
   plan.run_dir = runDir
-  writeJson(join(runDir, "plan.json"), plan)
+  plan.project_dir = inferProjectDir(runDir, plan.project_dir)
+  mergePlanRegistry(runDir, plan)
 
   const hasOpencode = plan.slots.some(
     (s) => (s.harness === "opencode" || s.harness === "occtl") && !s.skip,
@@ -1347,7 +1489,7 @@ function harvestOne(
   else if (!existsSync(outPath) || bytes === 0) status = "failed"
   else status = "empty"
 
-  const sessionId = salvaged.sessionId || meta?.session_id || null
+  const sessionId = salvaged.sessionId || meta?.session_id || readSessionId(outPath)
   const sessionFile =
     meta?.session_file ||
     resolveSessionFile(
@@ -1357,8 +1499,32 @@ function harvestOne(
     )
   // Keep launch's per-slot ended_at. Harvest-time nowIso() would stamp the
   // same batch-completion instant on every slot and destroy wall time.
-  const startedAt = meta?.started_at
-  const endedAt = meta?.ended_at ?? nowIso()
+  // External slots often have wall_ms 0 / ended_at = started_at; fill from
+  // the result file mtime once a body exists.
+  let startedAt = meta?.started_at
+  let endedAt = meta?.ended_at
+  let wall = meta?.wall_ms
+  const externalish =
+    meta?.status === "external" ||
+    meta?.harness === "external" ||
+    meta?.actual_harness === "external"
+  if (rich && existsSync(outPath) && (externalish || !wall)) {
+    try {
+      const st = statSync(outPath)
+      const mtime = st.mtime.toISOString()
+      if (!endedAt || wall === 0 || wall == null) endedAt = mtime
+      if (!startedAt) {
+        const errPath = outPath + ".err"
+        if (existsSync(errPath)) {
+          startedAt = statSync(errPath).birthtime.toISOString()
+        }
+      }
+      wall = wall && wall > 0 ? wall : wallMs(startedAt, endedAt)
+    } catch {
+      /* keep meta times */
+    }
+  }
+  if (!endedAt && !externalish) endedAt = nowIso()
 
   const next: Meta = {
     ...(meta || {
@@ -1391,7 +1557,7 @@ function harvestOne(
     exit: meta?.exit ?? null,
     started_at: startedAt,
     ended_at: endedAt,
-    wall_ms: meta?.wall_ms ?? wallMs(startedAt, endedAt),
+    wall_ms: wall ?? wallMs(startedAt, endedAt),
     cost_usd: meta?.cost_usd,
     cost_source: meta?.cost_source,
     usage: meta?.usage,
@@ -1533,6 +1699,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
   const planPath = join(absDir, "plan.json")
   if (!existsSync(planPath)) die(`plan.json missing in ${absDir} — launch first`)
   const plan = readJson<Plan>(planPath)
+  const projectDir = inferProjectDir(absDir, plan.project_dir)
   const expected = plan.slots.map((s) => s.slot)
   const t0 = Date.now()
 
@@ -1540,7 +1707,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
     const state = loadState(absDir)
     // refresh from disk metas
     for (const s of plan.slots) {
-      const outPath = abs(absDir, s.out)
+      const outPath = abs(absDir, s.out, projectDir)
       const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
       if (existsSync(metaPath)) {
         try {
@@ -1559,7 +1726,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
               actual_model: s.planned_model,
               harness: s.harness,
               backup_used: false,
-              prompt: abs(absDir, s.prompt),
+              prompt: abs(absDir, s.prompt, projectDir),
               out: outPath,
               status: isRich(body) ? "ok" : "empty",
               terminal: true,
@@ -1624,61 +1791,23 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
   process.exit(1)
 }
 
-// --- CLI ---
-const argv = process.argv.slice(2)
-const command = argv[0]
-if (!command || command === "-h" || command === "--help") {
-  process.stdout.write(`Usage:
-  mbot-run.ts init --run-dir <dir>
-  mbot-run.ts smoke --run-dir <dir> [--attach URL] [--model ID] [--mode auto|attach|local|skip]
-  mbot-run.ts launch --plan <plan.json>
-  mbot-run.ts harvest --run-dir <dir>
-  mbot-run.ts status --run-dir <dir>
-  mbot-run.ts barrier --run-dir <dir> [--timeout-ms N] [--poll-ms N]
-  mbot-run.ts usage --run-dir <dir> [--title-prefix P] [--since 14d] [--include-claude-children] [--parent-session-id ID] [--out path]
-`)
-  process.exit(command ? 0 : 2)
-}
-
-const rest = argv.slice(1)
-const { values } = parseArgs({
-  args: rest,
-  options: {
-    "run-dir": { type: "string" },
-    plan: { type: "string" },
-    attach: { type: "string" },
-    model: { type: "string" },
-    mode: { type: "string" },
-    password: { type: "string" },
-    "timeout-ms": { type: "string" },
-    "poll-ms": { type: "string" },
-    "title-prefix": { type: "string" },
-    since: { type: "string" },
-    out: { type: "string" },
-    "include-claude-children": { type: "boolean" },
-    "parent-session-id": { type: "string", multiple: true },
-    "no-agentsview": { type: "boolean" },
-  },
-}) as {
-  values: {
-    "run-dir"?: string
-    plan?: string
-    attach?: string
-    model?: string
-    mode?: string
-    password?: string
-    "timeout-ms"?: string
-    "poll-ms"?: string
-    "title-prefix"?: string
-    since?: string
-    out?: string
-    "include-claude-children"?: boolean
-    "parent-session-id"?: string | string[]
-    "no-agentsview"?: boolean
-  }
-}
-
 const AGENTSVIEW_USAGE = join(SCRIPT_DIR, "agentsview-usage.ts")
+const CANDIDATES_HELPER = join(SCRIPT_DIR, "mbot-candidates.ts")
+
+function envParentSessionIds(): string[] {
+  const keys = [
+    "OPENCODE_SESSION",
+    "OPENCODE_SESSION_ID",
+    "OCCTL_SESSION",
+    "GROK_SESSION_ID",
+  ]
+  const out: string[] = []
+  for (const k of keys) {
+    const v = process.env[k]?.trim()
+    if (v) out.push(v)
+  }
+  return out
+}
 
 function cmdUsage(opts: {
   runDir: string
@@ -1708,46 +1837,125 @@ function cmdUsage(opts: {
   process.exit(r.status ?? 1)
 }
 
-if (command === "init") {
-  if (!values["run-dir"]) die("--run-dir is required")
-  cmdInit(values["run-dir"])
-} else if (command === "smoke") {
-  if (!values["run-dir"]) die("--run-dir is required")
-  await cmdSmoke({
-    runDir: values["run-dir"],
-    attach: values.attach,
-    model: values.model,
-    password: values.password,
-    timeoutMs: values["timeout-ms"] ? Number(values["timeout-ms"]) : undefined,
-    mode: (values.mode as OpencodeMode) || "auto",
+function cmdCandidates(runDir: string): void {
+  if (!existsSync(CANDIDATES_HELPER)) die(`candidates helper missing: ${CANDIDATES_HELPER}`)
+  const r = spawnSync("bun", [CANDIDATES_HELPER, "--run-dir", runDir], {
+    encoding: "utf8",
+    stdio: ["ignore", "inherit", "inherit"],
   })
-} else if (command === "launch") {
-  if (!values.plan) die("--plan is required")
-  await cmdLaunch(values.plan)
-} else if (command === "harvest") {
-  if (!values["run-dir"]) die("--run-dir is required")
-  cmdHarvest(values["run-dir"])
-} else if (command === "status") {
-  if (!values["run-dir"]) die("--run-dir is required")
-  cmdStatus(values["run-dir"])
-} else if (command === "barrier") {
-  if (!values["run-dir"]) die("--run-dir is required")
-  const timeoutMs = values["timeout-ms"] ? Number(values["timeout-ms"]) : DEFAULT_SLOT_TIMEOUT_MS
-  const pollMs = values["poll-ms"] ? Number(values["poll-ms"]) : 5000
-  await cmdBarrier(values["run-dir"], timeoutMs, pollMs)
-} else if (command === "usage") {
-  if (!values["run-dir"]) die("--run-dir is required")
-  const p = values["parent-session-id"]
-  const parentSessionIds = Array.isArray(p) ? p : p ? [p] : []
-  cmdUsage({
-    runDir: values["run-dir"],
-    titlePrefix: values["title-prefix"],
-    since: values.since,
-    out: values.out,
-    includeClaudeChildren: Boolean(values["include-claude-children"]),
-    parentSessionIds,
-    noAgentsview: Boolean(values["no-agentsview"]),
-  })
-} else {
-  die(`unknown command: ${command}`)
+  process.exit(r.status ?? 1)
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2)
+  const command = argv[0]
+  if (!command || command === "-h" || command === "--help") {
+    process.stdout.write(`Usage:
+  mbot-run.ts init --run-dir <dir>
+  mbot-run.ts smoke --run-dir <dir> [--attach URL] [--model ID] [--mode auto|attach|local|skip]
+  mbot-run.ts launch --plan <plan.json> [--detach]
+  mbot-run.ts harvest --run-dir <dir>
+  mbot-run.ts candidates --run-dir <dir>
+  mbot-run.ts status --run-dir <dir>
+  mbot-run.ts barrier --run-dir <dir> [--timeout-ms N] [--poll-ms N]
+  mbot-run.ts usage --run-dir <dir> [--title-prefix P] [--since 14d] [--include-claude-children] [--parent-session-id ID] [--out path]
+`)
+    process.exit(command ? 0 : 2)
+  }
+
+  const rest = argv.slice(1)
+  const { values } = parseArgs({
+    args: rest,
+    options: {
+      "run-dir": { type: "string" },
+      plan: { type: "string" },
+      attach: { type: "string" },
+      model: { type: "string" },
+      mode: { type: "string" },
+      password: { type: "string" },
+      "timeout-ms": { type: "string" },
+      "poll-ms": { type: "string" },
+      "title-prefix": { type: "string" },
+      since: { type: "string" },
+      out: { type: "string" },
+      "include-claude-children": { type: "boolean" },
+      "parent-session-id": { type: "string", multiple: true },
+      "no-agentsview": { type: "boolean" },
+      detach: { type: "boolean" },
+    },
+  }) as {
+    values: {
+      "run-dir"?: string
+      plan?: string
+      attach?: string
+      model?: string
+      mode?: string
+      password?: string
+      "timeout-ms"?: string
+      "poll-ms"?: string
+      "title-prefix"?: string
+      since?: string
+      out?: string
+      "include-claude-children"?: boolean
+      "parent-session-id"?: string | string[]
+      "no-agentsview"?: boolean
+      detach?: boolean
+    }
+  }
+
+  if (command === "init") {
+    if (!values["run-dir"]) die("--run-dir is required")
+    cmdInit(values["run-dir"])
+  } else if (command === "smoke") {
+    if (!values["run-dir"]) die("--run-dir is required")
+    await cmdSmoke({
+      runDir: values["run-dir"],
+      attach: values.attach,
+      model: values.model,
+      password: values.password,
+      timeoutMs: values["timeout-ms"] ? Number(values["timeout-ms"]) : undefined,
+      mode: (values.mode as OpencodeMode) || "auto",
+    })
+  } else if (command === "launch") {
+    if (!values.plan) die("--plan is required")
+    if (values.detach) {
+      cmdLaunchDetach(values.plan)
+      return
+    }
+    await cmdLaunch(values.plan)
+  } else if (command === "harvest") {
+    if (!values["run-dir"]) die("--run-dir is required")
+    cmdHarvest(values["run-dir"])
+  } else if (command === "candidates") {
+    if (!values["run-dir"]) die("--run-dir is required")
+    cmdCandidates(values["run-dir"])
+  } else if (command === "status") {
+    if (!values["run-dir"]) die("--run-dir is required")
+    cmdStatus(values["run-dir"])
+  } else if (command === "barrier") {
+    if (!values["run-dir"]) die("--run-dir is required")
+    const timeoutMs = values["timeout-ms"] ? Number(values["timeout-ms"]) : DEFAULT_SLOT_TIMEOUT_MS
+    const pollMs = values["poll-ms"] ? Number(values["poll-ms"]) : 5000
+    await cmdBarrier(values["run-dir"], timeoutMs, pollMs)
+  } else if (command === "usage") {
+    if (!values["run-dir"]) die("--run-dir is required")
+    const p = values["parent-session-id"]
+    const fromFlags = Array.isArray(p) ? p : p ? [p] : []
+    const parentSessionIds = [...fromFlags, ...envParentSessionIds()]
+    cmdUsage({
+      runDir: values["run-dir"],
+      titlePrefix: values["title-prefix"],
+      since: values.since,
+      out: values.out,
+      includeClaudeChildren: Boolean(values["include-claude-children"]),
+      parentSessionIds,
+      noAgentsview: Boolean(values["no-agentsview"]),
+    })
+  } else {
+    die(`unknown command: ${command}`)
+  }
+}
+
+if (import.meta.main) {
+  await main()
 }

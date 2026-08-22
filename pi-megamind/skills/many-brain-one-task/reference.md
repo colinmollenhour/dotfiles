@@ -48,15 +48,15 @@ The host harness (you, the one running this skill right now) limits which models
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to **`botctl prompt`** (via `botctl-prompt` skill) or the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
 | Claude Code | Grok                     | `grok` CLI (preferred). OpenCode `colin-mbot-grok` only if `grok` is missing/unauthenticated or the profile forces OpenCode. See [Grok](#grok). |
 | Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll `occtl` / `run-opencode.ts`.                       |
-| OpenCode    | Claude (Opus/Sonnet/Haiku) | **`botctl prompt`** (preferred when available) or `claude` CLI — never `colin-mbot-*` for Claude. See [Claude](#claude-opus--sonnet--haiku). |
+| OpenCode    | Claude (Opus/Sonnet/Haiku) | **`botctl prompt`** (preferred when `botctl` is on PATH) or `claude` CLI — never `colin-mbot-*` for Claude. See [Claude](#claude-opus--sonnet--haiku). |
 | OpenCode    | Grok                     | `grok` CLI (preferred). Fall back to `colin-mbot-grok` / `mbot-run` only when Grok CLI is unavailable or the profile says OpenCode. See [Grok](#grok). |
-| OpenCode    | other non-Claude         | `task` tool with a `colin-mbot-*` `subagent_type` (e.g. `colin-mbot-glm` for GLM). Auto-selects model.     |
+| OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults `--variant high` and `--agent colin-mbot-gpt`). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
 | Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `mbot-run` for OpenCode, `pi`, `codex`, `gemini`). |
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
-When OpenCode is the host and dispatching to a `colin-mbot-*` subagent, **only** use agents whose names start with `colin-mbot-`. Do not pick other agents. Exception: Claude and Grok prefer their first-party CLIs over `colin-mbot-*` when those CLIs are available.
+When OpenCode is the host, GPT/OpenAI MBOT slots go through `mbot-run` (which passes `--agent colin-mbot-gpt`). Do not hand-pick `build`. Claude and Grok still prefer their first-party CLIs (`botctl` / `claude`, `grok`) over `colin-mbot-*`.
 
 When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
 
@@ -314,7 +314,7 @@ For discovery, validation, integration, and summarization Claude children, use r
 
 If the `Agent` tool is unavailable, fall back to **`botctl prompt`** (preferred) or the `claude` CLI.
 
-**OpenCode host** — do **not** use a `colin-mbot-*` subagent for Claude models. Prefer **`botctl prompt`** when `botctl` is on `PATH`; otherwise use the `claude` CLI.
+**OpenCode host** — do **not** use a `colin-mbot-*` subagent for Claude models. Prefer **`botctl prompt`** when `command -v botctl` succeeds; otherwise use the `claude` CLI. Do not skip `botctl` when it is installed.
 
 #### `botctl prompt` (preferred shell-out)
 
@@ -366,9 +366,18 @@ Use this only when `botctl` is unavailable or the profile explicitly requires he
 The parent session never invokes `occtl`, `opencode`, or `run-opencode.ts` for MBOT/MBOD slots. Write a `plan.json` with `harness: "opencode"` (or `"occtl"` — same path) and run:
 
 ```bash
+# Claude Code host (blocking launch — give Bash timeout: 1320000):
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
+
+# OpenCode host — MUST detach (120s bash timeout otherwise kills occtl children):
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json --detach
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id> --timeout-ms 1200000
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" candidates --run-dir .tmp/<run-id>
 ```
+
+Launching a later phase plan (`plan-integration.json`, `plan-validate.json`) **merges** those slots into `plan.json`. It does not replace prior slots. Prompt/out may be `prompts/x.md` (relative to `run_dir`) or repo-relative `.tmp/<id>/prompts/x.md`; `mbot-run` strips a duplicated run-dir prefix. Always set `project_dir` to the repo root (inferred when `run_dir` is `<repo>/.tmp/<id>`).
 
 `mbot-run` picks the transport once during smoke:
 
@@ -377,7 +386,7 @@ bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
 
 Do not cache `OPENCODE_VIA` in the parent, do not `occtl ping` as a preflight, and do not load `occtl view-skill` for MBOT slots. Timeout recovery (`occtl last` after 124 / thin `.out`) is inside `launch` and `harvest`.
 
-Default OpenCode wall-clock: **20 minutes** (`timeout_ms: 1200000` on the plan). `mbot-run` kills the child 2 minutes after that. If you ever wrap `mbot-run` in the host Bash tool, give Bash **22 minutes** (`timeout: 1320000`) so sidecars flush.
+Default OpenCode wall-clock: **20 minutes** (`timeout_ms: 1200000` on the plan). `mbot-run` kills the child 2 minutes after that. If you ever wrap a **blocking** `mbot-run launch` in the host Bash tool, give Bash **22 minutes** (`timeout: 1320000`) so sidecars flush. On OpenCode, do not wrap a blocking launch at all — use `--detach` (new process group) then `barrier`. `setsid`/`nohup` from the parent is obsolete.
 
 `occtl run --timeout` is **milliseconds**. Other occtl commands (`send`, `stream`, `wait-for-idle`) take **seconds**. That mismatch is why the parent must not call occtl itself.
 

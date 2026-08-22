@@ -28,12 +28,13 @@ Resolve `CLAUDE_SKILL_DIR` to the installed skill roots (`~/.claude/skills/...` 
 | Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` |
 | Assemble prompts | `bun …/many-brain-one-task/assemble-prompts.ts --append context/bucket.md --out-dir prompts role.md:slot.full.md …` |
 | OpenCode smoke | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://seamus:4095 --model openai/gpt-5.6-sol` (launch also smokes) |
-| Launch batch | `bun …/many-brain-one-task/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (`concurrency` default 3 on attach) |
-| Fail-closed wait | `bun …/mbot-run.ts barrier --run-dir .tmp/ultra-N` — **never** `until test -s empty.out` |
-| Harvest | `bun …/many-brain-one-task/mbot-run.ts harvest --run-dir .tmp/ultra-N` |
-| Usage (wall + cost) | `bun …/many-brain-one-task/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) — separates **parent** orchestrator vs **slice** participants in `by_role` |
+| Launch batch | `bun …/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (Claude Code). **OpenCode host:** add `--detach`, then barrier. Further phase plans (`plan-integration.json`) merge into `plan.json`; they do not replace it. |
+| Fail-closed wait | `bun …/mbot-run.ts barrier --run-dir .tmp/ultra-N` — **never** `sleep N`, **never** `until test -s empty.out` |
+| Harvest | `bun …/mbot-run.ts harvest --run-dir .tmp/ultra-N` |
+| Candidate index | `bun …/mbot-run.ts candidates --run-dir .tmp/ultra-N` — writes `candidates.json` + `candidate-index.md`. Do not invent `extract-issues.ts`. |
+| Usage (wall + cost) | `bun …/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) |
 
-OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang.
+OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills occtl children. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
 
 Load **many-brain-one-task** for plan schema, delivery contracts, profiles. Role templates: `many-brain-one-task/roles/{state,contracts,failure,craft,merits,integration}.md`.
 
@@ -90,17 +91,18 @@ Skip only when genuinely N/A (prose-only → skip state; no interface change →
 
 ## Re-review and convergence
 
-`--max-rounds=N` default `3`. Clean round = no **new confirmed** issue after validation.
+`--max-rounds=N` default `3`. Clean round = that round produced **no new confirmed** issues after validation.
 
 - Round 1: role × bucket grid + merits + integration  
 - Later rounds: **integration-only** unless new subsystem enters scope  
+- Do **not** skip rounds 2–N because HEAD was unchanged — the SHA publication gate is a separate check at the end of a round, not a substitute for convergence. Stop when a later round adds no new confirmed issue, or the cap is hit.
 - `--re-review`: delta-first (`last-reviewed-sha...head` from latest `**AI Ultra Review**` header) + one full-state integration; `--full` forces full grid  
 
 ## Process
 
 ### 1. Pre-flight
 
-Gather via **mr-context** / **pr-context** (not five serial glab/gh calls). Require base+head SHAs present locally (`git cat-file -e <sha>^{commit}`); do not auto-fetch. Stop if closed/merged/draft/trivial/already ultra-reviewed (unless `--re-review`). Git-diff mode skips pre-flight.
+Gather via **mr-context** / **pr-context** (not five serial glab/gh calls). Require base+head SHAs present locally (`git cat-file -e <sha>^{commit}`). **Do not `git fetch`.** If a SHA is missing, stop and tell the user. Stop if closed/merged/draft/trivial/already ultra-reviewed (unless `--re-review`). Git-diff mode skips pre-flight.
 
 ### 2–3. Change index + buckets
 
@@ -137,8 +139,8 @@ Whole-change `roles/integration.md` + candidate index paths (not embedded blobs)
 
 ### 8. Validate + dedupe
 
-Independent validator (prefer different model). Status exactly one of: `confirmed` | `rejected` | `unresolved`.  
-Never reject for single-model or lack of consensus. Slot-keyed validator outs; rewrite paths on backup.
+Build the candidate index with `mbot-run candidates` (not an ad-hoc `extract-issues.ts`). Independent validator (prefer a different model than the raiser). Status exactly one of: `confirmed` | `rejected` | `unresolved`.  
+Never reject for single-model or lack of consensus. Do not invent a clustering/dual-validator pipeline unless the user asks — one validator pass is the default. Slot-keyed validator outs; rewrite paths on backup.
 
 **Pre-publication gate** (after dedupe, before summary):
 

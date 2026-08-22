@@ -1,7 +1,7 @@
 Use the following:
 
 - Claude Code / Claude CLI with Opus at **high** thinking effort (native `Agent` for discovery, validation, integration, summarization — not `max`/`xhigh`)
-- OpenCode with OpenAI/GPT-5.6 Sol at high reasoning effort (agent `colin-mbot-gpt`; via OpenAI, not Zen)
+- OpenCode with OpenAI/GPT-5.6 Sol at high reasoning effort (agent `colin-mbot-gpt`; via OpenAI, not Zen). `mbot-run` now defaults `--variant high` and `--agent colin-mbot-gpt` for GPT slots — do not omit them from the plan and do not use agent `build`. On an OpenCode host, `launch --detach` then `barrier`.
 - Grok CLI with Grok 4.5 at high reasoning effort; fall back to OpenCode `colin-mbot-grok` when the first-party CLI is unavailable
 - CodeRabbit when `cr` is authenticated
 

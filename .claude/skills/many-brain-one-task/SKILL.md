@@ -36,13 +36,13 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
      --model openai/gpt-5.6-sol
 
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json
-   # Fail-closed wait (does NOT hang on empty .out after meta says failed):
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id> --timeout-ms 1200000
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
-   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" status --run-dir .tmp/<run-id>
+   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" candidates --run-dir .tmp/<run-id>
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
    ```
-   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://seamus:4095"`.
+   **OpenCode host:** `launch --detach` then `barrier` — a blocking launch dies with its occtl children when the 120s bash timeout fires. **Claude Code host:** blocking `launch` is fine; pass Bash `timeout: 1320000` (22 min).
+   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://seamus:4095"`. GPT OpenCode slots default `--variant high` and `--agent colin-mbot-gpt`. Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
    Meta records `actual_harness`, `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and (Grok) `cost_usd`. Harvest salvages timed-out sessions via `occtl last` and **must not** overwrite per-slot `ended_at`.
 6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`.
 
@@ -50,9 +50,10 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
 
 1. **All flags before `--`** in every OpenCode invocation. After `--` is only the harness footer text.
 2. **Smoke before fan-out** — if attach hangs/fails, mbot-run falls back to local spawn; if both fail, OpenCode slots fail-closed (`opencode_mode=skip`).
-3. **Never wait on `test -s empty.out`** for a failed slot — use `mbot-run barrier` or meta `terminal: true`.
+3. **Never wait on `test -s empty.out`** and never `sleep N; rg VERDICT`. Use `mbot-run barrier`.
 4. **Cap attach concurrency** (default 3) to avoid shared-server stalls.
 5. **Pin model ids** from attach `/config/providers` when available (`openai/gpt-5.6-sol` preferred when listed).
+6. **OpenCode host `launch --detach`** (new process group). Wrapping a blocking launch in the default 120s bash tool kills the batch. Claude Code keeps blocking launch.
 
 ## Built-in defaults (when no profile)
 
@@ -82,5 +83,5 @@ Max one retry per slot; prefer profile backup over second same-model retry. New 
 
 - `.tmp/` lives **inside the project root** (OpenCode rejects paths outside it).
 - Only the **orchestrator** writes `STATE.json` (mbot-run updates it; subagents never do).
-- Do **not** write ad-hoc `launch-*.ts` / `harvest.ts` / `batch.ts` under the run dir — extend `mbot-run.ts` if a gap remains.
+- Do **not** write ad-hoc `launch-*.ts` / `harvest.ts` / `batch.ts` / `extract-issues.ts` under the run dir or `/tmp` — use `mbot-run` (`candidates` after harvest).
 - Do **not** call `occtl` / `opencode` / `run-opencode.ts` from the parent session for MBOT slots. Timeout recovery lives in `mbot-run harvest`.
