@@ -94,6 +94,38 @@ assert_contains "$output" "Unchanged (same hash and mtime): 12"
 assert_contains "$output" "Replaced: 0"
 assert_contains "$(<"$home/.config/starship.toml")" "# local customization"
 
+# Source removed + dest unmodified → delete dest. Source removed + dest
+# rewritten by another installer → leave dest and drop it from the manifest.
+manifest="$home/.local/share/colin-dotfiles/manifest"
+unmod_orphan="$home/.agents/skills/gone/SKILL.md"
+mod_orphan="$home/.agents/skills/clickup/SKILL.md"
+mkdir -p "$(dirname "$unmod_orphan")" "$(dirname "$mod_orphan")"
+printf 'vanilla wrapper\n' > "$unmod_orphan"
+printf 'cup skill v1.43.0\n' > "$mod_orphan"
+printf '%s\t%s\t%s\n' "$(sha256sum "$unmod_orphan" | cut -d' ' -f1)" \
+  ".claude/skills/gone/SKILL.md" "$unmod_orphan" >> "$manifest"
+printf '%s\t%s\t%s\n' "$(printf 'old wrapper\n' | sha256sum | cut -d' ' -f1)" \
+  ".claude/skills/clickup/SKILL.md" "$mod_orphan" >> "$manifest"
+
+output="$(run_install "$home" --dotfiles --no-input --quiet)"
+assert_file_missing "$unmod_orphan"
+assert_contains "$output" "Stopped tracking $mod_orphan"
+assert_contains "$output" "1 orphaned file(s) released from tracking (source removed, local copy kept)"
+assert_contains "$(<"$mod_orphan")" "cup skill v1.43.0"
+if grep -Fq "$unmod_orphan" "$manifest"; then
+  printf 'Expected unmodified orphan to be dropped from the manifest: %s\n' "$unmod_orphan" >&2
+  exit 1
+fi
+if grep -Fq "$mod_orphan" "$manifest"; then
+  printf 'Expected modified orphan to be dropped from the manifest: %s\n' "$mod_orphan" >&2
+  exit 1
+fi
+
+output="$(run_install "$home" --dotfiles --no-input --quiet)"
+assert_not_contains "$output" "$mod_orphan"
+assert_not_contains "$output" "Stopped tracking"
+assert_contains "$(<"$mod_orphan")" "cup skill v1.43.0"
+
 # --- Test uninstall dotfiles ---
 output="$(run_install "$home" --bashrc --gitconfig --no-input --quiet)"
 assert_contains "$(<"$home/.bashrc")" "source ~/.bashrc.colin"
@@ -130,8 +162,17 @@ assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md"
   "$agents_home/.claude/skills/many-brain-one-task/code-review.md"
 assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \
   "$agents_home/.agents/skills/many-brain-one-task/code-review.md"
+assert_files_equal "$ROOT_DIR/.claude/skills/megamind/SKILL.md" \
+  "$agents_home/.agents/skills/megamind/SKILL.md"
 assert_file_missing "$agents_home/.gemini"
-assert_contains "$output" "Unchanged (same hash and mtime): 1"
+assert_contains "$output" "Unchanged (same hash and mtime): 2"
+
+output="$(run_install "$agents_home" --agents --no-input --quiet)"
+assert_not_contains "$output" "$agents_home/.agents/skills/megamind/SKILL.md"
+assert_not_contains "$output" "$agents_home/.claude/settings.json"
+assert_not_contains "$output" "$agents_home/.claude/settings.local.json"
+assert_files_equal "$ROOT_DIR/.claude/skills/megamind/SKILL.md" \
+  "$agents_home/.agents/skills/megamind/SKILL.md"
 if [[ "$(stat -c '%z' "$agents_home/.claude/settings.json.bak")" != "$backup_ctime" ]]; then
   printf 'Expected current settings backup not to be rewritten\n' >&2
   exit 1

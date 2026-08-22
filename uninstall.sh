@@ -344,6 +344,11 @@ cleanup_empty_dirs() {
     "${XDG_DATA_HOME:-$HOME/.local/share}/colin-dotfiles"
   )
   local dir
+  # Command-skill installs mkdir nested agents/ dirs; rmdir of the listed
+  # parents fails until those empties are gone.
+  if [[ "$DRY_RUN" == false && -d "$HOME/.agents" ]]; then
+    find "$HOME/.agents" -depth -type d -empty -delete 2>/dev/null || true
+  fi
   for dir in "${dirs[@]}"; do
     [[ -d "$dir" ]] || continue
     if [[ "$DRY_RUN" == true ]]; then

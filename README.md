@@ -97,13 +97,13 @@ The installer tracks every file it owns in `~/.local/share/colin-dotfiles/manife
 
 - **Prompts** on conflicts in a TTY, with options to keep, overwrite, back up, or view a unified diff.
 - **Skips** conflicting files in non-interactive runs and warns you (use `--force` to overwrite anyway).
-- **Deletes** installed files whose source was removed from the repo, but only if you haven't modified them locally.
+- **Deletes** installed files whose source was removed from the repo, but only if you haven't modified them locally. A local copy that no longer matches the last-install hash (for example the `clickup` skill refreshed by `cup skill`) is left in place and dropped from the manifest so later runs do not keep warning about it.
 
 Running `./uninstall.sh` uses this same manifest to cleanly undo installation at any time.
 
 ### Claude Code config
 
-Slash commands, skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors them into `~/.opencode/` and the shared `~/.agents/skills/` directory used by agy, so the same commands work across harnesses.
+Slash commands, skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors them into `~/.opencode/` and the shared `~/.agents/skills/` directory used by agy, so the same commands work across harnesses. If a slash command and a skill share a name (for example `megamind`), the skill’s `SKILL.md` wins in `~/.agents/skills/` — the command stub is not installed on top of it. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
 
 ## Shell helpers
 

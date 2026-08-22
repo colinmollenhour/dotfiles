@@ -424,6 +424,13 @@ merge_settings_json() {
         | (if ($repo.sandbox.network.allowedDomains or $live.sandbox.network.allowedDomains)
              then .sandbox.network.allowedDomains = ((($repo.sandbox.network.allowedDomains // []) + ($live.sandbox.network.allowedDomains // [])) | ou) else . end)
       ' "$src_abs" "$dest" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+    if same_hash "$dest" "$tmp"; then
+      rm -f "$tmp"
+      MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
+      MANIFEST_SRC["$dest"]="$src_rel"
+      record_unchanged "$dest"
+      return
+    fi
     if [[ "$DRY_RUN" == true ]]; then
       rm -f "$tmp"
       record_written "$dest" replaced
@@ -487,9 +494,12 @@ install_dir_files() {
   shopt -u nullglob
 }
 
-# Delete installed files whose source was removed from the repo (if still unmodified)
+# Delete installed files whose source was removed from the repo (if still unmodified).
+# A dest that no longer matches the last-install hash is owned by the user or by
+# another installer (e.g. `cup skill`). Leave it, drop it from the manifest, and
+# do not warn about it on later runs.
 cleanup_deleted() {
-  local dest src_path current_hash n_removed=0 n_modified=0
+  local dest src_path current_hash n_removed=0 n_released=0
   for dest in "${!MANIFEST_HASH[@]}"; do
     [[ -v ACTIVE_DESTS[$dest] ]] && continue
     src_path="${MANIFEST_SRC[$dest]:-}"
@@ -509,13 +519,17 @@ cleanup_deleted() {
       fi
       n_removed=$((n_removed + 1))
     else
-      warn "Not deleting manually modified orphan: $dest"
-      warn "  Its source ($src_path) was removed from dotfiles. Delete manually if no longer needed."
-      n_modified=$((n_modified + 1))
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "stop tracking $dest (source removed, file modified)"
+      else
+        warn "Stopped tracking $dest (source $src_path was removed; leaving local file)"
+        unset "MANIFEST_HASH[$dest]" "MANIFEST_SRC[$dest]"
+      fi
+      n_released=$((n_released + 1))
     fi
   done
   [[ $n_removed -gt 0 ]] && log "Deleted $n_removed orphaned file(s) whose sources were removed"
-  [[ $n_modified -gt 0 ]] && warn "$n_modified orphaned file(s) skipped (manually modified)"
+  [[ $n_released -gt 0 ]] && warn "$n_released orphaned file(s) released from tracking (source removed, local copy kept)"
   return 0
 }
 
@@ -823,6 +837,14 @@ install_command_skills() {
       command_namespace="${command_subdir//\//:}"
       skill_name="$command_namespace:$command_name"
       skill_dir="$skills_dir/$command_subdir/$command_name"
+    fi
+
+    # A real skill of the same name already owns ~/.agents/skills/<name>/SKILL.md.
+    # Do not clobber it with the slash-command stub (e.g. megamind.md vs
+    # skills/megamind/SKILL.md) — that fight rewrites the dest on every install.
+    if [[ -f "$SCRIPT_DIR/.claude/skills/$command_path/SKILL.md" ]]; then
+      log "Skipping command skill $skill_name; .claude/skills/$command_path/SKILL.md already provides it"
+      continue
     fi
 
     count=$((count + 1))
