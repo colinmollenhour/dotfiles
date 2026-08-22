@@ -1,6 +1,6 @@
 ---
 name: clickup-task-authoring
-description: 'Author a ClickUp task from a conversation, plan, review, incident, or spec as CUFM via cup task-sync. Covers the source-fidelity ledger, rich description structure (banners, toggles, mermaid, tldraw, tables), title conventions, ShipStream Value Stream / Requested By / Bug-type rules, and the post-write audit. Use when creating or updating ClickUp task content (file a bug, write a ticket, turn this into a task). Load the clickup skill from `cup skill` for CUFM syntax and task-sync flags. Workspace IDs live in shipstream-clickup. Formerly clickup-tasks.'
+description: 'Author a ClickUp task from a conversation, plan, review, incident, or spec as CUFM via cup task-sync. Covers the source-fidelity ledger, rich description structure (banners, toggles, mermaid, tldraw, tables), open-decision blocks (question, AI Recommendation, two alternatives), title conventions, ShipStream Value Stream / Requested By / Bug-type rules, and the post-write audit. Use when creating or updating ClickUp task content (file a bug, write a ticket, turn this into a task). Load the clickup skill from `cup skill` for CUFM syntax and task-sync flags. Workspace IDs live in shipstream-clickup. Formerly clickup-tasks.'
 ---
 
 # ClickUp task authoring
@@ -35,7 +35,7 @@ Use the dialect, not plain markdown. Reach for a component when it carries meani
 | Reach for | When |
 |-----------|------|
 | `::banner` | User story, warnings, constraints that must not be weakened |
-| `::toggle` | Evidence, long file lists, rejected alternatives, open decisions |
+| `::toggle` | Evidence, long file lists, rejected alternatives |
 | mermaid | Flows, state machines, sequences |
 | tldraw | Spatial / architecture diagrams (flowchart is the wrong shape) |
 | `::table` | Any table (set column widths) |
@@ -135,12 +135,52 @@ Constraints that must not be weakened.
 # Verification
 1. [Exact boundaries, real integration paths]
 
-::toggle{title="Open decisions"}
-1. [Decision and options]
-::
+# Open Decisions
+[One numbered question per unresolved item — see "Open decisions" below.]
 ```
 
 Narrow tasks can drop mermaid/tldraw/toggles when there is no flow, diagram, or secondary material. Prefer a mermaid (or tldraw) over a prose walkthrough of a process. Wrap every table in `::table`. Acceptance criteria are canonical — do not also repeat the same requirement in background prose.
+
+## Open decisions
+
+An unresolved decision is only useful if a reviewer can settle it in one pass. A bare "Overflow allowance: percent vs absolute?" makes them re-derive the whole problem first. Give every open item a plain-language question, the stakes in a sentence or two, and three concrete options — the pick, plus the two credible answers it beat.
+
+```mdc
+# Open Decisions
+
+*Each item below is a question still to answer. The **AI Recommendation** is what an AI review of this plan would pick and why; the two alternatives are the other credible answers, with their cost. Choose one, or say why none fit.*
+
+&nbsp;
+
+**1. Question in the words the person answering it would use?**
+
+What is actually at stake, and why the answer is not obvious.
+
+**AI Recommendation —** The pick, then why it wins.
+
+**AI Alternative 1 —** A real option. What it buys, then what it costs.
+
+**AI Alternative 2 —** A real option. What it buys, then what it costs.
+```
+
+- Both alternatives must be defensible. A strawman is not an alternative, and neither is "do nothing" unless doing nothing is genuinely on the table.
+- Name the cost of the recommendation too. One with no downside is usually one nobody examined.
+- Number the questions so review comments can cite them ("OD 2").
+- Keep the section at top level. Collapse rejected alternatives and evidence into `::toggle`; never collapse a question that needs an answer.
+- Resolving a decision does not delete it. Fold the answer into the contract prose and leave a one-line marker where the question was: `*(Resolved — was OD 1: sync endpoint vs fast-poll. **Ratified sync**, see §6.1. Do not implement fast-poll.)*`
+- Decisions **you** took rather than the user get their own section — `# Decisions Taken in <what> (need sign-off)` — in the same three-option shape, each pointing at the section that now encodes the answer. A reader must never mistake a machine's choice for a ratified one.
+- When the same decisions are mirrored in a repo document, keep both lists in the same order and have each point at the other, so sign-off happens once.
+
+### Spacing
+
+ClickUp renders consecutive paragraphs tight, so a run of decisions arrives as one wall of bold labels. Put a `&nbsp;` line before each numbered question, including the first. CUFM has no empty-paragraph primitive:
+
+| Written in CUFM | Rendered in ClickUp |
+|-----------------|---------------------|
+| one blank line | ordinary paragraph separator — no gap |
+| two blank lines | collapses to the same — no gap |
+| `<br>` | stored as a raw-HTML `cufm` fence, not a break |
+| `&nbsp;` alone on a line | the empty block you want |
 
 ## Persist
 
@@ -157,7 +197,7 @@ After `task-sync push`:
 3. Verify every Required and Constraint item is present without semantic weakening.
 4. Verify exact numeric values, units, names, failure behaviors, security boundaries, and verification scenarios survived serialization.
 5. Verify required work appears in acceptance criteria or explicit subtasks, not only in background prose.
-6. Verify unresolved decisions remain visibly unresolved.
+6. Verify unresolved decisions remain visibly unresolved, each with a recommendation and two real alternatives, spaced apart as above.
 7. Amend the CUFM file, `push` again, and re-fetch until the audit passes.
 
 Do not report success until the persisted task passes. Catch transformations such as:
