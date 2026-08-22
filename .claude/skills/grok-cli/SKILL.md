@@ -91,7 +91,7 @@ Do not invent model strings; prefer the exact id printed by `grok models`.
 2. Use `--always-approve` (or `bypassPermissions`) so headless runs never block on tool approval.
 3. For pure debate / critique / opinion tasks that should not spawn nested work, add `--disallowed-tools Agent` or `--no-subagents`.
 4. Cap runaway loops with `--max-turns` when the task is expected to be short (e.g. schema-only repairs).
-5. Prefer `--output-format plain` for aggregation. Use `json` only when you need `sessionId` / usage fields.
+5. Prefer `--output-format json` when you need `sessionId` / `total_cost_usd` (MBOT `mbot-run` does this and writes `text` to `--out`). Use `plain` only when you do not need session or cost metadata.
 6. Launch independent Grok participants in parallel Bash calls; each invocation is its own process/session.
 7. Keep `.tmp/` **inside the project root** so any file tools the agent uses resolve correctly.
 

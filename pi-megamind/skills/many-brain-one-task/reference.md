@@ -213,6 +213,12 @@ Treat **slot id**, **out path**, and **performer model** as three separate field
   "prompt": ".tmp/<run-id>/prompts/validate-6.md",
   "out": ".tmp/<run-id>/results/validate-6.out",
   "session_id": "…",
+  "session_file": "/absolute/path/to/transcript",
+  "started_at": "2026-08-22T05:10:01.000Z",
+  "ended_at": "2026-08-22T05:18:22.000Z",
+  "wall_ms": 501000,
+  "cost_usd": 0.42,
+  "cost_source": "grok_json",
   "exit": 0,
   "supersedes": null
 }
@@ -258,10 +264,13 @@ Write the full task to a prompt file, then:
 ```bash
 grok --prompt-file .tmp/<run-id>/grok.md \
   --always-approve \
-  --output-format plain \
+  --output-format json \
+  --session-id <uuid> \
   --reasoning-effort high \
   --disallowed-tools Agent \
   > .tmp/<run-id>/results/grok.out 2> .tmp/<run-id>/results/grok.err
+
+`mbot-run` uses this form: `--output-format json` so `sessionId` / `total_cost_usd` land in `*.meta.json` and `*.out.session`; the harness writes `parsed.text` (not the JSON envelope) to `--out`. Do not invoke this from the parent session for MBOT slots.
 ```
 
 Guidelines:

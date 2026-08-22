@@ -20,6 +20,11 @@
  *   bun mbot-run.ts harvest --run-dir .tmp/ultra-N
  *   bun mbot-run.ts status --run-dir .tmp/ultra-N
  *   bun mbot-run.ts barrier --run-dir .tmp/ultra-N [--timeout-ms 1200000]
+ *   bun mbot-run.ts usage --run-dir .tmp/ultra-N [--title-prefix P] [--since 14d]
+ *
+ * Per-slot wall: launch writes started_at when the worker actually starts,
+ * ended_at + wall_ms when the child returns. harvest MUST NOT stamp a shared
+ * batch-completion ended_at over those values.
  *
  * Plan JSON:
  * {
@@ -36,6 +41,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import {
   existsSync,
   mkdirSync,
@@ -44,6 +50,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs"
+import { homedir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
@@ -115,10 +122,18 @@ interface Meta {
   backup_used: boolean
   prompt: string
   out: string
+  title?: string
   session_id?: string | null
+  /** Absolute transcript path for `agentsview session sync`. */
+  session_file?: string | null
   exit?: number | null
   started_at?: string
   ended_at?: string
+  /** Process wall in ms (ended_at − started_at). Survives harvest. */
+  wall_ms?: number
+  cost_usd?: number | null
+  cost_source?: "grok_json" | "occtl" | "agentsview" | "unavailable" | "none"
+  usage?: Record<string, unknown>
   bytes?: number
   markers?: { verdict: number; issue: number }
   status: SlotStatus
@@ -172,6 +187,115 @@ function writeJson(path: string, data: unknown): void {
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+function wallMs(startedAt?: string, endedAt?: string): number | undefined {
+  if (!startedAt || !endedAt) return undefined
+  const a = Date.parse(startedAt)
+  const b = Date.parse(endedAt)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return undefined
+  return b - a
+}
+
+function writeSessionSidecar(outPath: string, sessionId: string): void {
+  const id = sessionId.trim()
+  if (!id) return
+  mkdirSync(dirname(outPath), { recursive: true })
+  writeFileSync(outPath + ".session", `${id}\n`)
+}
+
+interface GrokJson {
+  text?: string
+  sessionId?: string
+  total_cost_usd?: number
+  usage?: Record<string, unknown>
+  modelUsage?: Record<string, unknown>
+  num_turns?: number
+  requestId?: string
+  [key: string]: unknown
+}
+
+function parseGrokStdout(stdout: string): { text: string; parsed: GrokJson | null } {
+  const trimmed = stdout.trim()
+  const start = trimmed.indexOf("{")
+  const end = trimmed.lastIndexOf("}")
+  if (start < 0 || end <= start) return { text: stdout, parsed: null }
+  try {
+    const parsed = JSON.parse(trimmed.slice(start, end + 1)) as GrokJson
+    const text = typeof parsed.text === "string" ? parsed.text : stdout
+    return { text, parsed }
+  } catch {
+    return { text: stdout, parsed: null }
+  }
+}
+
+function xdgDataHome(): string {
+  return process.env.XDG_DATA_HOME || join(homedir(), ".local/share")
+}
+
+function grokSessionsRoot(): string {
+  return join(homedir(), ".grok", "sessions")
+}
+
+/** Locate the on-disk OpenCode session JSON for agentsview sync. */
+function findOpencodeSessionFile(sessionId: string | null | undefined): string | null {
+  if (!sessionId) return null
+  const raw = sessionId.replace(/^opencode:/, "").trim()
+  if (!raw.startsWith("ses_")) return null
+  const name = raw.endsWith(".json") ? raw : `${raw}.json`
+  const root = join(xdgDataHome(), "opencode", "storage", "session")
+  if (!existsSync(root)) return null
+  try {
+    for (const proj of readdirSync(root)) {
+      const p = join(root, proj, name)
+      if (existsSync(p)) return p
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+/** Locate Grok `summary.json` (cwd-encoded / walk). */
+function findGrokSessionFile(
+  sessionId: string | null | undefined,
+  cwd?: string,
+): string | null {
+  if (!sessionId) return null
+  const raw = sessionId.replace(/^grok:/, "").trim()
+  if (!raw) return null
+  const root = grokSessionsRoot()
+  if (!existsSync(root)) return null
+  const candidates: string[] = []
+  if (cwd) {
+    candidates.push(join(root, encodeURIComponent(resolve(cwd)), raw, "summary.json"))
+  }
+  for (const p of candidates) {
+    if (existsSync(p)) return p
+  }
+  try {
+    for (const dir of readdirSync(root)) {
+      const p = join(root, dir, raw, "summary.json")
+      if (existsSync(p)) return p
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+function resolveSessionFile(
+  sessionId: string | null | undefined,
+  harness: string,
+  cwd?: string,
+): string | null {
+  if (!sessionId) return null
+  const h = harness.toLowerCase()
+  if (h.includes("grok")) return findGrokSessionFile(sessionId, cwd)
+  if (h.includes("opencode") || h.includes("occtl")) {
+    return findOpencodeSessionFile(sessionId)
+  }
+  return findOpencodeSessionFile(sessionId) || findGrokSessionFile(sessionId, cwd)
 }
 
 function countMarkers(text: string): { verdict: number; issue: number } {
@@ -722,6 +846,15 @@ async function launchSlot(
   mkdirSync(dirname(outPath), { recursive: true })
 
   const plannedHarness = slot.harness
+  let prior: Meta | null = null
+  if (existsSync(metaPath)) {
+    try {
+      prior = readJson<Meta>(metaPath)
+    } catch {
+      prior = null
+    }
+  }
+  const startedAt = nowIso()
   const baseMeta: Meta = {
     slot: slot.slot,
     phase: slot.phase,
@@ -735,60 +868,72 @@ async function launchSlot(
     backup_used: Boolean(slot.backup_used),
     prompt: promptPath,
     out: outPath,
-    started_at: nowIso(),
+    title: slot.title,
+    started_at: startedAt,
     status: "running",
     terminal: false,
   }
 
-  if (slot.skip || slot.harness === "external") {
+  function finish(partial: Meta): Meta {
+    const ended = partial.ended_at || nowIso()
     const m: Meta = {
+      ...partial,
+      title: partial.title || slot.title,
+      ended_at: ended,
+      wall_ms: partial.wall_ms ?? wallMs(partial.started_at || startedAt, ended),
+    }
+    writeJson(metaPath, m)
+    return m
+  }
+
+  if (slot.skip || slot.harness === "external") {
+    return finish({
       ...baseMeta,
       status: slot.harness === "external" ? "external" : "skipped",
-      ended_at: nowIso(),
       exit: null,
       terminal: true,
       attach_mode: "none",
-    }
-    writeJson(metaPath, m)
-    return m
+    })
   }
 
   if (!existsSync(promptPath)) {
-    const m: Meta = {
+    return finish({
       ...baseMeta,
       status: "failed",
       error: `prompt missing: ${promptPath}`,
-      ended_at: nowIso(),
       exit: 2,
       terminal: true,
-    }
-    writeJson(metaPath, m)
-    return m
+    })
   }
 
-  // Already rich result? Skip re-launch.
+  // Already rich result? Skip re-launch. Keep original timestamps/session/cost.
   if (existsSync(outPath)) {
     try {
       const existing = readFileSync(outPath, "utf8")
       if (isRich(existing)) {
         const markers = countMarkers(existing)
-        const m: Meta = {
+        const ended = prior?.ended_at || nowIso()
+        const started = prior?.started_at || startedAt
+        return finish({
           ...baseMeta,
+          ...(prior || {}),
           status: "ok",
           bytes: existing.length,
           markers,
-          ended_at: nowIso(),
-          exit: 0,
+          started_at: started,
+          ended_at: ended,
+          wall_ms: prior?.wall_ms ?? wallMs(started, ended),
+          exit: prior?.exit ?? 0,
           error: "already complete; skipped re-launch",
           terminal: true,
-        }
-        writeJson(metaPath, m)
-        return m
+        })
       }
     } catch {
       /* re-run */
     }
   }
+
+  writeJson(metaPath, baseMeta)
 
   const timeoutMs = plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS
   let code = 1
@@ -796,15 +941,24 @@ async function launchSlot(
   let actualHarness = plannedHarness
   let attachMode: Meta["attach_mode"] = "none"
   let actualModel = slot.provider_model_id || slot.planned_model
+  let capturedSessionId: string | null = null
+  let capturedCostUsd: number | null = null
+  let capturedCostSource: Meta["cost_source"]
+  let capturedUsage: Record<string, unknown> | undefined
 
   if (slot.harness === "grok") {
     actualHarness = "grok"
+    const grokSessionId = randomUUID()
+    writeSessionSidecar(outPath, grokSessionId)
+    capturedSessionId = grokSessionId
     const args = [
       "--prompt-file",
       promptPath,
       "--always-approve",
       "--output-format",
-      "plain",
+      "json",
+      "--session-id",
+      grokSessionId,
       "--reasoning-effort",
       slot.variant === "max" || slot.variant === "xhigh" ? "max" : "high",
       "--disallowed-tools",
@@ -814,24 +968,46 @@ async function launchSlot(
     const r = await runCmd("grok", args, { cwd: projectDir, timeoutMs })
     code = r.code
     stderr = r.stderr
-    writeFileSync(outPath, r.stdout)
+    const grok = parseGrokStdout(r.stdout)
+    writeFileSync(outPath, grok.text)
     if (stderr) writeFileSync(errPath, stderr)
+    if (grok.parsed) {
+      if (grok.parsed.sessionId) {
+        capturedSessionId = grok.parsed.sessionId
+        writeSessionSidecar(outPath, grok.parsed.sessionId)
+      }
+      if (
+        typeof grok.parsed.total_cost_usd === "number" &&
+        Number.isFinite(grok.parsed.total_cost_usd)
+      ) {
+        capturedCostUsd = grok.parsed.total_cost_usd
+        capturedCostSource = "grok_json"
+      }
+      if (grok.parsed.usage && typeof grok.parsed.usage === "object") {
+        capturedUsage = grok.parsed.usage
+      }
+      writeJson(outPath + ".usage.json", {
+        sessionId: capturedSessionId,
+        total_cost_usd: capturedCostUsd,
+        usage: grok.parsed.usage,
+        modelUsage: grok.parsed.modelUsage,
+        num_turns: grok.parsed.num_turns,
+        requestId: grok.parsed.requestId,
+      })
+    }
   } else if (slot.harness === "opencode" || slot.harness === "occtl") {
     // Resolve OpenCode transport from preflight
     const mode = preflight?.mode || "local"
     if (mode === "skip") {
-      const m: Meta = {
+      return finish({
         ...baseMeta,
         status: "failed",
         error: `opencode unavailable: ${preflight?.smoke_error || "skip"}`,
-        ended_at: nowIso(),
         exit: 1,
         terminal: true,
         actual_harness: "opencode",
         attach_mode: "none",
-      }
-      writeJson(metaPath, m)
-      return m
+      })
     }
 
     // A slot's own model always wins. preflight.model_resolved comes from the
@@ -912,16 +1088,13 @@ async function launchSlot(
       if (stderr) writeFileSync(errPath, stderr)
     }
   } else {
-    const m: Meta = {
+    return finish({
       ...baseMeta,
       status: "failed",
       error: `unknown harness: ${slot.harness}`,
-      ended_at: nowIso(),
       exit: 2,
       terminal: true,
-    }
-    writeJson(metaPath, m)
-    return m
+    })
   }
 
   // Also read stderr file if launcher wrote it
@@ -935,12 +1108,14 @@ async function launchSlot(
 
   const recovered = recoverSlotBody({
     outPath,
+    sessionId: capturedSessionId,
     attach: attachMode === "attach" ? (preflight?.attach_url || plan.attach) : undefined,
     password: plan.password,
     abortFirst: code === 124 || code === 130 || code === 143,
   })
   const body = recovered.body
-  const sessionId = recovered.sessionId
+  const sessionId = capturedSessionId || recovered.sessionId
+  const sessionFile = resolveSessionFile(sessionId, actualHarness, projectDir)
   const markers = countMarkers(body)
   const rich = isRich(body)
   let status: SlotStatus = "failed"
@@ -951,7 +1126,7 @@ async function launchSlot(
   else if (code === 0 && !body.trim()) status = "empty"
   else status = "failed"
 
-  const meta: Meta = {
+  return finish({
     ...baseMeta,
     actual_model: actualModel,
     provider_model_id: actualModel,
@@ -959,10 +1134,13 @@ async function launchSlot(
     attach_mode: attachMode,
     status,
     exit: code,
-    ended_at: nowIso(),
     bytes: body.length,
     markers,
     session_id: sessionId,
+    session_file: sessionFile,
+    cost_usd: capturedCostUsd,
+    cost_source: capturedCostSource,
+    usage: capturedUsage,
     recovered: recovered.recovered || undefined,
     terminal: isTerminal(status),
     error:
@@ -970,9 +1148,7 @@ async function launchSlot(
         ? undefined
         : stderr.trim().slice(0, 500) ||
           (status === "empty" ? "empty body (fail-closed)" : `exit ${code}`),
-  }
-  writeJson(metaPath, meta)
-  return meta
+  })
 }
 
 function cmdInit(runDir: string): void {
@@ -1109,6 +1285,11 @@ async function cmdLaunch(planPath: string): Promise<void> {
       actual_harness: m.actual_harness,
       attach_mode: m.attach_mode,
       actual_model: m.actual_model,
+      session_id: m.session_id,
+      session_file: m.session_file,
+      wall_ms: m.wall_ms,
+      cost_usd: m.cost_usd,
+      cost_source: m.cost_source,
       error: m.error,
     })),
     counts: {
@@ -1166,7 +1347,30 @@ function harvestOne(
   else if (!existsSync(outPath) || bytes === 0) status = "failed"
   else status = "empty"
 
+  const sessionId = salvaged.sessionId || meta?.session_id || null
+  const sessionFile =
+    meta?.session_file ||
+    resolveSessionFile(
+      sessionId,
+      meta?.actual_harness || meta?.harness || "",
+      dirname(outPath),
+    )
+  // Keep launch's per-slot ended_at. Harvest-time nowIso() would stamp the
+  // same batch-completion instant on every slot and destroy wall time.
+  const startedAt = meta?.started_at
+  const endedAt = meta?.ended_at ?? nowIso()
+
   const next: Meta = {
+    ...(meta || {
+      slot,
+      planned_model: "unknown",
+      actual_model: "unknown",
+      harness: "unknown",
+      backup_used: false,
+      prompt: "",
+      out: outPath,
+      status,
+    }),
     slot,
     phase: meta?.phase,
     planned_model: meta?.planned_model || "unknown",
@@ -1180,11 +1384,17 @@ function harvestOne(
     backup_used: Boolean(meta?.backup_used),
     prompt: meta?.prompt || "",
     out: outPath,
-    session_id: salvaged.sessionId || meta?.session_id,
+    title: meta?.title,
+    session_id: sessionId,
+    session_file: sessionFile,
     recovered: salvaged.recovered || meta?.recovered || undefined,
     exit: meta?.exit ?? null,
-    started_at: meta?.started_at,
-    ended_at: nowIso(),
+    started_at: startedAt,
+    ended_at: endedAt,
+    wall_ms: meta?.wall_ms ?? wallMs(startedAt, endedAt),
+    cost_usd: meta?.cost_usd,
+    cost_source: meta?.cost_source,
+    usage: meta?.usage,
     bytes,
     markers,
     status,
@@ -1257,6 +1467,9 @@ function cmdHarvest(runDir: string): void {
       markers: m.markers,
       out: m.out,
       exit: m.exit,
+      session_id: m.session_id,
+      wall_ms: m.wall_ms,
+      cost_usd: m.cost_usd,
       error: m.error,
     })),
     totals: {
@@ -1422,6 +1635,7 @@ if (!command || command === "-h" || command === "--help") {
   mbot-run.ts harvest --run-dir <dir>
   mbot-run.ts status --run-dir <dir>
   mbot-run.ts barrier --run-dir <dir> [--timeout-ms N] [--poll-ms N]
+  mbot-run.ts usage --run-dir <dir> [--title-prefix P] [--since 14d] [--include-claude-children] [--parent-session-id ID] [--out path]
 `)
   process.exit(command ? 0 : 2)
 }
@@ -1438,6 +1652,12 @@ const { values } = parseArgs({
     password: { type: "string" },
     "timeout-ms": { type: "string" },
     "poll-ms": { type: "string" },
+    "title-prefix": { type: "string" },
+    since: { type: "string" },
+    out: { type: "string" },
+    "include-claude-children": { type: "boolean" },
+    "parent-session-id": { type: "string", multiple: true },
+    "no-agentsview": { type: "boolean" },
   },
 }) as {
   values: {
@@ -1449,7 +1669,43 @@ const { values } = parseArgs({
     password?: string
     "timeout-ms"?: string
     "poll-ms"?: string
+    "title-prefix"?: string
+    since?: string
+    out?: string
+    "include-claude-children"?: boolean
+    "parent-session-id"?: string | string[]
+    "no-agentsview"?: boolean
   }
+}
+
+const AGENTSVIEW_USAGE = join(SCRIPT_DIR, "agentsview-usage.ts")
+
+function cmdUsage(opts: {
+  runDir: string
+  titlePrefix?: string
+  since?: string
+  out?: string
+  includeClaudeChildren?: boolean
+  parentSessionIds?: string[]
+  noAgentsview?: boolean
+}): void {
+  if (!existsSync(AGENTSVIEW_USAGE)) {
+    die(`usage helper missing: ${AGENTSVIEW_USAGE}`)
+  }
+  const args = [AGENTSVIEW_USAGE, "--run-dir", opts.runDir]
+  if (opts.titlePrefix) args.push("--title-prefix", opts.titlePrefix)
+  if (opts.since) args.push("--since", opts.since)
+  if (opts.out) args.push("--out", opts.out)
+  if (opts.includeClaudeChildren) args.push("--include-claude-children")
+  for (const id of opts.parentSessionIds || []) {
+    args.push("--parent-session-id", id)
+  }
+  if (opts.noAgentsview) args.push("--no-agentsview")
+  const r = spawnSync("bun", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "inherit", "inherit"],
+  })
+  process.exit(r.status ?? 1)
 }
 
 if (command === "init") {
@@ -1479,6 +1735,19 @@ if (command === "init") {
   const timeoutMs = values["timeout-ms"] ? Number(values["timeout-ms"]) : DEFAULT_SLOT_TIMEOUT_MS
   const pollMs = values["poll-ms"] ? Number(values["poll-ms"]) : 5000
   await cmdBarrier(values["run-dir"], timeoutMs, pollMs)
+} else if (command === "usage") {
+  if (!values["run-dir"]) die("--run-dir is required")
+  const p = values["parent-session-id"]
+  const parentSessionIds = Array.isArray(p) ? p : p ? [p] : []
+  cmdUsage({
+    runDir: values["run-dir"],
+    titlePrefix: values["title-prefix"],
+    since: values.since,
+    out: values.out,
+    includeClaudeChildren: Boolean(values["include-claude-children"]),
+    parentSessionIds,
+    noAgentsview: Boolean(values["no-agentsview"]),
+  })
 } else {
   die(`unknown command: ${command}`)
 }

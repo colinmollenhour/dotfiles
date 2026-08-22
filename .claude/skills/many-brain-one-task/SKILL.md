@@ -40,10 +40,11 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id> --timeout-ms 1200000
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" status --run-dir .tmp/<run-id>
+   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
    ```
    Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://seamus:4095"`.
-   Meta records `actual_harness`, `attach_mode`, `actual_model`. Harvest salvages timed-out sessions via `occtl last` before fail-closing.
-6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`.
+   Meta records `actual_harness`, `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and (Grok) `cost_usd`. Harvest salvages timed-out sessions via `occtl last` and **must not** overwrite per-slot `ended_at`.
+6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`.
 
 ## OpenCode reliability (hard)
 
