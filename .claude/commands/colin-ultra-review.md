@@ -6,6 +6,8 @@ argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [
 
 # Ultra Code Review
 
+Current version: **Ultra Review 0.5**. Identity lives in `many-brain-one-task/ultra-review-version.json` and is frozen by `mbot-run init` into `STATE.json` as `ultra_review`. Use `ultra_review.header` / `ultra_review.label` verbatim on every published comment and on `prepared-summary.md`. Do not invent, omit, or bump the version in the parent session. Bump the JSON when the control plane, roles, validation contract, or publication format changes.
+
 Multi-model bug review. Discovery is recall-oriented; an independent evidence pass protects publication precision. **Parent is a thin control plane** — disk under `.tmp/ultra-<id>/` is durable memory.
 
 Default lenses: `state`, `contracts`, `failure`, `craft`, `merits` (+ whole-change `integration`). More expensive than `/colin-review`.
@@ -25,7 +27,8 @@ Resolve `CLAUDE_SKILL_DIR` to the installed skill roots (`~/.claude/skills/...` 
 |---|---|
 | GitLab MR gather | `bun …/glab-cli/mr-context.ts --project G/R --mr N --out-dir .tmp/ultra-N/mr-context` |
 | GitHub PR gather | `bun …/gh-cli/pr-context.ts --repo O/R --pr N --out-dir .tmp/ultra-N/pr-context` |
-| Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` |
+| Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` — prints and freezes `ultra_review` (`label`: `Ultra Review 0.5`) |
+| Skill version | `bun …/mbot-run.ts version` |
 | Assemble prompts | `bun …/many-brain-one-task/assemble-prompts.ts --append context/bucket.md --out-dir prompts role.md:slot.full.md …` |
 | OpenCode smoke | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://seamus:4095 --model openai/gpt-5.6-sol` (launch also smokes) |
 | Launch batch | `bun …/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (Claude Code). **OpenCode host:** add `--detach`, then barrier. Further phase plans (`plan-integration.json`) merge into `plan.json`; they do not replace it. |
@@ -96,7 +99,7 @@ Skip only when genuinely N/A (prose-only → skip state; no interface change →
 - Round 1: role × bucket grid + merits + integration  
 - Later rounds: **integration-only** unless new subsystem enters scope  
 - Do **not** skip rounds 2–N because HEAD was unchanged — the SHA publication gate is a separate check at the end of a round, not a substitute for convergence. Stop when a later round adds no new confirmed issue, or the cap is hit.
-- `--re-review`: delta-first (`last-reviewed-sha...head` from latest `**AI Ultra Review**` header) + one full-state integration; `--full` forces full grid  
+- `--re-review`: delta-first (`last-reviewed-sha...head` from latest `**AI Ultra Review` header, version optional) + one full-state integration; `--full` forces full grid  
 
 ## Process
 
@@ -145,15 +148,15 @@ Never reject for single-model or lack of consensus. Do not invent a clustering/d
 **Pre-publication gate** (after dedupe, before summary):
 
 1. Re-fetch head SHA; drop/fix findings if head moved  
-2. Dedup peer `**AI Ultra Review**` threads by **root cause**, any resolution state  
+2. Dedup peer `**AI Ultra Review` threads (any version, including unversioned) by **root cause**, any resolution state  
 3. Report: `Gate: <N> commits landed · <A> confirmed · <B> fixed · <C> withdrawn · <D> suppressed · <E> posted`
 
 ### 9. Summary artifacts
 
 Skip if `--no-summary`. Before declaring complete, write both artifacts under the run dir and make them agree with `results/*.out` + `*.meta.json`:
 
-1. `prepared-summary.md` — full summary body (every comparison/severity table + Merits / Rejected / Open questions / Gate). In `--no-post`, display this body; do not replace it with a narrative-only recap.
-2. `run-summary.json` — machine-readable accounting (see fields below).
+1. `prepared-summary.md` — full summary body (every comparison/severity table + Merits / Rejected / Open questions / Gate). First line starts with `**AI Ultra Review <version>**` using `STATE.json` → `ultra_review.header`. In `--no-post`, display this body; do not replace it with a narrative-only recap.
+2. `run-summary.json` — machine-readable accounting (see fields below). Must include `ultra_review` copied from `STATE.json` (version, label, header).
 
 Recompute every tally from disk (`rg '^VERDICT:'` / task markers + `meta.actual_model`). Never trust hand-carried chat tallies. Attribute via `meta.actual_model` (planned→actual reassignments are scored to the actual performer).
 
@@ -228,7 +231,7 @@ Call out under run accounting:
 - Compactions: total + mid-task counts per model (from agentsview `session get`)
 - Distinct `--out` paths and any clobber/recovery/remap events
 
-`run-summary.json` must also record: `buckets`, `participants`, `bucket_slots = buckets × ((3 × participants) + 1)`, `merits_slots`, `integration_slots`, `planned_primary_slots`, with retries/timeouts/incomplete/auxiliary slots counted separately so they do not inflate the planned primary total.
+`run-summary.json` must also record: `ultra_review` (from `STATE.json`), `buckets`, `participants`, `bucket_slots = buckets × ((3 × participants) + 1)`, `merits_slots`, `integration_slots`, `planned_primary_slots`, with retries/timeouts/incomplete/auxiliary slots counted separately so they do not inflate the planned primary total.
 
 **Scoring hygiene:** exit 124 with a complete `.out` = completed; re-stat before marking incomplete; retry + original both score if both rich; self-duplicates of an already-posted finding affect thread counts only, not Unique/Shared.
 
@@ -237,13 +240,13 @@ When posting the summary comment, include the Model comparison table (with wall 
 ### 10. Post or display
 
 Git-diff / `--no-post`: display only.  
-No confirmed: single summary comment with `**AI Ultra Review**` header.  
+No confirmed: single summary comment with `**AI Ultra Review <version>**` header.  
 Issues: one inline per unique issue; severity order critical→low; cap **8 low** posted.  
 
-Header on every inline:
+Header on every inline (`<version>` from `STATE.json` `ultra_review.version`, currently `0.5`):
 
 ```text
-> **AI Ultra Review** · Commit: <sha> · Severity: <…> · Role: <…> · Flagged by: <…>
+> **AI Ultra Review 0.5** · Commit: <sha> · Severity: <…> · Role: <…> · Flagged by: <…>
 ```
 
 Severities: `critical` | `high` | `medium` | `low`. Merits has no severity / no inline.  

@@ -157,12 +157,22 @@ interface Meta {
   recovered?: boolean
 }
 
+interface UltraReviewIdentity {
+  product: string
+  version: string
+  label: string
+  header: string
+  notes?: string
+}
+
 interface State {
   phase: string
   updated_at: string
   run_dir: string
   slots: Record<string, Meta>
   opencode?: OpencodePreflight
+  /** Frozen at first mbot-run command of the run. Do not overwrite later. */
+  ultra_review?: UltraReviewIdentity
 }
 
 interface OpencodePreflight {
@@ -185,6 +195,40 @@ interface OpencodePreflight {
 function die(msg: string, code = 2): never {
   console.error(`mbot-run: ${msg}`)
   process.exit(code)
+}
+
+const ULTRA_REVIEW_VERSION_FILE = join(SCRIPT_DIR, "ultra-review-version.json")
+
+export function loadUltraReviewIdentity(): UltraReviewIdentity {
+  let product = "Ultra Review"
+  let version = "0.0"
+  let notes: string | undefined
+  if (existsSync(ULTRA_REVIEW_VERSION_FILE)) {
+    try {
+      const raw = readJson<{ product?: string; version?: string; notes?: string }>(
+        ULTRA_REVIEW_VERSION_FILE,
+      )
+      if (raw.product?.trim()) product = raw.product.trim()
+      if (raw.version?.trim()) version = raw.version.trim()
+      if (raw.notes?.trim()) notes = raw.notes.trim()
+    } catch {
+      /* keep defaults */
+    }
+  }
+  return {
+    product,
+    version,
+    label: `${product} ${version}`,
+    header: `AI Ultra Review ${version}`,
+    notes,
+  }
+}
+
+/** Freeze identity on init/launch. Never overwrite, never backfill an old run at harvest. */
+function freezeUltraReview(state: State): UltraReviewIdentity {
+  if (state.ultra_review?.version) return state.ultra_review
+  state.ultra_review = loadUltraReviewIdentity()
+  return state.ultra_review
 }
 
 function abs(runDir: string, p: string, projectDir?: string): string {
@@ -1240,12 +1284,14 @@ function cmdInit(runDir: string): void {
     run_dir: absDir,
     slots: {},
   }
+  const ultraReview = freezeUltraReview(state)
   saveState(state)
   process.stdout.write(
     JSON.stringify(
       {
         ok: true,
         run_dir: absDir,
+        ultra_review: ultraReview,
         layout: ["prompts/", "results/", "context/", "STATE.json"],
       },
       null,
@@ -1389,6 +1435,7 @@ async function cmdLaunch(planPath: string): Promise<void> {
   state.phase = "launch"
   state.run_dir = runDir
   if (preflight) state.opencode = preflight
+  const ultraReview = freezeUltraReview(state)
   saveState(state)
 
   // Concurrency: default lower when OpenCode attach is in play
@@ -1413,6 +1460,7 @@ async function cmdLaunch(planPath: string): Promise<void> {
   const summary = {
     ok,
     run_dir: runDir,
+    ultra_review: ultraReview,
     opencode_preflight: preflight,
     concurrency,
     slots: metas.map((m) => ({
@@ -1622,6 +1670,7 @@ function cmdHarvest(runDir: string): void {
   const harvest = {
     ok: incomplete.length === 0,
     run_dir: absDir,
+    ultra_review: state.ultra_review ?? null,
     slots: metas.map((m) => ({
       slot: m.slot,
       status: m.status,
@@ -1661,6 +1710,7 @@ function cmdStatus(runDir: string): void {
   const preflightPath = join(absDir, "opencode-preflight.json")
   const out: Record<string, unknown> = {
     run_dir: absDir,
+    ultra_review: state.ultra_review ?? null,
     state_phase: state.phase,
     updated_at: state.updated_at,
     slot_count: Object.keys(state.slots).length,
@@ -1859,6 +1909,7 @@ async function main(): Promise<void> {
   mbot-run.ts status --run-dir <dir>
   mbot-run.ts barrier --run-dir <dir> [--timeout-ms N] [--poll-ms N]
   mbot-run.ts usage --run-dir <dir> [--title-prefix P] [--since 14d] [--include-claude-children] [--parent-session-id ID] [--out path]
+  mbot-run.ts version
 `)
     process.exit(command ? 0 : 2)
   }
@@ -1937,6 +1988,8 @@ async function main(): Promise<void> {
     const timeoutMs = values["timeout-ms"] ? Number(values["timeout-ms"]) : DEFAULT_SLOT_TIMEOUT_MS
     const pollMs = values["poll-ms"] ? Number(values["poll-ms"]) : 5000
     await cmdBarrier(values["run-dir"], timeoutMs, pollMs)
+  } else if (command === "version") {
+    process.stdout.write(JSON.stringify(loadUltraReviewIdentity(), null, 2) + "\n")
   } else if (command === "usage") {
     if (!values["run-dir"]) die("--run-dir is required")
     const p = values["parent-session-id"]

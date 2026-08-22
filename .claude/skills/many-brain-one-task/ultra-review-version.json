@@ -1,0 +1,5 @@
+{
+  "product": "Ultra Review",
+  "version": "0.5",
+  "notes": "OpenCode-stable control plane: detach launch, path de-dup, plan merge, GPT high/colin-mbot-gpt, candidates command, published version stamp."
+}

@@ -12,6 +12,7 @@ import {
   stripDuplicateRunPrefix,
 } from "./mbot-paths.ts"
 import { parseIssueBlocks } from "./mbot-candidates.ts"
+import { loadUltraReviewIdentity } from "./mbot-run.ts"
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "mbot-run.ts")
 const TMP = mkdtempSync(join(tmpdir(), "mbot-run-test-"))
@@ -102,6 +103,33 @@ describe("OpenCode defaults", () => {
     expect(defaultOpencodeVariant("xhigh")).toBe("xhigh")
     expect(defaultOpencodeVariant("")).toBeUndefined()
     expect(defaultOpencodeVariant("none")).toBeUndefined()
+  })
+})
+
+describe("Ultra Review version", () => {
+  test("identity is Ultra Review 0.5", () => {
+    const id = loadUltraReviewIdentity()
+    expect(id.product).toBe("Ultra Review")
+    expect(id.version).toBe("0.5")
+    expect(id.label).toBe("Ultra Review 0.5")
+    expect(id.header).toBe("AI Ultra Review 0.5")
+  })
+
+  test("init freezes ultra_review into STATE.json", () => {
+    const repo = join(TMP, "version-repo")
+    const runDir = join(repo, ".tmp", "ultra-ver")
+    mkdirSync(runDir, { recursive: true })
+    const r = Bun.spawnSync(["bun", SCRIPT, "init", "--run-dir", runDir], {
+      cwd: repo,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    expect(r.exitCode).toBe(0)
+    const printed = JSON.parse(r.stdout.toString())
+    expect(printed.ultra_review.label).toBe("Ultra Review 0.5")
+    const state = JSON.parse(readFileSync(join(runDir, "STATE.json"), "utf8"))
+    expect(state.ultra_review.version).toBe("0.5")
+    expect(state.ultra_review.header).toBe("AI Ultra Review 0.5")
   })
 })
 
