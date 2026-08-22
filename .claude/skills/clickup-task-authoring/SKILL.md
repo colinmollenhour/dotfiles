@@ -150,7 +150,7 @@ An unresolved decision is only useful if a reviewer can settle it in one pass. A
 
 *Each item below is a question still to answer. The **AI Recommendation** is what an AI review of this plan would pick and why; the two alternatives are the other credible answers, with their cost. Choose one, or say why none fit.*
 
-&nbsp;
+---
 
 **1. Question in the words the person answering it would use?**
 
@@ -171,16 +171,19 @@ What is actually at stake, and why the answer is not obvious.
 - Decisions **you** took rather than the user get their own section — `# Decisions Taken in <what> (need sign-off)` — in the same three-option shape, each pointing at the section that now encodes the answer. A reader must never mistake a machine's choice for a ratified one.
 - When the same decisions are mirrored in a repo document, keep both lists in the same order and have each point at the other, so sign-off happens once.
 
-### Spacing
+### Separators
 
-ClickUp renders consecutive paragraphs tight, so a run of decisions arrives as one wall of bold labels. Put a `&nbsp;` line before each numbered question, including the first. CUFM has no empty-paragraph primitive:
+ClickUp renders consecutive paragraphs tight, so a run of decisions arrives as one wall of bold labels. Put a `---` divider before each numbered question, including the first, so each decision reads as its own card. CUFM has no empty-paragraph primitive, and whitespace alone does not survive:
 
 | Written in CUFM | Rendered in ClickUp |
 |-----------------|---------------------|
+| `---` alone on a line | divider block — use this |
 | one blank line | ordinary paragraph separator — no gap |
 | two blank lines | collapses to the same — no gap |
 | `<br>` | stored as a raw-HTML `cufm` fence, not a break |
-| `&nbsp;` alone on a line | the empty block you want |
+| `&nbsp;` alone on a line | empty block — whitespace without a line, if a divider is too heavy |
+
+A divider is a block, not text: it does not appear in the plaintext `description` from `cup task <id> --json`. Audit separators against the rendered `cup task <id>` output instead.
 
 ## Persist
 
