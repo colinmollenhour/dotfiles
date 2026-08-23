@@ -448,7 +448,7 @@ Profiles are prose. MBOT reads them naturally and translates them into the right
 
 ### MBOT subagent registry
 
-The `.claude/agents/colin-mbot-*.md` files register each model as a callable subagent (read-only — `write: false`). They are how OpenCode-hosted MBOT runs dispatch to a specific model. You normally do not invoke them directly, but you reference them by short name in profiles and `[agents]` overrides.
+The `.opencode/agents/colin-mbot-*.md` files register each model as a callable OpenCode subagent (read-only: `edit` and `task` denied; bash limited to git show/diff/log). They are how OpenCode-hosted MBOT runs dispatch to a specific model. You normally do not invoke them directly, but you reference them by short name in profiles and `[agents]` overrides.
 
 Sorted roughly by capability:
 
@@ -471,7 +471,7 @@ Sorted roughly by capability:
 | `colin-mbot-deepseek` | DeepSeek v4 Pro |
 | `colin-mbot-minimax` | MiniMax M3 |
 
-Add your own by dropping a new `colin-mbot-<NAME>.md` into `.claude/agents/` with `mode: subagent`, the desired `model:`, and `tools: { write: false }`.
+Add your own by dropping a new `colin-mbot-<NAME>.md` into `.opencode/agents/` with `mode: subagent`, the desired `model:`, and the same `permission:` block as the existing files (`edit`/`task` deny, read-only git bash allowlist). Copy it next to the others; `install.sh` installs them to `~/.opencode/agents/`.
 
 ## Typical flows
 
