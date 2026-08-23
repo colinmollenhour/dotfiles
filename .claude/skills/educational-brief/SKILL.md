@@ -1,5 +1,6 @@
 ---
 name: educational-brief
+user-invocable: false
 description: Create a grounded educational brief for delivered PRs, MRs, branches, features, or agent runs. Use when packaging a journey, design decisions, architecture, diagrams, and lessons into a dense reviewer-facing or future-agent-facing brief.
 ---
 

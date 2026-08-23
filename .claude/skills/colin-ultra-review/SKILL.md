@@ -1,4 +1,6 @@
 ---
+name: colin-ultra-review
+disable-model-invocation: true
 allowed-tools: Read, Write, Glob, Grep, Agent, Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which *), Bash(mkdir *), Bash(cp *), Bash(wc *), Bash(bun *), Bash(occtl *), Bash(botctl *), Bash(claude *), Bash(grok *), Bash(codex *), Bash(agentsview *), Bash(timeout *), mcp__github_inline_comment__create_inline_comment
 description: Multi-model, repository-aware bug review with focused discovery, evidence validation, and convergence rounds
 argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [--re-review] [--max-rounds=N] [--no-post] [--no-summary]"

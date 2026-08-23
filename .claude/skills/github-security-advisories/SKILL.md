@@ -1,5 +1,6 @@
 ---
 name: github-security-advisories
+disable-model-invocation: true
 description: 'Manage GitHub Security Advisories: validate reports, draft GHSA/CVE/CVSS fields, patch private forks.'
 ---
 

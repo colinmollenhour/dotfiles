@@ -1,5 +1,6 @@
 ---
 name: grok-cli
+user-invocable: false
 description: 'Shell out to grok CLI (Grok Build TUI) for headless xAI Grok runs.'
 allowed-tools: Bash(grok *)
 ---

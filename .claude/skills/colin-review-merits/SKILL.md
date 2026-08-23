@@ -1,5 +1,6 @@
 ---
 name: colin-review-merits
+disable-model-invocation: true
 description: Critique the merits of a merge or pull request, not the typical code review.
 ---
 

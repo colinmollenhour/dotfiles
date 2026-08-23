@@ -1,5 +1,6 @@
 ---
 name: gh-cli
+user-invocable: false
 description: 'Use gh for GitHub PRs, issues, runs, releases, comments, checks, labels, and raw API tasks.'
 ---
 

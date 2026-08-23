@@ -164,8 +164,21 @@ assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md"
   "$agents_home/.agents/skills/many-brain-one-task/code-review.md"
 assert_files_equal "$ROOT_DIR/.claude/skills/megamind/SKILL.md" \
   "$agents_home/.agents/skills/megamind/SKILL.md"
+assert_files_equal "$ROOT_DIR/.claude/skills/colin-review/SKILL.md" \
+  "$agents_home/.agents/skills/colin-review/SKILL.md"
+assert_files_equal "$ROOT_DIR/.claude/skills/colin-review/SKILL.md" \
+  "$agents_home/.claude/skills/colin-review/SKILL.md"
+assert_file_missing "$agents_home/.claude/commands"
+assert_file_missing "$agents_home/.opencode/commands"
+assert_contains "$(<"$agents_home/.agents/skills/colin-review/agents/openai.yaml")" \
+  "allow_implicit_invocation: false"
+assert_file_missing "$agents_home/.agents/skills/gh-cli/agents/openai.yaml"
 assert_file_missing "$agents_home/.gemini"
 assert_contains "$output" "Unchanged (same hash and mtime): 2"
+
+mkdir -p "$agents_home/.claude/commands" "$agents_home/.opencode/commands"
+printf 'stale slash command\n' > "$agents_home/.claude/commands/colin-review.md"
+printf 'stale slash command\n' > "$agents_home/.opencode/commands/colin-review.md"
 
 output="$(run_install "$agents_home" --agents --no-input --quiet)"
 assert_not_contains "$output" "$agents_home/.agents/skills/megamind/SKILL.md"
@@ -173,6 +186,8 @@ assert_not_contains "$output" "$agents_home/.claude/settings.json"
 assert_not_contains "$output" "$agents_home/.claude/settings.local.json"
 assert_files_equal "$ROOT_DIR/.claude/skills/megamind/SKILL.md" \
   "$agents_home/.agents/skills/megamind/SKILL.md"
+assert_file_missing "$agents_home/.claude/commands"
+assert_file_missing "$agents_home/.opencode/commands"
 if [[ "$(stat -c '%z' "$agents_home/.claude/settings.json.bak")" != "$backup_ctime" ]]; then
   printf 'Expected current settings backup not to be rewritten\n' >&2
   exit 1

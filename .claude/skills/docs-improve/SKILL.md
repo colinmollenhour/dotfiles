@@ -1,5 +1,6 @@
 ---
 name: docs-improve
+user-invocable: false
 description: Review docs, score issues, preview edits. Use for READMEs, guides, help docs, Markdown/MDX/RST/HTML.
 ---
 

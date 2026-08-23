@@ -1,4 +1,5 @@
 ---
+name: colin-progress
 description: Audit progress on the task in scope and keep working until it's actually 100% done — no deferring parts of the spec.
 argument-hint: [optional: extra emphasis or specific area to check]
 ---

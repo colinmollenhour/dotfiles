@@ -1,4 +1,5 @@
 ---
+name: colin-feature-export
 description: Create an implementation guide for a feature in this repo so you can port it to another repo
 argument-hint: Describe the feature, sources, etc...
 allowed-tools: Bash(git show:*), Bash(git diff:*), Bash(git log:*), Bash(grep:*), Read, Edit

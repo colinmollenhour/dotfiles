@@ -571,7 +571,7 @@ copy_claude_home() {
   shopt -s nullglob
   for item in "$src"/*; do
     base="$(basename "$item")"
-    [[ "$base" == "worktrees" ]] && continue
+    [[ "$base" == "worktrees" || "$base" == "commands" ]] && continue
     if [[ "$base" == "agents" ]]; then
       copy_agent_files "$item" "$dest/agents"
     elif [[ -d "$item" ]]; then
@@ -811,96 +811,74 @@ update_gitconfig() {
   fi
 }
 
-install_command_skills() {
-  local commands_dir=".claude/commands"
+# True/false from YAML frontmatter only (not the skill body).
+frontmatter_flag() {
+  local file="$1" key="$2"
+  awk -v key="$key" '
+    BEGIN { fm = 0 }
+    NR == 1 && $0 == "---" { fm = 1; next }
+    fm && $0 == "---" { exit }
+    fm {
+      if ($0 ~ "^" key ":[[:space:]]*(true|yes|on|1)[[:space:]]*$") { print "true"; exit }
+      if ($0 ~ "^" key ":[[:space:]]*(false|no|off|0)[[:space:]]*$") { print "false"; exit }
+    }
+  ' "$file"
+}
+
+# Codex/OpenAI: disable implicit invocation for skills that set
+# disable-model-invocation (reviews, commits, deletes, autonomous delivery).
+install_codex_invocation_guards() {
+  local skills_src=".claude/skills"
   local skills_dir="${1:-$HOME/.agents/skills}"
-  local label="${2:-Claude command skills}"
-  local include_openai_yaml="${3:-true}"
-  local command_file rel command_path command_name command_subdir command_namespace skill_name skill_dir
-  local count=0
+  local skill_md name dest tmp count=0
 
-  if [[ ! -d "$commands_dir" ]]; then
-    warn "Skipping command skills; no $commands_dir directory exists"
-    return
-  fi
+  [[ -d "$skills_src" ]] || return 0
 
-  while IFS= read -r command_file; do
-    rel="${command_file#$commands_dir/}"
-    command_path="${rel%.md}"
-    command_name="$(basename "$command_path")"
-    command_subdir="$(dirname "$command_path")"
-
-    if [[ "$command_subdir" == "." ]]; then
-      skill_name="$command_name"
-      skill_dir="$skills_dir/$command_name"
-    else
-      command_namespace="${command_subdir//\//:}"
-      skill_name="$command_namespace:$command_name"
-      skill_dir="$skills_dir/$command_subdir/$command_name"
-    fi
-
-    # A real skill of the same name already owns ~/.agents/skills/<name>/SKILL.md.
-    # Do not clobber it with the slash-command stub (e.g. megamind.md vs
-    # skills/megamind/SKILL.md) — that fight rewrites the dest on every install.
-    if [[ -f "$SCRIPT_DIR/.claude/skills/$command_path/SKILL.md" ]]; then
-      log "Skipping command skill $skill_name; .claude/skills/$command_path/SKILL.md already provides it"
-      continue
-    fi
-
+  while IFS= read -r skill_md; do
+    [[ "$(frontmatter_flag "$skill_md" disable-model-invocation)" == "true" ]] || continue
+    name="$(basename "$(dirname "$skill_md")")"
+    dest="$skills_dir/$name/agents/openai.yaml"
     count=$((count + 1))
-
-    local skill_md="$skill_dir/SKILL.md"
-    local openai_yaml="$skill_dir/agents/openai.yaml"
-
-    if [[ "$DRY_RUN" == false ]]; then
-      if [[ "$include_openai_yaml" == true ]]; then
-        mkdir -p "$skill_dir/agents"
-      else
-        mkdir -p "$skill_dir"
-      fi
-    fi
-    local tmp
     tmp="$(mktemp)"
-    awk -v skill_name="$skill_name" '
-      BEGIN { frontmatter = 0; inserted = 0 }
-      NR == 1 && $0 == "---" {
-        print
-        print "name: " skill_name
-        frontmatter = 1
-        inserted = 1
-        next
-      }
-      frontmatter && $0 == "---" {
-        print
-        frontmatter = 0
-        next
-      }
-      frontmatter && ($0 ~ /^name:[[:space:]]*/ || $0 ~ /^allowed-tools:[[:space:]]*/) {
-        next
-      }
-      !inserted {
-        print "---"
-        print "name: " skill_name
-        print "---"
-        inserted = 1
-      }
-      { print }
-    ' "$command_file" > "$tmp"
-    install_rendered "$command_file" "$tmp" "$skill_md"
-    if [[ "$include_openai_yaml" == true ]]; then
-      # openai.yaml is always the same two lines, but still goes through the
-      # conflict checks so local changes are never overwritten silently.
-      tmp="$(mktemp)"
-      printf 'policy:\n  allow_implicit_invocation: false\n' > "$tmp"
-      install_rendered "$command_file" "$tmp" "$openai_yaml"
-    fi
-  done < <(find "$commands_dir" -type f -name '*.md' | sort)
+    printf 'policy:\n  allow_implicit_invocation: false\n' > "$tmp"
+    install_rendered "${skill_md#$SCRIPT_DIR/}" "$tmp" "$dest"
+  done < <(find "$skills_src" -mindepth 2 -maxdepth 2 -type f -name 'SKILL.md' | sort)
 
   if [[ "$DRY_RUN" == true ]]; then
-    log "Would install $count $label in $skills_dir"
+    log "Would install $count Codex implicit-invocation guards in $skills_dir"
   else
-    log "Installed $count $label in $skills_dir"
+    log "Installed $count Codex implicit-invocation guards in $skills_dir"
   fi
+}
+
+# .claude/commands is gone. Delete leftover slash-command copies; cleanup_deleted
+# drops them from the manifest once the files are missing.
+cleanup_legacy_command_locations() {
+  local dest dir n=0
+  shopt -s nullglob
+  for dest in "$HOME/.claude/commands"/*.md "$HOME/.opencode/commands"/*.md; do
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "delete leftover command $dest"
+    else
+      rm -f -- "$dest"
+      log "Deleted leftover command $dest"
+    fi
+    n=$((n + 1))
+  done
+  shopt -u nullglob
+  [[ $n -gt 0 ]] && log "Removed $n leftover command file(s)"
+
+  for dir in "$HOME/.claude/commands" "$HOME/.opencode/commands"; do
+    [[ -d "$dir" ]] || continue
+    if [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "remove empty directory $dir"
+      else
+        rmdir -- "$dir" 2>/dev/null || true
+        log "Removed empty directory $dir"
+      fi
+    fi
+  done
 }
 
 cleanup_legacy_namespaced_agent_dirs() {
@@ -995,16 +973,16 @@ install_agents() {
   done
 
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.opencode/{commands,agents}, $HOME/.grok/agents, and $HOME/.agents/skills"
+    dry_run_msg "create $HOME/.opencode/agents, $HOME/.grok/agents, and $HOME/.agents/skills"
   else
-    mkdir -p "$HOME/.opencode/commands" "$HOME/.opencode/agents" \
+    mkdir -p "$HOME/.opencode/agents" \
              "$HOME/.grok/agents" \
              "$HOME/.agents/skills"
   fi
 
-  copy_dir_contents ".claude/commands" "$HOME/.opencode/commands"
   copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
-  install_command_skills "$HOME/.agents/skills" "Claude command skills" true
+  install_codex_invocation_guards "$HOME/.agents/skills"
+  cleanup_legacy_command_locations
   cleanup_legacy_namespaced_agent_dirs
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
   install_file ".opencode/agents/megamind.md" "$SCRIPT_DIR/.opencode/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"

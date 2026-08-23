@@ -1,4 +1,6 @@
 ---
+name: colin-squash-merge
+disable-model-invocation: true
 description: Smart squash-merge a branch onto master, preserving per-author commits with AI-generated messages
 argument-hint: [branch-name]
 allowed-tools: Bash(git), Bash(echo), Bash(cat), Bash(wc)

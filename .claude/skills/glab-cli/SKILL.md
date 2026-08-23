@@ -1,5 +1,6 @@
 ---
 name: glab-cli
+user-invocable: false
 description: 'Use glab for GitLab MRs, issues, discussions, pipelines, notes, labels, and raw API tasks.'
 ---
 

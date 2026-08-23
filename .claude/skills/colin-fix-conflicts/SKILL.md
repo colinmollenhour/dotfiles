@@ -1,4 +1,6 @@
 ---
+name: colin-fix-conflicts
+disable-model-invocation: true
 allowed-tools: Bash(git status:*), Bash(git show:*), Bash(git diff:*), Bash(git add:*), Bash(git rm:*), Bash(git checkout:*), Bash(grep:*), Read, Edit
 description: Inspect and resolve git merge conflicts intelligently
 ---

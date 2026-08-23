@@ -1,5 +1,6 @@
 ---
 name: many-brain-one-decision
+user-invocable: false
 description: 'Run a multi-agent debate to compare options and converge on a decision.'
 allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *), Bash(pi *), Bash(grok *), Bash(codex *), Bash(botctl *)
 ---

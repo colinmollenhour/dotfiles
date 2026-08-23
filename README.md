@@ -103,7 +103,7 @@ Running `./uninstall.sh` uses this same manifest to cleanly undo installation at
 
 ### Claude Code config
 
-Slash commands, skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors them into `~/.opencode/` and the shared `~/.agents/skills/` directory used by agy, so the same commands work across harnesses. If a slash command and a skill share a name (for example `megamind`), the skill’s `SKILL.md` wins in `~/.agents/skills/` — the command stub is not installed on top of it. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
+Skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors skills into the shared `~/.agents/skills/` directory used by Codex, OpenCode, and agy. Workflows that used to live in `.claude/commands/` are skills now; leftover copies under `~/.claude/commands` and `~/.opencode/commands` are deleted on install. Side-effect skills (`/colin-review`, `/megamind`, commit/push/cleanup, and similar) set `disable-model-invocation: true` so they only run when you type `/name`. Library skills (`gh-cli`, `many-brain-one-task`, ORM/docs helpers) set `user-invocable: false` so they stay off the `/` menu. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
 
 ## Shell helpers
 
@@ -193,7 +193,7 @@ flowchart TD
 
 Megamind supports native integration across 5 AI development platforms:
 
-- **Claude Code**: Native agent at `.claude/agents/megamind.md` and slash command at `.claude/commands/megamind.md`. Invoke via `/megamind <task>` or `/agent megamind`.
+- **Claude Code**: Native agent at `.claude/agents/megamind.md` and skill at `.claude/skills/megamind/SKILL.md` (`disable-model-invocation: true`). Invoke via `/megamind <task>` or `/agent megamind`.
 - **OpenCode Pi**: Native agent at `.opencode/agents/megamind.md` (installed to `~/.opencode/agents/megamind.md`) configured with `mode: primary` and tool declarations. Invoke via `/megamind <task>` or agent selection in OpenCode TUI.
 - **Oh My Pi (omp) & Pi**: Installable npm package at `pi-megamind/`. Supports `omp install ./pi-megamind` and `pi install ./pi-megamind` with slash command `/megamind <task>` and `mode: main` execution.
 - **Grok CLI**: Installed to `~/.grok/agents/megamind.md`. Supports headless batch fan-out via `grok --prompt-file` with `--always-approve` and `--disallowed-tools Agent`.
@@ -208,6 +208,8 @@ Install all targets automatically via:
 The OMP route defaults MBOT/MBOD delegation to native `task` batches. The Pi route defaults to Pi-backed participants and prefers the lightweight `pi-fast-subagent` extension when available.
 
 ## Slash commands
+
+These are skills under `.claude/skills/<name>/SKILL.md`. Typing `/colin-review` still works; Claude Code, OpenCode, and Codex load them from the installed skill directories. Skills that post, push, delete, or run Megamind are user-invoked only.
 
 ### `colin-*` — day-to-day dev workflow (name-spaced to avoid conflicts)
 

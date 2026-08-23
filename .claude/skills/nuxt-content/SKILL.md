@@ -1,5 +1,6 @@
 ---
 name: nuxt-content
+user-invocable: false
 description: 'Author or edit Nuxt Content Markdown using MDC syntax and Vue components.'
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---

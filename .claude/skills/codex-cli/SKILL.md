@@ -1,5 +1,6 @@
 ---
 name: codex-cli
+user-invocable: false
 description: Run OpenAI Codex CLI headlessly for one-shot tasks, code reviews, and native raster image generation or editing. Use when the user mentions Codex, asks to shell out to GPT through Codex, requests `codex exec` or `codex review`, or wants Codex to create a PNG/JPEG, infographic, thumbnail, mockup, or image variant.
 ---
 

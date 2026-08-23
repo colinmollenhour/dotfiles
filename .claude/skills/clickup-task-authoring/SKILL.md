@@ -1,5 +1,6 @@
 ---
 name: clickup-task-authoring
+disable-model-invocation: true
 description: 'Author a ClickUp task from a conversation, plan, review, incident, or spec as CUFM via cup task-sync. Covers the source-fidelity ledger, rich description structure (banners, toggles, mermaid, tldraw, tables), open-decision blocks (question, AI Recommendation, two alternatives), title conventions, ShipStream Value Stream / Requested By / Bug-type rules, and the post-write audit. Use when creating or updating ClickUp task content (file a bug, write a ticket, turn this into a task). Load the clickup skill from `cup skill` for CUFM syntax and task-sync flags. Workspace IDs live in shipstream-clickup. Formerly clickup-tasks.'
 ---
 

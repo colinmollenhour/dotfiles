@@ -1,4 +1,5 @@
 ---
+name: colin-critique
 description: Multi-model spec critique — surfaces inconsistencies, gaps, naming issues, and inferior design
 argument-hint: "[file path or 'current plan' or TaskID] [--agents list...] [--summary]"
 allowed-tools: Bash(ls:*), Bash(cat:*), Bash(find:*), Bash(wc:*), Read

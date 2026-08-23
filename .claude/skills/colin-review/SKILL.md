@@ -1,4 +1,6 @@
 ---
+name: colin-review
+disable-model-invocation: true
 allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*), mcp__github_inline_comment__create_inline_comment
 description: Code review for GitHub PRs, GitLab MRs, or any git diff
 argument-hint: "[PR/MR number, URL, or git description] [--re-review] [--no-post] [--no-summary]"

@@ -1,4 +1,6 @@
 ---
+name: colin-git-cleanup
+disable-model-invocation: true
 description: Clean up local git branches and stale worktrees (squash-aware; prefers worktrunk when available)
 allowed-tools: Bash(git *), Bash(wt *), Bash(glab *), Bash(paseo *), Bash(git-cleanup-scan *), Bash(*git-cleanup-scan*), Bash(command -v:*), mcp_question
 ---

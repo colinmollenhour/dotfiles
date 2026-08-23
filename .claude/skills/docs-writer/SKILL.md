@@ -1,5 +1,6 @@
 ---
 name: docs-writer
+user-invocable: false
 description: 'Write or edit user-facing technical docs: READMEs, guides, tutorials, API refs, changelogs, release notes, troubleshooting.'
 ---
 

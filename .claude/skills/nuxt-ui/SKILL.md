@@ -1,5 +1,6 @@
 ---
 name: nuxt-ui
+user-invocable: false
 description: 'Build or debug UI with Nuxt UI components, forms, tables, modals, and current docs.'
 ---
 

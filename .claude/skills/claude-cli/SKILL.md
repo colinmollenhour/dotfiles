@@ -1,5 +1,6 @@
 ---
 name: claude-cli
+user-invocable: false
 description: 'Shell out to claude CLI.'
 allowed-tools: Bash(claude *)
 ---

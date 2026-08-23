@@ -1,4 +1,5 @@
 ---
+name: colin-handoff
 description: Quick session handoff dump. Generates a portable markdown document from current conversation context for resuming in any AI tool.
 argument-hint: [optional: output path]
 ---

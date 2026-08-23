@@ -1,5 +1,6 @@
 ---
 name: many-brain-one-task
+user-invocable: false
 description: 'Run the same task with multiple agents for reviews, critiques, or model comparison.'
 allowed-tools: Read, Write, Agent, Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *), Bash(botctl *), Bash(occtl *), Bash(opencode *), Bash(which *), Bash(mkdir *), Bash(cp *)
 ---
