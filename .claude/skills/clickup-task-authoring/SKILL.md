@@ -100,12 +100,6 @@ future reader.
   lead only when the rule would otherwise look arbitrary and no bold lead-in is displaced.
 - Give a reason once. Do not repeat what an earlier section established.
 
-### Length
-
-**At most 5% more words than the source material, and fewer is better.** Nearly all of the
-readability gain is word-level and costs nothing. Structural rewrites are what inflate a
-document by 20–30% for less benefit.
-
 ### Rewriting existing text
 
 Fidelity rules are in the Source Fidelity Contract above and the voice never overrides them.
