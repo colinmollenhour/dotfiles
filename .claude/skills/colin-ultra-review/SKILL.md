@@ -32,7 +32,7 @@ Resolve `CLAUDE_SKILL_DIR` to the installed skill roots (`~/.claude/skills/...` 
 | Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` — prints and freezes `ultra_review` (`label`: `Ultra Review 0.5`) |
 | Skill version | `bun …/mbot-run.ts version` |
 | Assemble prompts | `bun …/many-brain-one-task/assemble-prompts.ts --append context/bucket.md --out-dir prompts role.md:slot.full.md …` |
-| OpenCode smoke | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://seamus:4095 --model openai/gpt-5.6-sol` (launch also smokes) |
+| OpenCode smoke | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-5.6-sol` (launch also smokes; omit `--attach` when `OPENCODE_SERVER_HOST`/`PORT` are already set) |
 | Launch batch | `bun …/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (Claude Code). **OpenCode host:** add `--detach`, then barrier. Further phase plans (`plan-integration.json`) merge into `plan.json`; they do not replace it. |
 | Fail-closed wait | `bun …/mbot-run.ts barrier --run-dir .tmp/ultra-N` — **never** `sleep N`, **never** `until test -s empty.out` |
 | Harvest | `bun …/mbot-run.ts harvest --run-dir .tmp/ultra-N` |

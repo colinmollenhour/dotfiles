@@ -4,7 +4,8 @@
  *
  * OpenCode reliability (2026-08):
  * - ALL flags go before `--` (attach/variant/title must not be swallowed)
- * - Prefer `occtl run --attach host:port` (HTTP API, session sidecar, timeout salvage)
+ * - Prefer `occtl run` against OPENCODE_SERVER_HOST/PORT (HTTP API, session sidecar, timeout salvage).
+ *   Do not pass `--attach` — occtl 1.3.0 rejects it; 1.5+ still honors the env vars.
  * - Fallback: run-opencode.ts when occtl is missing or older than 1.2.0
  * - Attach smoke before fan-out; fall back to local spawn on failure
  * - Pin models against attach /config/providers when possible
@@ -15,7 +16,7 @@
  *
  * Commands:
  *   bun mbot-run.ts init --run-dir .tmp/ultra-N
- *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://seamus:4095 --model openai/gpt-5.6-sol
+ *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-5.6-sol
  *   bun mbot-run.ts launch --plan .tmp/ultra-N/plan.json [--detach]
  *   bun mbot-run.ts harvest --run-dir .tmp/ultra-N
  *   bun mbot-run.ts candidates --run-dir .tmp/ultra-N
@@ -30,7 +31,7 @@
  * Plan JSON:
  * {
  *   "run_dir": ".tmp/ultra-N",
- *   "attach": "http://seamus:4095",
+ *   "attach": "http://127.0.0.1:4096",
  *   "timeout_ms": 1200000,
  *   "concurrency": 3,
  *   "opencode_mode": "auto",   // auto | attach | local | skip
@@ -410,31 +411,22 @@ function normalizeAttachUrl(attach?: string): string | undefined {
   return `http://${t.replace(/\/$/, "")}`
 }
 
-function attachEnv(attach?: string, password?: string): NodeJS.ProcessEnv {
+export function attachEnv(attach?: string, password?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
+  if (!env.NODE_USE_ENV_PROXY) env.NODE_USE_ENV_PROXY = "1"
   const url = normalizeAttachUrl(attach)
   if (url) {
     try {
       const u = new URL(url)
-      env.OPENCODE_SERVER_HOST = u.hostname
-      env.OPENCODE_SERVER_PORT = u.port || "4096"
+      // Existing OPENCODE_SERVER_* win (host config / gitlab.env). Attach URL fills gaps.
+      if (!env.OPENCODE_SERVER_HOST) env.OPENCODE_SERVER_HOST = u.hostname
+      if (!env.OPENCODE_SERVER_PORT) env.OPENCODE_SERVER_PORT = u.port || "4096"
     } catch {
       /* leave env host/port unset */
     }
   }
-  if (password) env.OPENCODE_SERVER_PASSWORD = password
+  if (password && !env.OPENCODE_SERVER_PASSWORD) env.OPENCODE_SERVER_PASSWORD = password
   return env
-}
-
-function attachHostPort(attach?: string): string | undefined {
-  const url = normalizeAttachUrl(attach)
-  if (!url) return undefined
-  try {
-    const u = new URL(url)
-    return u.port ? `${u.hostname}:${u.port}` : u.hostname
-  } catch {
-    return attach?.replace(/^https?:\/\//, "").replace(/\/$/, "")
-  }
 }
 
 function parseSemver(text: string): [number, number, number] | null {
@@ -464,9 +456,10 @@ function detectOcctl(): { ok: boolean; version: string | null } {
   return { ok: true, version }
 }
 
-function occtlAttachArgs(attach?: string): string[] {
-  const hp = attachHostPort(attach)
-  return hp ? ["--attach", hp] : []
+export function occtlAttachArgs(_attach?: string): string[] {
+  // occtl 1.3.0 has no --attach. Server selection is OPENCODE_SERVER_HOST/PORT
+  // via attachEnv(), which 1.3.0 and 1.5+ both honor.
+  return []
 }
 
 function occtlLastText(sessionId: string, attach?: string, password?: string): string {
@@ -854,7 +847,7 @@ function opencodeAgentInstalled(name: string, projectDir: string): boolean {
   return files.some((p) => existsSync(p))
 }
 
-function occtlRunArgs(opts: {
+export function occtlRunArgs(opts: {
   model: string
   promptPath: string
   outPath: string
@@ -884,12 +877,9 @@ function occtlRunArgs(opts: {
     opts.dir,
   )
   if (opts.errPath) args.push("--stderr", opts.errPath)
-  if (opts.attach) {
-    const hp = attachHostPort(opts.attach)
-    if (hp) args.push("--attach", hp)
-  } else {
-    args.push("--spawn")
-  }
+  // Attach mode: env only (see attachEnv). --attach breaks occtl 1.3.0.
+  // No attach → --spawn an ephemeral server rather than guessing 127.0.0.1:4096.
+  if (!opts.attach) args.push("--spawn")
   if (opts.password) args.push("--password", opts.password)
   args.push("--", opts.message)
   return args

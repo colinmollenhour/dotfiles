@@ -77,7 +77,7 @@ Do not call `occtl` or `run-opencode.ts` from this skill.
 {
   "run_dir": ".tmp/many-brain-one-decision/<slug>/round-N",
   "project_dir": ".",
-  "attach": "http://seamus:4095",
+  "attach": "http://127.0.0.1:4096",
   "timeout_ms": 1200000,
   "slots": [
     {

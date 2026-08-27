@@ -129,26 +129,19 @@ if (!spawnEnv.XDG_STATE_HOME) {
   mkdirSync(spawnEnv.XDG_STATE_HOME, { recursive: true })
 }
 
-function normalizeAttachForOcctl(attach?: string): string | undefined {
-  if (!attach) return undefined
-  try {
-    const url = new URL(attach)
-    return `${url.hostname}${url.port ? `:${url.port}` : ""}`
-  } catch {
-    return attach.replace(/^https?:\/\//, "").replace(/\/$/, "")
-  }
-}
-
 function occtlEnv(): NodeJS.ProcessEnv {
   const env = { ...spawnEnv }
-  if (values.password) env.OPENCODE_SERVER_PASSWORD = values.password
+  if (!env.NODE_USE_ENV_PROXY) env.NODE_USE_ENV_PROXY = "1"
+  if (values.password && !env.OPENCODE_SERVER_PASSWORD) {
+    env.OPENCODE_SERVER_PASSWORD = values.password
+  }
   const attach = values.attach
   if (attach) {
     try {
       const raw = attach.startsWith("http") ? attach : `http://${attach}`
       const u = new URL(raw)
-      env.OPENCODE_SERVER_HOST = u.hostname
-      env.OPENCODE_SERVER_PORT = u.port || "4096"
+      if (!env.OPENCODE_SERVER_HOST) env.OPENCODE_SERVER_HOST = u.hostname
+      if (!env.OPENCODE_SERVER_PORT) env.OPENCODE_SERVER_PORT = u.port || "4096"
     } catch {
       /* keep existing env */
     }
@@ -157,21 +150,17 @@ function occtlEnv(): NodeJS.ProcessEnv {
 }
 
 function abortSessions(sessionIds: string[]): void {
-  const attach = normalizeAttachForOcctl(values.attach)
   const env = occtlEnv()
   for (const sessionId of sessionIds) {
     const occtlArgs = ["abort", sessionId]
-    if (attach) occtlArgs.push("--attach", attach)
     spawnSync("occtl", occtlArgs, { encoding: "utf8", env, timeout: 15_000 })
   }
 }
 
 function fetchSessionText(sessionIds: string[]): string {
-  const attach = normalizeAttachForOcctl(values.attach)
   const env = occtlEnv()
   for (const sessionId of sessionIds) {
     const occtlArgs = ["last", sessionId, "--role", "assistant", "--text-only"]
-    if (attach) occtlArgs.push("--attach", attach)
 
     const res = spawnSync("occtl", occtlArgs, {
       encoding: "utf8",

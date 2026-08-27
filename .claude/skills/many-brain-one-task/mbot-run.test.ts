@@ -12,7 +12,12 @@ import {
   stripDuplicateRunPrefix,
 } from "./mbot-paths.ts"
 import { parseIssueBlocks } from "./mbot-candidates.ts"
-import { loadUltraReviewIdentity } from "./mbot-run.ts"
+import {
+  attachEnv,
+  loadUltraReviewIdentity,
+  occtlAttachArgs,
+  occtlRunArgs,
+} from "./mbot-run.ts"
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "mbot-run.ts")
 const TMP = mkdtempSync(join(tmpdir(), "mbot-run-test-"))
@@ -255,5 +260,65 @@ describe("mbot-run launch path + plan merge (external slots, no models)", () => 
     const summary = JSON.parse(stdout)
     expect(summary.detached).toBe(true)
     expect(typeof summary.pid).toBe("number")
+  })
+})
+
+describe("OpenCode attach via env, not --attach", () => {
+  test("attachEnv fills HOST/PORT from attach URL when unset", () => {
+    const prevHost = process.env.OPENCODE_SERVER_HOST
+    const prevPort = process.env.OPENCODE_SERVER_PORT
+    delete process.env.OPENCODE_SERVER_HOST
+    delete process.env.OPENCODE_SERVER_PORT
+    try {
+      const env = attachEnv("http://127.0.0.1:4096")
+      expect(env.OPENCODE_SERVER_HOST).toBe("127.0.0.1")
+      expect(env.OPENCODE_SERVER_PORT).toBe("4096")
+    } finally {
+      if (prevHost === undefined) delete process.env.OPENCODE_SERVER_HOST
+      else process.env.OPENCODE_SERVER_HOST = prevHost
+      if (prevPort === undefined) delete process.env.OPENCODE_SERVER_PORT
+      else process.env.OPENCODE_SERVER_PORT = prevPort
+    }
+  })
+
+  test("existing OPENCODE_SERVER_* env wins over the attach URL", () => {
+    const prevHost = process.env.OPENCODE_SERVER_HOST
+    const prevPort = process.env.OPENCODE_SERVER_PORT
+    process.env.OPENCODE_SERVER_HOST = "10.0.0.5"
+    process.env.OPENCODE_SERVER_PORT = "4095"
+    try {
+      const env = attachEnv("http://127.0.0.1:4096")
+      expect(env.OPENCODE_SERVER_HOST).toBe("10.0.0.5")
+      expect(env.OPENCODE_SERVER_PORT).toBe("4095")
+    } finally {
+      if (prevHost === undefined) delete process.env.OPENCODE_SERVER_HOST
+      else process.env.OPENCODE_SERVER_HOST = prevHost
+      if (prevPort === undefined) delete process.env.OPENCODE_SERVER_PORT
+      else process.env.OPENCODE_SERVER_PORT = prevPort
+    }
+  })
+
+  test("occtl run args never include --attach; spawn only without attach", () => {
+    expect(occtlAttachArgs("127.0.0.1:4096")).toEqual([])
+    const attached = occtlRunArgs({
+      model: "openai/gpt-5.6-sol",
+      promptPath: "prompts/x.md",
+      outPath: "results/x.out",
+      timeoutMs: 1200000,
+      dir: "/tmp",
+      attach: "http://127.0.0.1:4096",
+      message: "hi",
+    })
+    expect(attached).not.toContain("--attach")
+    expect(attached).not.toContain("--spawn")
+    const local = occtlRunArgs({
+      model: "openai/gpt-5.6-sol",
+      promptPath: "prompts/x.md",
+      outPath: "results/x.out",
+      timeoutMs: 1200000,
+      dir: "/tmp",
+      message: "hi",
+    })
+    expect(local).toContain("--spawn")
   })
 })

@@ -388,7 +388,6 @@ Use the following:
 - OpenCode with GPT-5.6 Sol with "high" variant as "tech-bro"
 - OpenCode with Grok 4.5 as "truth-seeker"
 - Claude Opus with "max" thinking as "pragmatic-operator"
-For OpenCode use `--attach seamus:4095`
 ```
 
 ## Customizing MBOT (your models, your harness)
@@ -435,7 +434,9 @@ Copy one of the examples above and edit to taste. You can specify:
 - **Which provider or route** (e.g. `via OpenCode Zen`, `via Z.ai Coding Plan`, `via OpenRouter`). Prefer coding-plan routes over generic `openrouter/` or `opencode/` when you have entitlements — they are cheaper or uncapped.
 - **Model-specific knobs** (e.g. `"max" thinking`, `"xhigh" variant`).
 - **Backups** — list fallbacks so a failed primary swaps automatically.
-- **OpenCode server attach** — point MBOT at a running `opencode serve` instance instead of spawning a fresh local OpenCode per agent. Add a global line like `Attach OpenCode to seamus:4096 with password hunter2` (applies to every OpenCode agent in the run) or `via attach seamus:4096` on a single agent line (overrides for that agent only). MBOT puts that on `plan.json` (`"attach"`) and `mbot-run.ts` passes `occtl run --attach host:port`.
+- **OpenCode server attach** — point MBOT at a running `opencode serve` instance instead of spawning a fresh local OpenCode per agent. Add a global line like `Attach OpenCode to 127.0.0.1:4096` (applies to every OpenCode agent in the run) or `via attach 127.0.0.1:4096` on a single agent line (overrides for that agent only). MBOT puts that on `plan.json` (`"attach"`) so `mbot-run` stays in attach mode (no `--spawn`).
+
+  **Environment variables.** `mbot-run` / `occtl` honor `OPENCODE_SERVER_HOST`, `OPENCODE_SERVER_PORT`, and `OPENCODE_SERVER_PASSWORD`. If those are already set (host config, systemd, Seamus `gitlab.env`), they win over the attach URL. `mbot-run` does **not** pass `occtl --attach` — occtl 1.3.0 rejects that flag; env works on 1.3 and 1.5+. Prefer an IP when the Claude sandbox proxy cannot resolve a hostname.
 
   **Path-prefix requirement:** the remote server must see the project at the *same absolute path* as the host. The container's home directory has to match the host's home directory prefix (host `/home/colin/proj/foo` → remote also resolves `/home/colin/proj/foo`). When the remote runs in a container, bind-mount or symlink so `$HOME` matches. Without this, `--file .tmp/...` and `--dir .` resolve to the wrong place on the remote and the run fails. Falls back to local OpenCode when the remote is not reachable.
 

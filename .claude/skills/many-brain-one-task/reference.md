@@ -95,21 +95,21 @@ Profiles may include an attach directive instructing every OpenCode invocation t
 
 - Global (applies to every OpenCode invocation in this MBOT run):
   ```
-  Attach OpenCode to seamus:4095
-  Attach OpenCode to http://seamus:4095 with password hunter2
-  OpenCode attach: seamus:4095 (password: hunter2)
+  Attach OpenCode to 127.0.0.1:4096
+  Attach OpenCode to http://127.0.0.1:4096 with password hunter2
+  OpenCode attach: 127.0.0.1:4096 (password: hunter2)
   ```
 - Per-agent (overrides any global directive on that line only):
   ```
-  - OpenCode with GLM 5.1 via attach seamus:4095
-  - OpenCode with GPT-5.4 via attach http://seamus:4095 (password: hunter2)
+  - OpenCode with GLM 5.1 via attach 127.0.0.1:4096
+  - OpenCode with GPT-5.4 via attach http://127.0.0.1:4096 (password: hunter2)
   ```
 
-**URL normalization:** prefix `http://` if scheme is missing (`seamus:4095` → `http://seamus:4095`). Default OpenCode port is `4096`.
+**URL normalization:** prefix `http://` if scheme is missing (`127.0.0.1:4096` → `http://127.0.0.1:4096`). Default OpenCode port is `4096`.
 
-**Password:** optional. Put it on the plan (`"password"`) or in `OPENCODE_SERVER_PASSWORD`. `mbot-run` passes `--password` / `--attach host:port` to the launcher.
+**Password:** optional. Put it on the plan (`"password"`) or in `OPENCODE_SERVER_PASSWORD`.
 
-**Plumbing the directive:** put `attach` on `plan.json` (`"attach": "http://seamus:4095"` or `"seamus:4095"`). `mbot-run` passes `occtl run --attach host:port` (or `run-opencode.ts --attach <url>` if occtl is unavailable). Do not set `OPENCODE_SERVER_*` yourself and do not invoke either launcher from the parent session.
+**Plumbing the directive:** put `attach` on `plan.json` (e.g. `"attach": "http://127.0.0.1:4096"`) so `mbot-run` stays in attach mode and does not `--spawn`. Server selection is `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`: already-set env wins; otherwise mbot-run fills them from the attach URL. It does **not** pass `occtl --attach` (missing on occtl 1.3.0; env works on 1.3 and 1.5+). Do not invoke `occtl` / `run-opencode.ts` from the parent session.
 
 ### Resolving OpenCode model names
 
@@ -381,7 +381,7 @@ Launching a later phase plan (`plan-integration.json`, `plan-validate.json`) **m
 
 `mbot-run` picks the transport once during smoke:
 
-1. **`occtl run --attach host:port`** when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`.
+1. **`occtl run`** with `OPENCODE_SERVER_HOST`/`PORT` when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`. Do not pass `--attach` (missing on occtl 1.3.0).
 2. **`run-opencode.ts`** only if occtl is missing or too old.
 
 Do not cache `OPENCODE_VIA` in the parent, do not `occtl ping` as a preflight, and do not load `occtl view-skill` for MBOT slots. Timeout recovery (`occtl last` after 124 / thin `.out`) is inside `launch` and `harvest`.
