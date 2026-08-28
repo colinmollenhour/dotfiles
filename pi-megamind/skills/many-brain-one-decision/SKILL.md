@@ -210,7 +210,7 @@ botctl prompt \
   2> .tmp/many-brain-one-decision/<slug>/round-1/results/opus-pragmatic-operator.err
 
 # Fallback when botctl is missing (load claude-cli skill for flags)
-claude --agent general \
+claude --agent general-purpose \
   --model opus \
   --print \
   --output-format text \
