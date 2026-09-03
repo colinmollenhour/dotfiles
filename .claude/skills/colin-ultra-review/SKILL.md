@@ -209,7 +209,7 @@ bun …/many-brain-one-task/mbot-run.ts usage --run-dir .tmp/ultra-N
 # writes .tmp/ultra-N/agentsview-usage.json and prints the same JSON on stdout
 ```
 
-The helper resolves session ids from `results/*.meta.json` / `*.out.session`, normalizes `ses_…` → `opencode:ses_…`, calls `agentsview session usage` + `session get`, rediscovers OpenCode sessions whose `first_message` starts with the structured title prefix, and rolls up per-slot / per-model **wall, cost, peak context, and compactions**. Fold `totals` and `by_model` into `run-summary.json` (`cost.*`, `wall.*`, `peak_context_*`, `compaction_*`). Mark unmatched slots explicitly rather than inventing zeros. If agentsview is missing, pass `--no-agentsview` (wall from meta only) or accept `cost_source: unavailable` — do not block publication solely on cost.
+The helper resolves session ids from `results/*.meta.json` / `*.out.session`, normalizes `ses_…` → `opencode:ses_…`, calls `agentsview session usage` + `session get` (or `GET /api/v1/sessions/{id}/usage` on `AGENTSVIEW_URL` when the CLI is missing), rediscovers OpenCode sessions whose `first_message` starts with the structured title prefix, and rolls up per-slot / per-model **wall, cost, peak context, and compactions**. Fold `totals` and `by_model` into `run-summary.json` (`cost.*`, `wall.*`, `peak_context_*`, `compaction_*`). Mark unmatched slots explicitly rather than inventing zeros. If agentsview is missing and `AGENTSVIEW_URL` is unset, pass `--no-agentsview` (wall from meta only) or accept `cost_source: unavailable` — do not block publication solely on cost.
 
 Context signals (from agentsview when matched) — **always separate parent vs slice** (same model family can be both the orchestrator and a participant):
 
@@ -261,7 +261,7 @@ Apply `:Reviewed-By-AI-Ultra` after post (not in git-diff / cancel).
 
 ## Notes
 
-- Dependencies: `gh` or `glab`, `jq`, `git`, `bun`; optional `agentsview` for per-session cost/wall (preferred when present)
+- Dependencies: `gh` or `glab`, `jq`, `git`, `bun`; optional `agentsview` CLI or `AGENTSVIEW_URL` (HTTP, e.g. `http://100.110.251.42:4092`) for per-session cost/wall
 - Create a todo list before starting  
 - Ultra and `/colin-review` are independent comment streams  
 - Benchmark with pinned base/head snapshots; never claim improvement from unvalidated finding count alone  
