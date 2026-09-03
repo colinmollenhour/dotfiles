@@ -45,7 +45,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    **OpenCode host:** `launch --detach` then `barrier` — a blocking launch dies with its occtl children when the 120s bash timeout fires. **Claude Code host:** blocking `launch` is fine; pass Bash `timeout: 1320000` (22 min).
    Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). `mbot-run` selects the server via `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` (already-set env wins over the attach URL) and does **not** pass `occtl --attach`. GPT OpenCode slots default `--variant high` and `--agent colin-mbot-gpt`. Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
    Meta records `actual_harness`, `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and (Grok) `cost_usd`. Harvest salvages timed-out sessions via `occtl last` and **must not** overwrite per-slot `ended_at`.
-6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`.
+6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`. `mbot-run usage` talks to agentsview over `AGENTSVIEW_URL` (HTTP) when the CLI is not on PATH.
 
 ## OpenCode reliability (hard)
 

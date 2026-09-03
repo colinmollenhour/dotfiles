@@ -4,8 +4,9 @@
  * for an MBOT / ultra run via agentsview.
  *
  * Reads results/*.meta.json (+ *.session sidecars, plan.json titles), queries agentsview
- * session usage + session get, optionally rediscovers OpenCode sessions by structured
- * title prefix, and writes agentsview-usage.json under the run dir.
+ * session usage + session get (CLI, or HTTP via AGENTSVIEW_URL when the CLI is missing),
+ * optionally rediscovers OpenCode sessions by structured title prefix, and writes
+ * agentsview-usage.json under the run dir.
  *
  * Usage:
  *   bun agentsview-usage.ts --run-dir .tmp/ultra-N
@@ -288,20 +289,141 @@ function which(bin: string): string | null {
   return p || null
 }
 
-function runAgentsview(
-  args: string[],
-  timeoutMs = 30_000,
+/** Remote agentsview daemon (Seamus: AGENTSVIEW_URL=http://<ip>:4092). */
+function agentsviewServerUrl(): string | undefined {
+  const raw = (process.env.AGENTSVIEW_URL || process.env.AGENTSVIEW_SERVER || "").trim()
+  if (!raw) return undefined
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/$/, "")
+  return `http://${raw.replace(/\/$/, "")}`
+}
+
+function curlJson(
+  url: string,
+  timeoutMs: number,
 ): { ok: boolean; stdout: string; stderr: string; status: number | null } {
-  const r = spawnSync("agentsview", args, {
-    encoding: "utf8",
-    timeout: timeoutMs,
-    maxBuffer: 32 * 1024 * 1024,
-  })
+  const secs = Math.max(1, Math.ceil(timeoutMs / 1000))
+  const r = spawnSync(
+    "curl",
+    ["-sS", "-f", "--max-time", String(secs), "-H", "Accept: application/json", url],
+    { encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 },
+  )
   return {
     ok: r.status === 0,
     stdout: r.stdout || "",
     stderr: r.stderr || "",
     status: r.status,
+  }
+}
+
+function runAgentsviewHttp(
+  args: string[],
+  timeoutMs: number,
+): { ok: boolean; stdout: string; stderr: string; status: number | null } {
+  const base = agentsviewServerUrl()
+  if (!base) {
+    return { ok: false, stdout: "", stderr: "AGENTSVIEW_URL unset", status: 1 }
+  }
+  const a = args.filter((x) => x !== "--json")
+  if (a[0] === "session" && a[1] === "usage" && a[2]) {
+    const id = encodeURIComponent(a[2])
+    return curlJson(`${base}/api/v1/sessions/${id}/usage?subagents=true`, timeoutMs)
+  }
+  if (a[0] === "session" && a[1] === "get" && a[2]) {
+    const id = encodeURIComponent(a[2])
+    return curlJson(`${base}/api/v1/sessions/${id}`, timeoutMs)
+  }
+  if (a[0] === "session" && a[1] === "sync") {
+    // Remote daemon already indexes host transcripts; skip local file sync.
+    return { ok: true, stdout: "{\"ok\":true,\"skipped\":\"http\"}\n", stderr: "", status: 0 }
+  }
+  if (a[0] === "session" && a[1] === "list") {
+    const params = new URLSearchParams()
+    let want = 200
+    for (let i = 2; i < a.length; i++) {
+      const x = a[i]
+      if (x === "--since" && a[i + 1]) {
+        params.set("since", a[++i])
+        continue
+      }
+      if (x === "--limit" && a[i + 1]) {
+        want = Number(a[++i]) || want
+        params.set("limit", String(Math.min(want, 500)))
+        continue
+      }
+      if (x === "--agent" && a[i + 1]) {
+        params.set("agent", a[++i])
+        continue
+      }
+      if (x === "--include-one-shot") params.set("include_one_shot", "true")
+      if (x === "--include-automated") params.set("include_automated", "true")
+      if (x === "--include-children") params.set("include_children", "true")
+    }
+    if (!params.has("limit")) params.set("limit", String(Math.min(want, 500)))
+    const sessions: unknown[] = []
+    let cursor: string | undefined
+    while (sessions.length < want) {
+      if (cursor) params.set("cursor", cursor)
+      const r = curlJson(`${base}/api/v1/sessions?${params.toString()}`, timeoutMs)
+      if (!r.ok) return r
+      try {
+        const parsed = JSON.parse(r.stdout) as {
+          sessions?: unknown[]
+          next_cursor?: string | null
+        }
+        const page = parsed.sessions || []
+        sessions.push(...page)
+        cursor = parsed.next_cursor || undefined
+        if (!cursor || page.length === 0) break
+      } catch (err) {
+        return {
+          ok: false,
+          stdout: r.stdout,
+          stderr: err instanceof Error ? err.message : String(err),
+          status: 1,
+        }
+      }
+    }
+    return {
+      ok: true,
+      stdout: JSON.stringify({ sessions: sessions.slice(0, want) }) + "\n",
+      stderr: "",
+      status: 0,
+    }
+  }
+  return {
+    ok: false,
+    stdout: "",
+    stderr: `unsupported agentsview http shim: ${args.join(" ")}`,
+    status: 2,
+  }
+}
+
+function runAgentsview(
+  args: string[],
+  timeoutMs = 30_000,
+): { ok: boolean; stdout: string; stderr: string; status: number | null } {
+  const server = agentsviewServerUrl()
+  const cli = which("agentsview")
+  if (cli) {
+    const extra = server ? ["--server", server] : []
+    const r = spawnSync("agentsview", [...extra, ...args], {
+      encoding: "utf8",
+      timeout: timeoutMs,
+      maxBuffer: 32 * 1024 * 1024,
+    })
+    return {
+      ok: r.status === 0,
+      stdout: r.stdout || "",
+      stderr: r.stderr || "",
+      status: r.status,
+    }
+  }
+  if (server) return runAgentsviewHttp(args, timeoutMs)
+  return {
+    ok: false,
+    stdout: "",
+    stderr: "agentsview not on PATH and AGENTSVIEW_URL unset",
+    status: 127,
   }
 }
 
@@ -979,10 +1101,10 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
   let agentsviewAvailable = false
   let agentsviewError: string | undefined
   if (!skipAv) {
-    if (!which("agentsview")) {
-      agentsviewError = "agentsview not on PATH"
-    } else {
+    if (which("agentsview") || agentsviewServerUrl()) {
       agentsviewAvailable = true
+    } else {
+      agentsviewError = "agentsview not on PATH and AGENTSVIEW_URL unset"
     }
   } else {
     agentsviewError = "disabled via --no-agentsview"
