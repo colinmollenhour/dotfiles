@@ -2,7 +2,7 @@
 description: Many brain, one task with Claude Sonnet 5 - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: claude-code/sonnet
+model: anthropic/claude-sonnet-5
 reasoningEffort: high
 permission:
   edit: deny

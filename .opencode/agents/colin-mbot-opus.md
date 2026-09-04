@@ -2,7 +2,7 @@
 description: Many brain, one task with Claude Opus 5 - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: claude-code/opus
+model: anthropic/claude-opus-5
 reasoningEffort: high
 permission:
   edit: deny

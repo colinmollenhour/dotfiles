@@ -2,7 +2,7 @@
 description: Many brain, one task with Claude Fable 5.1 - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: claude-code/fable
+model: anthropic/claude-fable-5-1
 reasoningEffort: high
 permission:
   edit: deny
