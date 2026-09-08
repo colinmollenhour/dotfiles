@@ -170,6 +170,8 @@ assert_files_equal "$ROOT_DIR/.claude/skills/colin-review/SKILL.md" \
   "$agents_home/.claude/skills/colin-review/SKILL.md"
 assert_file_missing "$agents_home/.claude/commands"
 assert_file_missing "$agents_home/.opencode/commands"
+assert_file_missing "$agents_home/.opencode/agents/colin-mbot-opus.md"
+assert_file_missing "$agents_home/.claude/agents/colin-mbot-opus.md"
 assert_contains "$(<"$agents_home/.agents/skills/colin-review/agents/openai.yaml")" \
   "allow_implicit_invocation: false"
 assert_file_missing "$agents_home/.agents/skills/gh-cli/agents/openai.yaml"
@@ -192,6 +194,25 @@ if [[ "$(stat -c '%z' "$agents_home/.claude/settings.json.bak")" != "$backup_cti
   printf 'Expected current settings backup not to be rewritten\n' >&2
   exit 1
 fi
+
+# Existing opus is refreshed even without --with-opus (presence implies opt-in).
+opus_home="$TEST_ROOT/opus-home"
+mkdir -p "$opus_home/.opencode/agents" "$opus_home/.local/share/colin-dotfiles"
+stale_opus="$opus_home/.opencode/agents/colin-mbot-opus.md"
+printf 'stale opus\n' > "$stale_opus"
+printf '%s\t%s\t%s\n' "$(sha256sum "$stale_opus" | cut -d' ' -f1)" \
+  ".opencode/agents/colin-mbot-opus.md" "$stale_opus" \
+  > "$opus_home/.local/share/colin-dotfiles/manifest"
+output="$(run_install "$opus_home" --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-opus.md" "$stale_opus"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-fable.md" \
+  "$opus_home/.opencode/agents/colin-mbot-fable.md"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-sonnet.md" \
+  "$opus_home/.opencode/agents/colin-mbot-sonnet.md"
+
+output="$(run_install "$opus_home" --with-opus --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-opus.md" \
+  "$opus_home/.opencode/agents/colin-mbot-opus.md"
 
 # --- Test uninstall agents ---
 output="$(run_uninstall "$agents_home" --agents --no-input --quiet)"

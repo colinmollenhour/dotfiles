@@ -554,7 +554,9 @@ copy_agent_files() {
   shopt -s nullglob
   for item in "$src"/*; do
     base="$(basename "$item")"
-    [[ "$WITH_OPUS" == false && "$base" == "colin-mbot-opus.md" ]] && continue
+    # Skip creating opus unless opted in, but refresh it if a previous install
+    # already left the destination in place.
+    [[ "$WITH_OPUS" == false && "$base" == "colin-mbot-opus.md" && ! -f "$dest/$base" ]] && continue
     src_rel="$item"  # already relative to SCRIPT_DIR
     install_file "$src_rel" "$SCRIPT_DIR/$item" "$dest/$base"
   done
@@ -668,7 +670,7 @@ OPTIONS
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
   -f, --force        Overwrite conflicting files without prompting
-      --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (no to avoid accidental usage)
+      --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (implied if the file already exists)
       --no-input     Disable prompts and keep conflicts; requires an install option
   -q, --quiet        Suppress progress messages (the final write summary remains)
   -h, --help         Show this help message
