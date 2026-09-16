@@ -39,7 +39,7 @@ Resolve `CLAUDE_SKILL_DIR` to the installed skill roots (`~/.claude/skills/...` 
 | Candidate index | `bun …/mbot-run.ts candidates --run-dir .tmp/ultra-N` — writes `candidates.json` + `candidate-index.md`. Do not invent `extract-issues.ts`. |
 | Usage (wall + cost) | `bun …/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) |
 
-OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills occtl children. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
+OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills occtl children. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt-sol`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
 
 Load **many-brain-one-task** for plan schema, delivery contracts, profiles. Role templates: `many-brain-one-task/roles/{state,contracts,failure,craft,merits,integration}.md`.
 

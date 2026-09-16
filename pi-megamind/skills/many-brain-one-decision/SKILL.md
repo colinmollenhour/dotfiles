@@ -51,7 +51,7 @@ Profile precedence:
 Default agents:
 
 - Opus, preferably with max thinking, when a Claude agent/harness is available.
-- GPT via OpenCode, preferably `colin-mbot-gpt`.
+- GPT via OpenCode, preferably `colin-mbot-gpt-sol`.
 - Gemini Pro via OpenCode, preferably `colin-mbot-gemini-pro`.
 - Grok via Grok CLI when `grok` is installed; otherwise OpenCode `colin-mbot-grok`.
 - Qwen via OpenCode, preferably `colin-mbot-qwen`.
@@ -131,7 +131,9 @@ Common mappings:
 
 | Requested model | Subagent type / CLI |
 |---|---|
-| GPT | `colin-mbot-gpt` |
+| GPT | `colin-mbot-gpt-sol` |
+| GPT Astra | `colin-mbot-gpt-astra` |
+| GPT Sol | `colin-mbot-gpt-sol` |
 | GPT Codex | `colin-mbot-gpt-codex` |
 | Gemini Pro | `colin-mbot-gemini-pro` |
 | Gemini Pro Zen | `colin-mbot-gemini-pro-zen` |

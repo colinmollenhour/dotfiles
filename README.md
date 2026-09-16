@@ -458,8 +458,9 @@ Sorted roughly by capability:
 | Agent | Model |
 |---|---|
 | `colin-mbot-opus` | Anthropic Claude Opus 5 |
-| `colin-mbot-gpt` | OpenAI GPT 5.6 Sol |
-| `colin-mbot-gpt-zen` | GPT 5.6 Sol through OpenCode Zen |
+| `colin-mbot-gpt-astra` | OpenAI GPT 6 Astra |
+| `colin-mbot-gpt-sol` | OpenAI GPT 5.6 Sol |
+| `colin-mbot-gpt-sol-zen` | GPT 5.6 Sol through OpenCode Zen |
 | `colin-mbot-gpt-terra` | OpenAI GPT 5.6 Terra |
 | `colin-mbot-gpt-terra-zen` | GPT 5.6 Terra through OpenCode Zen |
 | `colin-mbot-grok` | xAI Grok 4.6 (OpenCode fallback; prefer `grok` CLI when available) |

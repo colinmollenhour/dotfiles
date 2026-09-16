@@ -95,7 +95,7 @@ interface Slot {
   provider_model_id?: string
   harness: "opencode" | "occtl" | "grok" | "external" | string
   variant?: string
-  /** OpenCode agent name. GPT slots default to colin-mbot-gpt. */
+  /** OpenCode agent name. GPT slots default by family (sol/astra/terra). */
   agent?: string
   title?: string
   prompt: string

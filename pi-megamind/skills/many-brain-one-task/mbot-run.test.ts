@@ -90,9 +90,16 @@ describe("inferProjectDir", () => {
 })
 
 describe("OpenCode defaults", () => {
-  test("GPT models get colin-mbot-gpt", () => {
-    expect(defaultOpencodeAgent("openai/gpt-5.6-sol")).toBe("colin-mbot-gpt")
-    expect(defaultOpencodeAgent("gpt-5.6-sol")).toBe("colin-mbot-gpt")
+  test("GPT Sol models get colin-mbot-gpt-sol", () => {
+    expect(defaultOpencodeAgent("openai/gpt-5.6-sol")).toBe("colin-mbot-gpt-sol")
+    expect(defaultOpencodeAgent("gpt-5.6-sol")).toBe("colin-mbot-gpt-sol")
+  })
+  test("GPT Astra models get colin-mbot-gpt-astra", () => {
+    expect(defaultOpencodeAgent("openai/gpt-6-astra")).toBe("colin-mbot-gpt-astra")
+    expect(defaultOpencodeAgent("gpt-6-astra")).toBe("colin-mbot-gpt-astra")
+  })
+  test("GPT Terra models get colin-mbot-gpt-terra", () => {
+    expect(defaultOpencodeAgent("openai/gpt-5.6-terra")).toBe("colin-mbot-gpt-terra")
   })
   test("non-GPT models do not guess an agent", () => {
     expect(defaultOpencodeAgent("opencode/gemini-3.1-pro")).toBeUndefined()

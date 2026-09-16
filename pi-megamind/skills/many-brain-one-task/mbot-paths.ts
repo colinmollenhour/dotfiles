@@ -59,11 +59,13 @@ export function resolvePlanPath(
   return resolve(join(opts.runDir, stripped || p))
 }
 
-/** GPT/OpenAI OpenCode slots use the profile agent; others leave unset. */
+/** GPT/OpenAI OpenCode slots use the matching family agent; others leave unset. */
 export function defaultOpencodeAgent(model: string): string | undefined {
   const m = (model || "").toLowerCase()
-  if (m.includes("gpt") || m.includes("openai")) return "colin-mbot-gpt"
-  return undefined
+  if (!(m.includes("gpt") || m.includes("openai"))) return undefined
+  if (m.includes("astra")) return "colin-mbot-gpt-astra"
+  if (m.includes("terra")) return "colin-mbot-gpt-terra"
+  return "colin-mbot-gpt-sol"
 }
 
 export function defaultOpencodeVariant(variant?: string): string | undefined {

@@ -50,13 +50,13 @@ The host harness (you, the one running this skill right now) limits which models
 | Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll `occtl` / `run-opencode.ts`.                       |
 | OpenCode    | Claude (Opus/Sonnet/Haiku) | **`botctl prompt`** (preferred when `botctl` is on PATH) or `claude` CLI — never `colin-mbot-*` for Claude. See [Claude](#claude-opus--sonnet--haiku). |
 | OpenCode    | Grok                     | `grok` CLI (preferred). Fall back to `colin-mbot-grok` / `mbot-run` only when Grok CLI is unavailable or the profile says OpenCode. See [Grok](#grok). |
-| OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults `--variant high` and `--agent colin-mbot-gpt`). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
+| OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults `--variant high` and `--agent colin-mbot-gpt-sol`). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
 | Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `mbot-run` for OpenCode, `pi`, `codex`, `gemini`). |
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
-When OpenCode is the host, GPT/OpenAI MBOT slots go through `mbot-run` (which passes `--agent colin-mbot-gpt`). Do not hand-pick `build`. Claude and Grok still prefer their first-party CLIs (`botctl` / `claude`, `grok`) over `colin-mbot-*`.
+When OpenCode is the host, GPT/OpenAI MBOT slots go through `mbot-run` (which passes `--agent colin-mbot-gpt-sol`). Do not hand-pick `build`. Claude and Grok still prefer their first-party CLIs (`botctl` / `claude`, `grok`) over `colin-mbot-*`.
 
 When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
 
