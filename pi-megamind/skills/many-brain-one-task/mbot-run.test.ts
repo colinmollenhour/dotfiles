@@ -96,7 +96,7 @@ describe("OpenCode defaults", () => {
   })
   test("non-GPT models do not guess an agent", () => {
     expect(defaultOpencodeAgent("opencode/gemini-3.1-pro")).toBeUndefined()
-    expect(defaultOpencodeAgent("grok-4.5")).toBeUndefined()
+    expect(defaultOpencodeAgent("grok-4.6")).toBeUndefined()
   })
   test("variant defaults to high unless blanked", () => {
     expect(defaultOpencodeVariant(undefined)).toBe("high")

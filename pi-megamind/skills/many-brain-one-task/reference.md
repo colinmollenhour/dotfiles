@@ -60,7 +60,7 @@ When OpenCode is the host, GPT/OpenAI MBOT slots go through `mbot-run` (which pa
 
 When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
 
-When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.5`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok`.
+When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.6`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok`.
 
 
 ### Pi
@@ -277,7 +277,7 @@ Guidelines:
 
 - Prefer `--prompt-file` over `-p` for any non-trivial MBOT prompt (same reliability reason as OpenCode `--file`).
 - Use `--always-approve` so unattended batch runs never block on tool permission prompts.
-- Pass `-m <model>` / `--model` only when the profile pins one (resolve with `grok models`; default is usually `grok-4.5`).
+- Pass `-m <model>` / `--model` only when the profile pins one (resolve with `grok models`; default is usually `grok-4.6`).
 - Map profile effort prose: `"max" thinking` / `xhigh` → `--reasoning-effort max` (alias of `xhigh`); `"high"` → `high`.
 - For pure critique/review/opinion tasks, add `--disallowed-tools Agent` or `--no-subagents` so the child does not spawn nested agents.
 - Treat success as exit `0` **and** non-whitespace stdout. On failure, record stderr and substitute a backup if configured.

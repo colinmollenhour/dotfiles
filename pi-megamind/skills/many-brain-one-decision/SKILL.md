@@ -63,7 +63,7 @@ Route debaters according to the current host harness. From a non-OpenCode host (
 
 If the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, select a Pi-backed debater. In the Pi package, Pi-backed debaters are the default unless the user or profile names specific non-Pi agents.
 
-If the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.5`, select a Grok-CLI-backed debater unless the line explicitly says OpenCode / `colin-mbot-grok`.
+If the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.6`, select a Grok-CLI-backed debater unless the line explicitly says OpenCode / `colin-mbot-grok`.
 
 | Current host | Selected debater | Preferred route |
 |---|---|---|
