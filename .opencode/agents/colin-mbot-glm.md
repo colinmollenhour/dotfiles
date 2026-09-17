@@ -1,8 +1,8 @@
 ---
-description: Many brain, one task with GLM - only to be used by the MBOT skill
+description: Many brain, one task with Zhipu GLM - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: zai-coding-plan/glm-5.2
+model: zai-coding-plan/glm-5.3
 permission:
   edit: deny
   task: deny
