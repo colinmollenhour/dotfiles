@@ -8,7 +8,7 @@ argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [
 
 # Ultra Code Review
 
-Current version: **Ultra Review 0.5**. Identity lives in `many-brain-one-task/ultra-review-version.json` and is frozen by `mbot-run init` into `STATE.json` as `ultra_review`. Use `ultra_review.header` / `ultra_review.label` verbatim on every published comment and on `prepared-summary.md`. Do not invent, omit, or bump the version in the parent session. Bump the JSON when the control plane, roles, validation contract, or publication format changes.
+Current version: **Ultra Review 0.6**. Identity lives in `many-brain-one-task/ultra-review-version.json` and is frozen by `mbot-run init` into `STATE.json` as `ultra_review`. Use `ultra_review.header` / `ultra_review.label` verbatim on every published comment and on `prepared-summary.md`. Do not invent, omit, or bump the version in the parent session. Bump the JSON when the control plane, roles, validation contract, or publication format changes.
 
 Multi-model bug review. Discovery is recall-oriented; an independent evidence pass protects publication precision. **Parent is a thin control plane** — disk under `.tmp/ultra-<id>/` is durable memory.
 
@@ -248,7 +248,7 @@ Issues: one inline per unique issue; severity order critical→low; cap **8 low*
 Header on every inline (`<version>` from `STATE.json` `ultra_review.version`, currently `0.5`):
 
 ```text
-> **AI Ultra Review 0.5** · Commit: <sha> · Severity: <…> · Role: <…> · Flagged by: <…>
+> **AI Ultra Review 0.6** · Commit: <sha> · Severity: <…> · Role: <…> · Flagged by: <…>
 ```
 
 Severities: `critical` | `high` | `medium` | `low`. Merits has no severity / no inline.  

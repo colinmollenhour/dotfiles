@@ -124,12 +124,12 @@ describe("Ultra Review version", () => {
   delete noSeamus.SEAMUS_GIT_SHA
   delete noSeamus.GIT_COMMIT
 
-  test("identity is Ultra Review 0.5", () => {
+  test("identity is Ultra Review 0.6", () => {
     const id = loadUltraReviewIdentity(noSeamus)
     expect(id.product).toBe("Ultra Review")
     expect(id.version).toBe("0.5")
-    expect(id.label).toBe("Ultra Review 0.5")
-    expect(id.header).toBe("AI Ultra Review 0.5")
+    expect(id.label).toBe("Ultra Review 0.6")
+    expect(id.header).toBe("AI Ultra Review 0.6")
   })
 
   test("SEAMUS_GIT_SHA overrides the skill version with a short sha", () => {
