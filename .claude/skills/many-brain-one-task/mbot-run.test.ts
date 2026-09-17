@@ -11,9 +11,10 @@ import {
   resolvePlanPath,
   stripDuplicateRunPrefix,
 } from "./mbot-paths.ts"
-import { parseIssueBlocks } from "./mbot-candidates.ts"
+import { collectCandidates, parseIssueBlocks } from "./mbot-candidates.ts"
 import {
   attachEnv,
+  isRich,
   loadUltraReviewIdentity,
   occtlAttachArgs,
   occtlRunArgs,
@@ -119,12 +120,23 @@ describe("OpenCode defaults", () => {
 })
 
 describe("Ultra Review version", () => {
+  const noSeamus = { ...process.env }
+  delete noSeamus.SEAMUS_GIT_SHA
+  delete noSeamus.GIT_COMMIT
+
   test("identity is Ultra Review 0.5", () => {
-    const id = loadUltraReviewIdentity()
+    const id = loadUltraReviewIdentity(noSeamus)
     expect(id.product).toBe("Ultra Review")
     expect(id.version).toBe("0.5")
     expect(id.label).toBe("Ultra Review 0.5")
     expect(id.header).toBe("AI Ultra Review 0.5")
+  })
+
+  test("SEAMUS_GIT_SHA overrides the skill version with a short sha", () => {
+    const id = loadUltraReviewIdentity({ ...noSeamus, SEAMUS_GIT_SHA: "51b6aba0123456789abcdef" })
+    expect(id.version).toBe("51b6aba")
+    expect(id.label).toBe("Ultra Review 51b6aba")
+    expect(id.header).toBe("AI Ultra Review 51b6aba")
   })
 
   test("init freezes ultra_review into STATE.json", () => {
@@ -135,6 +147,7 @@ describe("Ultra Review version", () => {
       cwd: repo,
       stdout: "pipe",
       stderr: "pipe",
+      env: noSeamus,
     })
     expect(r.exitCode).toBe(0)
     const printed = JSON.parse(r.stdout.toString())
@@ -163,7 +176,44 @@ fix: f
     const blocks = parseIssueBlocks(text)
     expect(blocks.length).toBe(1)
     expect(blocks[0].file).toBe("foo.go")
+    expect(blocks[0].anchor).toBe("bar")
     expect(blocks[0].invariant).toBe("X must hold")
+  })
+  test("accepts line: as an alias for anchor:", () => {
+    const text = `<<<ISSUE>>>
+file: foo.go
+line: 42
+invariant: X
+<<<END>>>
+`
+    const blocks = parseIssueBlocks(text)
+    expect(blocks[0].anchor).toBe("42")
+  })
+})
+
+describe("isRich", () => {
+  test("thin VERDICT-only stub is not rich", () => {
+    expect(isRich("VERDICT: 0 candidates\n")).toBe(false)
+  })
+  test("ISSUE block is rich even when short", () => {
+    expect(isRich("<<<ISSUE>>>\nfile: a.ts\nanchor: 1\n<<<END>>>\n")).toBe(true)
+  })
+  test("interstitial progress note is not rich", () => {
+    expect(isRich("Continuing through State…\n")).toBe(false)
+  })
+  test("harvest scores a thin VERDICT stub as empty, not ok", () => {
+    const repo = join(TMP, "thin-repo")
+    const runDir = join(repo, ".tmp", "ultra-thin")
+    mkdirSync(join(runDir, "results"), { recursive: true })
+    writeFileSync(join(runDir, "results", "gpt.out"), "VERDICT: 0 candidates\n")
+    const r = Bun.spawnSync(["bun", SCRIPT, "harvest", "--run-dir", runDir], {
+      cwd: repo,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    expect(r.exitCode).toBe(0)
+    const harvest = JSON.parse(r.stdout.toString())
+    expect(harvest.slots[0].status).toBe("empty")
   })
 })
 
@@ -246,6 +296,30 @@ describe("mbot-run launch path + plan merge (external slots, no models)", () => 
     expect(ids).toEqual(["b1-state-opus", "integration-gpt"])
   })
 
+  test("barrier does not treat an empty external slot as terminal", () => {
+    const r = Bun.spawnSync(
+      ["bun", SCRIPT, "barrier", "--run-dir", runDir, "--timeout-ms", "200", "--poll-ms", "50"],
+      { cwd: repo, stdout: "pipe", stderr: "pipe" },
+    )
+    expect(r.exitCode).toBe(1)
+    const summary = JSON.parse(r.stdout.toString())
+    expect(summary.ok).toBe(false)
+    expect(summary.slots.some((s: { terminal: boolean }) => !s.terminal)).toBe(true)
+  })
+
+  test("barrier unblocks once the external body exists", () => {
+    const body = "<<<ISSUE>>>\nfile: x.ts\nanchor: 1\n<<<END>>>\n"
+    writeFileSync(join(runDir, "results", "b1-state-opus.out"), body)
+    writeFileSync(join(runDir, "results", "integration-gpt.out"), body)
+    const r = Bun.spawnSync(
+      ["bun", SCRIPT, "barrier", "--run-dir", runDir, "--timeout-ms", "2000", "--poll-ms", "50"],
+      { cwd: repo, stdout: "pipe", stderr: "pipe" },
+    )
+    expect(r.exitCode).toBe(0)
+    const summary = JSON.parse(r.stdout.toString())
+    expect(summary.ok).toBe(true)
+  })
+
   test("launch --detach returns immediately with a pid", () => {
     writeFileSync(join(runDir, "prompts", "later.md"), "x\n")
     const plan = writePlan("plan-c.json", [
@@ -267,6 +341,44 @@ describe("mbot-run launch path + plan merge (external slots, no models)", () => 
     const summary = JSON.parse(stdout)
     expect(summary.detached).toBe(true)
     expect(typeof summary.pid).toBe("number")
+  })
+})
+
+describe("collectCandidates", () => {
+  test("ids are per-slot and actual_model is populated", () => {
+    const repo = join(TMP, "cand-repo")
+    const runDir = join(repo, ".tmp", "ultra-cand")
+    const results = join(runDir, "results")
+    mkdirSync(results, { recursive: true })
+    const issue = `<<<ISSUE>>>
+file: a.ts
+anchor: 1
+invariant: x
+<<<END>>>
+`
+    writeFileSync(join(results, "z-slot.out"), issue)
+    writeFileSync(
+      join(results, "z-slot.meta.json"),
+      JSON.stringify({ slot: "z-slot", actual_model: "opus" }),
+    )
+    writeFileSync(join(results, "a-slot.out"), issue)
+    writeFileSync(
+      join(results, "a-slot.meta.json"),
+      JSON.stringify({ slot: "a-slot", actual_model: "gpt" }),
+    )
+    const first = collectCandidates(runDir)
+    expect(first.candidates.map((c) => c.id).sort()).toEqual(["a-slot/R001", "z-slot/R001"])
+    writeFileSync(join(results, "m-slot.out"), issue)
+    writeFileSync(
+      join(results, "m-slot.meta.json"),
+      JSON.stringify({ slot: "m-slot", actual_model: "grok" }),
+    )
+    const second = collectCandidates(runDir)
+    const bySlot = Object.fromEntries(second.candidates.map((c) => [c.slot, c]))
+    expect(bySlot["a-slot"].id).toBe("a-slot/R001")
+    expect(bySlot["z-slot"].id).toBe("z-slot/R001")
+    expect(bySlot["a-slot"].actual_model).toBe("gpt")
+    expect(bySlot["m-slot"].id).toBe("m-slot/R001")
   })
 })
 

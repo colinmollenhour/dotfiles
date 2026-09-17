@@ -25,6 +25,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
      .tmp/<run-id>/context/role-state.md:b1-state.full.md \
      …
    ```
+   Repeated `--append` is cumulative. Discovery outputs also get [roles/issue-form.md](roles/issue-form.md) automatically (skipped for merits).
    Role templates for ultra: [roles/](roles/).
 4. **Write `plan.json`** with one entry per harness-owned slot (`opencode` / `occtl` / `grok`). Native Claude `Agent` slots use `harness: "external"` — launch those via the Agent tool yourself; still list them so harvest scores their `.out`.
 5. **OpenCode preflight + launch + harvest.** Do **not** invoke `occtl` or `run-opencode.ts` from this skill — `mbot-run` owns both (occtl by default; run-opencode.ts only as an internal fallback).

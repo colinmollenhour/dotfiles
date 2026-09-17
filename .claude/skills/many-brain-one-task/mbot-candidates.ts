@@ -22,6 +22,7 @@ interface Candidate {
   id: string
   slot: string
   model: string
+  actual_model: string
   phase: string
   role: string
   file: string
@@ -70,7 +71,7 @@ export function parseIssueBlocks(text: string): Array<Record<string, string>> {
     blocks.push({
       role: field(body, "role"),
       file: field(body, "file"),
-      anchor: field(body, "anchor"),
+      anchor: field(body, "anchor") || field(body, "line"),
       severity: field(body, "severity"),
       confidence: field(body, "confidence"),
       invariant: field(body, "invariant"),
@@ -109,7 +110,6 @@ export function collectCandidates(runDir: string): {
     .sort()
   const candidates: Candidate[] = []
   let slotsWith = 0
-  let n = 0
   for (const f of outs) {
     const outPath = join(resultsDir, f)
     let text = ""
@@ -124,12 +124,14 @@ export function collectCandidates(runDir: string): {
     const phase = meta.phase || ""
     const blocks = parseIssueBlocks(text)
     if (blocks.length) slotsWith++
+    let n = 0
     for (const b of blocks) {
       n++
       candidates.push({
-        id: padId(n),
+        id: `${slot}/${padId(n)}`,
         slot,
         model,
+        actual_model: model,
         phase,
         role: b.role || "",
         file: b.file || "",

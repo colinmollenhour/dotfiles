@@ -146,7 +146,7 @@ bun "${CLAUDE_SKILL_DIR}/assemble-prompts.ts" \
   .tmp/ultra-review-2514/context/role-craft.md:craft.full.md
 ```
 
-Each positional is `<source>:<output-name>`. Record the helper's byte counts in `run-summary.json`. Prefer a compact repository index plus tool-driven inspection over attaching an oversized concatenated diff.
+Each positional is `<source>:<output-name>`. Repeated `--append` is **cumulative** (not last-wins). Discovery outputs also receive `roles/issue-form.md` automatically (skipped for merits). Record the helper's byte counts in `run-summary.json`. Prefer a compact repository index plus tool-driven inspection over attaching an oversized concatenated diff.
 
 If `--dry-run` is present, do not launch participants. Still resolve the exact profile, models, harnesses, efforts, backups, and prompt paths; print the execution plan and stop.
 

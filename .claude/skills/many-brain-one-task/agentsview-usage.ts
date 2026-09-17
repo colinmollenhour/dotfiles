@@ -215,6 +215,10 @@ interface UsageReport {
     run_started_at: string | null
     run_ended_at: string | null
     cost_usd: number
+    /** Sum of matched slot costs only (the by_model ingredients). */
+    cost_usd_slots: number
+    /** Title-rediscovered extras folded into cost_usd but not by_model. */
+    cost_usd_extra: number
     cost_microdollars: number
     has_partial_cost: boolean
     peak_context_max: number | null
@@ -1780,6 +1784,8 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
       run_started_at: runStart != null ? new Date(runStart).toISOString() : null,
       run_ended_at: runEnd != null ? new Date(runEnd).toISOString() : null,
       cost_usd: (microToUsd(totalMicro + extraMicro) ?? 0),
+      cost_usd_slots: microToUsd(totalMicro) ?? 0,
+      cost_usd_extra: microToUsd(extraMicro) ?? 0,
       cost_microdollars: totalMicro + extraMicro,
       has_partial_cost: partial,
       peak_context_max: peakMax,

@@ -199,7 +199,13 @@ function die(msg: string, code = 2): never {
 
 const ULTRA_REVIEW_VERSION_FILE = join(SCRIPT_DIR, "ultra-review-version.json")
 
-export function loadUltraReviewIdentity(): UltraReviewIdentity {
+function seamusGitSha(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const raw = (env.SEAMUS_GIT_SHA || env.GIT_COMMIT || "").trim().toLowerCase()
+  if (!/^[0-9a-f]{4,40}$/.test(raw)) return undefined
+  return raw.length > 7 ? raw.slice(0, 7) : raw
+}
+
+export function loadUltraReviewIdentity(env: NodeJS.ProcessEnv = process.env): UltraReviewIdentity {
   let product = "Ultra Review"
   let version = "0.0"
   let notes: string | undefined
@@ -215,6 +221,8 @@ export function loadUltraReviewIdentity(): UltraReviewIdentity {
       /* keep defaults */
     }
   }
+  const sha = seamusGitSha(env)
+  if (sha) version = sha
   return {
     product,
     version,
@@ -368,13 +376,17 @@ function countMarkers(text: string): { verdict: number; issue: number } {
   return { verdict, issue }
 }
 
-function isRich(text: string): boolean {
+export function isRich(text: string): boolean {
   const t = text.trim()
   if (!t) return false
-  if (/\bVERDICT\s*:/i.test(t)) return true
-  if (/<<<\s*(ISSUE|VERDICT|END)\s*>>>/i.test(t)) return true
+  if (/<<<\s*ISSUE\s*>>>/i.test(t)) return true
   if (/BEGIN_MBOD_JSON/i.test(t)) return true
-  if ((t.match(/^#{1,3}\s+\S/gm) || []).length >= 3) return true
+  const markers = countMarkers(t)
+  if (markers.issue > 0) return true
+  // A 20-byte "VERDICT: 0 candidates" is a stub, not a review.
+  if (markers.verdict > 0 && t.length >= 256) return true
+  if (/<<<\s*(VERDICT|END)\s*>>>/i.test(t) && t.length >= 256) return true
+  if ((t.match(/^#{1,3}\s+\S/gm) || []).length >= 3 && t.length >= 512) return true
   return t.length >= 2048
 }
 
@@ -388,6 +400,32 @@ function isTerminal(status: SlotStatus): boolean {
     status === "skipped" ||
     status === "external"
   )
+}
+
+function isExternalSlot(slot: Slot, meta?: Meta): boolean {
+  return (
+    slot.harness === "external" ||
+    meta?.harness === "external" ||
+    meta?.actual_harness === "external" ||
+    meta?.status === "external"
+  )
+}
+
+function outBytes(outPath: string, meta?: Meta): number {
+  if ((meta?.bytes ?? 0) > 0) return meta!.bytes as number
+  try {
+    if (existsSync(outPath)) return statSync(outPath).size
+  } catch {
+    /* ignore */
+  }
+  return 0
+}
+
+/** External slots are terminal for barrier only once the Agent-owned body exists. */
+function barrierSlotTerminal(slot: Slot, meta: Meta | undefined, outPath: string): boolean {
+  if (isExternalSlot(slot, meta)) return outBytes(outPath, meta) > 0
+  if (!meta) return false
+  return meta.terminal ?? isTerminal(meta.status)
 }
 
 function loadState(runDir: string): State {
@@ -1791,10 +1829,12 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
     }
 
     const statuses = expected.map((id) => {
+      const slot = plan.slots.find((s) => s.slot === id)!
       const m = state.slots[id]
+      const outPath = abs(absDir, slot.out, projectDir)
       if (!m) return { slot: id, status: "pending" as SlotStatus, terminal: false }
-      const terminal = m.terminal ?? isTerminal(m.status)
-      return { slot: id, status: m.status, terminal, bytes: m.bytes, error: m.error }
+      const terminal = barrierSlotTerminal(slot, m, outPath)
+      return { slot: id, status: m.status, terminal, bytes: m.bytes ?? outBytes(outPath, m), error: m.error }
     })
     const allTerminal = statuses.every((s) => s.terminal)
     if (allTerminal) {
@@ -1820,12 +1860,14 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
   // timeout — dump current state fail-closed
   const state = loadState(absDir)
   const statuses = expected.map((id) => {
+    const slot = plan.slots.find((s) => s.slot === id)!
     const m = state.slots[id]
+    const outPath = abs(absDir, slot.out, projectDir)
     return {
       slot: id,
       status: m?.status || "pending",
-      terminal: m ? (m.terminal ?? isTerminal(m.status)) : false,
-      bytes: m?.bytes,
+      terminal: barrierSlotTerminal(slot, m, outPath),
+      bytes: m?.bytes ?? outBytes(outPath, m),
       error: m?.error || "barrier timeout",
     }
   })
