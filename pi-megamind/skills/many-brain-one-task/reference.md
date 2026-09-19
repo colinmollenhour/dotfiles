@@ -356,7 +356,7 @@ Rules:
 #### `claude --print` fallback
 
 ```bash
-claude --agent general --model opus --print --output-format text --name "MBOT: Code review for X" --effort high --append-system-prompt .tmp/ultra-review/prompts/state.full.md -- "PROMPT_HERE"
+claude --agent general-purpose --model opus --print --output-format text --name "MBOT: Code review for X" --effort high --append-system-prompt .tmp/ultra-review/prompts/state.full.md -- "PROMPT_HERE"
 ```
 
 Use this only when `botctl` is unavailable or the profile explicitly requires headless `claude --print`.

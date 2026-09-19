@@ -47,10 +47,10 @@ claude --model opus --print --output-format text \
 ## Agent Selection
 
 ```bash
-claude --agent general --model opus --print --output-format text -- "Prompt"
+claude --agent general-purpose --model opus --print --output-format text -- "Prompt"
 ```
 
-- `--agent general` — uses the general-purpose agent profile with tool access. Omit for a plain completion with no tools.
+- `--agent general-purpose` — uses Claude Code's built-in general-purpose agent profile with tool access. `general` is not a valid alias. Omit for a plain completion with no tools.
 
 ## Capture Output
 
