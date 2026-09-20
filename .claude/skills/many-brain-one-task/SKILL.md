@@ -2,7 +2,7 @@
 name: many-brain-one-task
 user-invocable: false
 description: 'Run the same task with multiple agents for reviews, critiques, or model comparison.'
-allowed-tools: Read, Write, Agent, Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *), Bash(botctl *), Bash(occtl *), Bash(opencode *), Bash(which *), Bash(mkdir *), Bash(cp *)
+allowed-tools: Read, Write, Agent, Bash(bun *), Bash(cr *), Bash(pi *), Bash(grok *), Bash(claude *), Bash(codex *), Bash(botctl *), Bash(occtl *), Bash(opencode *), Bash(which *), Bash(command -v *), Bash(curl *), Bash(jq *), Bash(mkdir *), Bash(cp *)
 ---
 
 # Many Brain One Task
@@ -28,7 +28,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    ```
    Repeated `--append` is cumulative. Discovery outputs also get [roles/issue-form.md](roles/issue-form.md) automatically (skipped for merits).
    Role templates for ultra: [roles/](roles/).
-4. **Write `plan.json`** with one entry per harness-owned slot (`opencode` / `occtl` / `grok`). Native Claude `Agent` slots use `harness: "external"` — launch those via the Agent tool yourself; still list them so harvest scores their `.out`.
+4. **Write `plan.json`** with one entry per harness-owned slot (`opencode` / `occtl` / `grok`). Native Claude `Agent` slots use `harness: "external"` — launch those via the Agent tool yourself; still list them so harvest scores their `.out`. **On an OpenCode host there are no `external` slots**: every participant, Claude models included, is an `opencode` slot with a `colin-mbot-*` agent.
 5. **OpenCode preflight + launch + harvest.** Do **not** invoke `occtl` or `run-opencode.ts` from this skill — `mbot-run` owns both (occtl by default; run-opencode.ts only as an internal fallback).
    ```bash
    # Optional explicit smoke (launch also smokes automatically when slots use opencode)
@@ -44,7 +44,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
    ```
    **OpenCode host:** `launch --detach` then `barrier` — a blocking launch dies with its occtl children when the 120s bash timeout fires. **Claude Code host:** blocking `launch` is fine; pass Bash `timeout: 1320000` (22 min).
-   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). `mbot-run` selects the server via `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` (already-set env wins over the attach URL) and does **not** pass `occtl --attach`. GPT OpenCode slots default `--variant high` and `--agent colin-mbot-gpt-sol`. Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
+   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). `mbot-run` selects the server via `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` (already-set env wins over the attach URL) and does **not** pass `occtl --attach`. GPT OpenCode slots default `--variant high` and `--agent colin-mbot-gpt-sol`; **every other family must set `"agent"` and `"model"` on the slot** (`colin-mbot-opus` + `anthropic/claude-opus-5`, `colin-mbot-grok` + `xai/grok-4.6`, …). Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
    Meta records `actual_harness`, `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and (Grok) `cost_usd`. Harvest salvages timed-out sessions via `occtl last` and **must not** overwrite per-slot `ended_at`.
 6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`. `mbot-run usage` talks to agentsview over `AGENTSVIEW_URL` (HTTP) when the CLI is not on PATH.
 
@@ -57,11 +57,16 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
 5. **Pin model ids** from attach `/config/providers` when available (`openai/gpt-5.6-sol` preferred when listed).
 6. **OpenCode host `launch --detach`** (new process group). Wrapping a blocking launch in the default 120s bash tool kills the batch. Claude Code keeps blocking launch.
 
+## Host harness routing (hard)
+
+- **Claude Code host:** Claude participants use the native `Agent` tool (then `botctl prompt`, then `claude` CLI); everything else goes through `mbot-run`.
+- **OpenCode host: keep everything inside OpenCode.** Every participant — Claude included — is an `mbot-run` slot with a `colin-mbot-*` agent. Do not shell out to `claude` / `botctl` / `grok`, and do not use the OpenCode `task` tool for participant slots. Shell-outs only when the profile pins a CLI or the agent file is missing from `~/.opencode/agents/`. A containerised host may not ship `grok` / `botctl` / `pi` at all — `command -v` before planning a CLI route.
+
 ## Built-in defaults (when no profile)
 
-- Opus (Claude native Agent / botctl / claude CLI) @ high effort  
+- Opus @ high effort (Claude host: native Agent / botctl / claude CLI — OpenCode host: `colin-mbot-opus`)  
 - GPT via OpenCode @ high  
-- Grok CLI @ high (OpenCode `colin-mbot-grok` only if CLI missing)  
+- Grok @ high (Claude host: `grok` CLI — OpenCode host or missing CLI: `colin-mbot-grok`)  
 - Backup: **Grok only** — no experimental models unless the user names them  
 
 ## Delivery contracts (do not mix)

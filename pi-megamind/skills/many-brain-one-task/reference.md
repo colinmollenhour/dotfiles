@@ -48,19 +48,29 @@ The host harness (you, the one running this skill right now) limits which models
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to **`botctl prompt`** (via `botctl-prompt` skill) or the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
 | Claude Code | Grok                     | `grok` CLI (preferred). OpenCode `colin-mbot-grok` only if `grok` is missing/unauthenticated or the profile forces OpenCode. See [Grok](#grok). |
 | Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll `occtl` / `run-opencode.ts`.                       |
-| OpenCode    | Claude (Opus/Sonnet/Haiku) | **`botctl prompt`** (preferred when `botctl` is on PATH) or `claude` CLI — never `colin-mbot-*` for Claude. See [Claude](#claude-opus--sonnet--haiku). |
-| OpenCode    | Grok                     | `grok` CLI (preferred). Fall back to `colin-mbot-grok` / `mbot-run` only when Grok CLI is unavailable or the profile says OpenCode. See [Grok](#grok). |
+| OpenCode    | Claude (Opus/Sonnet/Fable/Haiku) | `mbot-run` OpenCode slot with the matching `colin-mbot-*` agent. Shell out to `botctl prompt` / `claude` CLI **only** when the profile pins a first-party CLI or no Claude `colin-mbot-*` agent is installed. |
+| OpenCode    | Grok                     | `mbot-run` OpenCode slot, agent `colin-mbot-grok`. `grok` CLI only when the profile pins it (and the CLI is present). See [Grok](#grok). |
 | OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults `--variant high` and `--agent colin-mbot-gpt-sol`). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
 | Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `mbot-run` for OpenCode, `pi`, `codex`, `gemini`). |
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
-When OpenCode is the host, GPT/OpenAI MBOT slots go through `mbot-run` (which passes `--agent colin-mbot-gpt-sol`). Do not hand-pick `build`. Claude and Grok still prefer their first-party CLIs (`botctl` / `claude`, `grok`) over `colin-mbot-*`.
+**When OpenCode is the host, keep every participant inside OpenCode.** Launch all of them through `mbot-run` with a `colin-mbot-*` agent — Claude models included — instead of shelling out to `botctl` / `claude` / `grok`. One harness means one attach, one concurrency cap, one harvest path, and uniform cost accounting. `mbot-run` only auto-picks an agent for GPT/OpenAI models (`--agent colin-mbot-gpt-sol`, `--variant high`); every other family must set `"agent"` on the slot:
+
+| Family | slot `agent` | typical slot `model` |
+|---|---|---|
+| Opus | `colin-mbot-opus` | `anthropic/claude-opus-5` |
+| Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
+| Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
+| Grok | `colin-mbot-grok` | `xai/grok-4.6` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
+| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from attach `/config/providers` |
+
+Do not hand-pick `build` or `general`. Fall back to a first-party CLI only when the profile pins one or the `colin-mbot-*` agent is not installed (`~/.opencode/agents/<name>.md`). Note that a containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — check `command -v` before planning a CLI route.
 
 When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
 
-When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.6`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok`.
+When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.5`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok` — **or** the host is OpenCode, where `colin-mbot-grok` wins, or the `grok` CLI is not installed.
 
 
 ### Pi
@@ -95,21 +105,21 @@ Profiles may include an attach directive instructing every OpenCode invocation t
 
 - Global (applies to every OpenCode invocation in this MBOT run):
   ```
-  Attach OpenCode to seamus:4095
-  Attach OpenCode to http://seamus:4095 with password hunter2
-  OpenCode attach: seamus:4095 (password: hunter2)
+  Attach OpenCode to 127.0.0.1:4096
+  Attach OpenCode to http://127.0.0.1:4096 with password hunter2
+  OpenCode attach: 127.0.0.1:4096 (password: hunter2)
   ```
 - Per-agent (overrides any global directive on that line only):
   ```
-  - OpenCode with GLM 5.1 via attach seamus:4095
-  - OpenCode with GPT-5.4 via attach http://seamus:4095 (password: hunter2)
+  - OpenCode with GLM 5.1 via attach 127.0.0.1:4096
+  - OpenCode with GPT-5.4 via attach http://127.0.0.1:4096 (password: hunter2)
   ```
 
-**URL normalization:** prefix `http://` if scheme is missing (`seamus:4095` → `http://seamus:4095`). Default OpenCode port is `4096`.
+**URL normalization:** prefix `http://` if scheme is missing (`127.0.0.1:4096` → `http://127.0.0.1:4096`). Default OpenCode port is `4096`.
 
-**Password:** optional. Put it on the plan (`"password"`) or in `OPENCODE_SERVER_PASSWORD`. `mbot-run` passes `--password` / `--attach host:port` to the launcher.
+**Password:** optional. Put it on the plan (`"password"`) or in `OPENCODE_SERVER_PASSWORD`.
 
-**Plumbing the directive:** put `attach` on `plan.json` (`"attach": "http://seamus:4095"` or `"seamus:4095"`). `mbot-run` passes `occtl run --attach host:port` (or `run-opencode.ts --attach <url>` if occtl is unavailable). Do not set `OPENCODE_SERVER_*` yourself and do not invoke either launcher from the parent session.
+**Plumbing the directive:** put `attach` on `plan.json` (e.g. `"attach": "http://127.0.0.1:4096"`) so `mbot-run` stays in attach mode and does not `--spawn`. Server selection is `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`: already-set env wins; otherwise mbot-run fills them from the attach URL. It does **not** pass `occtl --attach` (missing on occtl 1.3.0; env works on 1.3 and 1.5+). Do not invoke `occtl` / `run-opencode.ts` from the parent session.
 
 ### Resolving OpenCode model names
 
@@ -277,13 +287,18 @@ Guidelines:
 
 - Prefer `--prompt-file` over `-p` for any non-trivial MBOT prompt (same reliability reason as OpenCode `--file`).
 - Use `--always-approve` so unattended batch runs never block on tool permission prompts.
-- Pass `-m <model>` / `--model` only when the profile pins one (resolve with `grok models`; default is usually `grok-4.6`).
+- Pass `-m <model>` / `--model` only when the profile pins one (resolve with `grok models`; default is usually `grok-4.5`).
 - Map profile effort prose: `"max" thinking` / `xhigh` → `--reasoning-effort max` (alias of `xhigh`); `"high"` → `high`.
 - For pure critique/review/opinion tasks, add `--disallowed-tools Agent` or `--no-subagents` so the child does not spawn nested agents.
 - Treat success as exit `0` **and** non-whitespace stdout. On failure, record stderr and substitute a backup if configured.
 - Profile prose `OpenCode with Grok` / `colin-mbot-grok` still means the OpenCode path. Bare `Grok` / `Grok CLI` means this path.
 
-### Claude (Opus / Sonnet / Haiku)
+### Claude (Opus / Sonnet / Fable / Haiku)
+
+**OpenCode host:** skip this whole section. Run Claude participants as `mbot-run` OpenCode slots
+with `colin-mbot-opus` / `colin-mbot-sonnet` / `colin-mbot-fable` (slot `model` `anthropic/…`,
+`variant: high`). The shell-out routes below apply to a Claude Code host, or to an OpenCode host
+where the profile pins a first-party CLI or no Claude `colin-mbot-*` agent is installed.
 
 Prefer the **`botctl-prompt`** skill for advanced agentic Claude shell-outs (observable tmux TUI, YOLO-safe blockers, multi-file packets, isolated `--session-id`). Load it before inventing flags:
 
@@ -314,7 +329,22 @@ For discovery, validation, integration, and summarization Claude children, use r
 
 If the `Agent` tool is unavailable, fall back to **`botctl prompt`** (preferred) or the `claude` CLI.
 
-**OpenCode host** — do **not** use a `colin-mbot-*` subagent for Claude models. Prefer **`botctl prompt`** when `command -v botctl` succeeds; otherwise use the `claude` CLI. Do not skip `botctl` when it is installed.
+**OpenCode host** — use `colin-mbot-opus` / `-sonnet` / `-fable` through `mbot-run`, same as every other family. Example slot:
+
+```json
+{
+  "slot": "opus-state",
+  "planned_model": "anthropic/claude-opus-5",
+  "model": "anthropic/claude-opus-5",
+  "agent": "colin-mbot-opus",
+  "variant": "high",
+  "harness": "opencode",
+  "prompt": "prompts/opus-state.md",
+  "out": "results/opus-state.out"
+}
+```
+
+Shell out to `botctl prompt` / `claude` only when the profile pins a first-party CLI, or when the agent file is missing from `~/.opencode/agents/`. On a containerised OpenCode host `botctl` is usually absent, so `command -v botctl` before planning that route.
 
 #### `botctl prompt` (preferred shell-out)
 
@@ -381,7 +411,7 @@ Launching a later phase plan (`plan-integration.json`, `plan-validate.json`) **m
 
 `mbot-run` picks the transport once during smoke:
 
-1. **`occtl run --attach host:port`** when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`.
+1. **`occtl run`** with `OPENCODE_SERVER_HOST`/`PORT` when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`. Do not pass `--attach` (missing on occtl 1.3.0).
 2. **`run-opencode.ts`** only if occtl is missing or too old.
 
 Do not cache `OPENCODE_VIA` in the parent, do not `occtl ping` as a preflight, and do not load `occtl view-skill` for MBOT slots. Timeout recovery (`occtl last` after 124 / thin `.out`) is inside `launch` and `harvest`.
