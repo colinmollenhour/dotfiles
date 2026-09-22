@@ -8,7 +8,7 @@
   },
   "roles": {
     "megamind": {
-      "provider": "opencode/xai/grok-4.5",
+      "provider": "opencode/xai/grok-4.7",
       "settings": {
         "modeId": "megamind",
         "thinkingOptionId": "high"

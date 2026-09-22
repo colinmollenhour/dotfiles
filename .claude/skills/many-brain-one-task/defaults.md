@@ -1,7 +1,7 @@
 Preferred models:
 - Opus 5 (high)
 - GPT 5.6 Sol (high)
-- Grok 4.6 (xhigh)
+- Grok 4.7 (xhigh)
 
 Backup model (never more than one and ONLY these):
 - Qwen3.8 Max (xhigh)

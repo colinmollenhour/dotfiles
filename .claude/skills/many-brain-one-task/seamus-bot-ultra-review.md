@@ -68,11 +68,11 @@ explicitly on the slot.
 |---|---|---|---|
 | Opus 5 | `anthropic/claude-opus-5` | `colin-mbot-opus` | `high` |
 | GPT-5.6 Sol | `openai/gpt-5.6-sol` | `colin-mbot-gpt-sol` | `high` |
-| Grok | `xai/grok-4.6` | `colin-mbot-grok` | `high` |
+| Grok | `xai/grok-4.7` | `colin-mbot-grok` | `high` |
 
 - The provider id on this server is `xai`, **not** `x-ai`. `colin-mbot-grok` deliberately pins no
   model in its frontmatter, so a slot with no `model` silently falls through to GPT — always set
-  it. `xai/grok-4.5` is the accepted fallback if `4.6` is not listed.
+  it. `xai/grok-4.6` is the accepted fallback if `4.7` is not listed.
 - Use `anthropic/*` for Claude participant slots. `claude-code/opus` is the **parent** harness
   model (the `@openchamber/opencode-claude` plugin); do not fan a review out onto it.
 - Never `--agent build` / `general`, and never omit `--variant`.

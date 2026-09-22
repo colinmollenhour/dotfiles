@@ -15,7 +15,7 @@ Use the `grok` CLI (Grok Build TUI) to send prompts to xAI Grok models from shel
 
 ```bash
 grok version            # e.g. "grok 0.2.x …"
-grok models             # lists available models; default is usually grok-4.5
+grok models             # lists available models; default is usually grok-4.7
 ```
 
 If auth fails, ask the user to run `grok login`.
@@ -38,7 +38,7 @@ Key flags:
 | --- | --- |
 | `--prompt-file <path>` | Single-turn prompt from a file (headless). Prefer this over inlining. |
 | `-p, --single <PROMPT>` | Single-turn prompt from argv (short prompts only). |
-| `-m, --model <MODEL>` | Model id (default from config; often `grok-4.5`). Resolve with `grok models`. |
+| `-m, --model <MODEL>` | Model id (default from config; often `grok-4.7`). Resolve with `grok models`. |
 | `--reasoning-effort` / `--effort` | Thinking budget: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`/`max`. |
 | `--always-approve` | Auto-approve all tool executions (unattended batch). Alias path: `--permission-mode bypassPermissions`. |
 | `--permission-mode <MODE>` | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan`. |
@@ -75,7 +75,7 @@ Resolve live ids with `grok models`. Common values:
 
 | Flag value | Notes |
 | --- | --- |
-| `grok-4.5` | Default strong coding / reasoning model |
+| `grok-4.7` | Default strong coding / reasoning model |
 | `grok-composer-2.5-fast` | Faster / lighter when listed |
 
 Do not invent model strings; prefer the exact id printed by `grok models`.
