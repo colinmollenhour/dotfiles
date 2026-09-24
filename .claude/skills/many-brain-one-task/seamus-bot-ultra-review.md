@@ -1,122 +1,82 @@
 # Profile: `seamus-bot-ultra-review`
 
-Ultra-review lineup for the Seamus GitLab bot. This profile always runs **inside the Seamus
-podman container**, so the harness options and the available CLIs are not the same as on the
-operator's host. Read Step 0 before writing `plan.json`.
+Ultra-review lineup for the Seamus GitLab bot, which always runs **inside the Seamus podman
+container**. The bot's injected contract (`gitlab-workflow-ultra.md`) already covers the CLIs in
+the image, parent lifetime and launch mode, `--title` format, agentsview, retries and wall-clock,
+and the CodeRabbit / off-profile-model bans; they are not repeated here.
 
-## Participants
+## Participants and allocation (overrides colin-ultra-review "Allocation")
 
-- **Claude Opus 5.5** at **high** thinking effort (not `max` / `xhigh`) — also the model for
-  discovery, validation, integration, and summarization slots
-- **GPT-6 Sol** at high reasoning effort (via OpenAI, not OpenCode Zen)
-- **Grok** at high reasoning effort
+All at **high** effort (never `max` / `xhigh`). Opus also runs adjudication, integration, and
+summarization. Backup when a primary cannot run: **Grok only**.
 
-Backup when a primary cannot run: **Grok only** — never invent a substitute lineup.
-
-Do **not** include CodeRabbit / `cr` as a participant, even if the CLI is installed and
-authenticated. Do **not** include Gemini, Kimi, GLM, Qwen, DeepSeek, MiMo, or MiniMax unless the
-requester explicitly names them.
-
-Default OpenCode wall-clock: 20 minutes (`--timeout` / `--timeout-ms 1200000`); max one retry
-per slot.
-
-## Step 0: which harness am I?
-
-The bot parent is **either** Claude Code (`claude -p`) **or** OpenCode (a session on the
-in-container bot serve, model `claude-code/opus`). The requester chooses with
-`--harness claude` / `--harness opencode` (`--claude` / `--opencode` are aliases); Claude is the
-default. Both are enabled, so never assume.
-
-Tell them apart by your own tool surface: the Claude parent has the native `Agent` tool; the
-OpenCode parent has the OpenCode `task` tool and no `Agent`.
-
-### Parent = Claude Code
-
-| Participant | Route |
+| Lens | Participants |
 |---|---|
-| Opus 5.5 | native `Agent` tool — list the slot in `plan.json` with `harness: "external"` so harvest still scores its `.out` |
-| GPT-6 Sol | `mbot-run` OpenCode slot |
-| Grok | `mbot-run` OpenCode slot — the `grok` CLI is **not** in this image |
+| `state` / `contracts` / `failure` | Opus 5.5 + GPT-6 Sol, × each bucket |
+| `craft` | Grok, one slot per bucket (Opus if Grok cannot run) |
+| `merits` | Opus 5.5 + GPT-6 Sol, once |
+| `integration` (every round) | Opus 5.5 + GPT-6 Sol |
 
-Blocking `mbot-run launch` is fine here; pass Bash `timeout: 1320000` (22 min).
+Grok keeps only `craft`: it was the slowest lane, timed out most, and its unique confirmed
+findings were all low and came from that lens. Thread budget: `7 × buckets` + 2 merits +
+2 integration per round, plus adjudication. Record `participants: 2` (+ Grok craft) in
+`run-summary.json`.
 
-`claude -p` lifetime: a text-only "I'll report back when they finish" turn exits the parent at 0
-while OpenCode slots are still running. Hold a foreground `mbot-run barrier` until harvest and
-the GitLab post are done. Never `sleep N` in the background as a wait.
+## Validation (overrides colin-ultra-review §8)
 
-### Parent = OpenCode
+**No separate validator pass** — validators mostly rubber-stamped (0–5% rejected) or rejected
+everything, and the adversarial pass after them did the real filtering. Once per round:
 
-**Every participant is an OpenCode slot launched by `mbot-run` with a `colin-mbot-*` agent —
-including the Claude ones.** Do not shell out to `claude`, `botctl`, or `grok`, and do not use
-the OpenCode `task` tool for participant slots (it skips `--out` harvest and timeout salvage).
-There are no `harness: "external"` slots in this mode; Opus reviewers become
-`colin-mbot-opus` slots exactly like GPT and Grok.
+1. `mbot-run candidates`, then cluster by **root cause** (bookkeeping, not a verdict), recording
+   which model families raised each cluster.
+2. **Adjudicate across families:** Opus-only clusters → one GPT-6 Sol slot; clusters raised by GPT
+   and/or Grok (with or without Opus) → one Opus adjudicator. Split batches over ~40 clusters
+   into two slots of the same family.
+3. The adjudicator tries to **refute** each cluster against the source at head. Status is exactly
+   `confirmed` | `rejected` (concrete refutation) | `unresolved` (names the missing instrument). A
+   severity disagreement is `confirmed` at the corrected severity. Never reject for single-model
+   or lack of consensus. No nested subagents.
+4. If an adjudicator rejects ≥90% or confirms 100% of a batch of 8+, re-check its medium-and-above
+   verdicts yourself against the source and record each override. Do not add another fleet pass.
 
-The parent's own `task` subagents are still fine for orchestration work the parent owns (bucket
-indexing, cheap greps, file marshalling) — just never for a review participant.
+Model comparison "Confirmed" / "Rejected" come from adjudication; list adjudication slots as
+auxiliary in run accounting, with wall and cost.
 
-`launch --detach`, then `barrier`: a blocking launch dies with its occtl children when the 120s
-bash-tool timeout fires. Do not end the turn while slots are running — the bot's idle watcher
-treats an idle session as a finished run and will publish nothing.
+## Routing by harness
 
-## Slot pinning (all OpenCode slots, either harness)
+The parent is Claude Code (`claude -p`, has the native `Agent` tool) or OpenCode (bot-serve
+session, has `task` and no `Agent`). `--harness claude|opencode` picks it; Claude is the default.
+Check your tool surface — never assume.
 
-`mbot-run` auto-selects an agent only for GPT models. Claude and Grok slots must set `"agent"`
-explicitly on the slot.
+- **Claude parent:** Opus slots use native `Agent`, listed in `plan.json` with
+  `harness: "external"` so harvest still scores the `.out`. GPT and Grok are `mbot-run` OpenCode
+  slots.
+- **OpenCode parent:** every participant, Opus included, is an `mbot-run` slot with a
+  `colin-mbot-*` agent; no `external` slots. The `task` tool skips `--out` harvest and timeout
+  salvage, so use it only for orchestration chores (indexing, greps), never for a participant.
 
-| Participant | slot `model` | slot `agent` | `variant` |
+## OpenCode slots (either harness)
+
+| Participant | `model` | `agent` | `variant` |
 |---|---|---|---|
 | Opus 5.5 | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `high` |
 | GPT-6 Sol | `openai/gpt-6-sol` | `colin-mbot-gpt-sol` | `high` |
 | Grok | `xai/grok-4.7` | `colin-mbot-grok` | `high` |
 
-- The provider id on this server is `xai`, **not** `x-ai`. `colin-mbot-grok` deliberately pins no
-  model in its frontmatter, so a slot with no `model` silently falls through to GPT — always set
-  it. `xai/grok-4.6` is the accepted fallback if `4.7` is not listed.
-- Use `anthropic/*` for Claude participant slots. `claude-code/opus` is the **parent** harness
-  model (the `@openchamber/opencode-claude` plugin); do not fan a review out onto it.
-- Never `--agent build` / `general`, and never omit `--variant`.
-- Keep `"concurrency": 3` (4 max). Every slot — plus, under the OpenCode harness, the parent
-  session itself — shares one server.
-
-## OpenCode server
-
-`OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` are already set by Seamus to the **in-container
-bot serve** (`127.0.0.1:4096`), and already-set env wins over the plan. Put the same URL on
-`plan.json` as `"attach": "http://127.0.0.1:4096"` so `mbot-run` stays in attach mode and never
-`--spawn`s.
-
-Do **not** retarget to the operator's personal server — port `4095`, host `100.110.251.42`, or
-hostname `seamus`. Seamus rewrites those back to the bot serve anyway, and bot reviews must not
-land on the personal server. Do not pass `occtl --attach`, and do not invoke `occtl` or
-`run-opencode.ts` yourself.
-
-List models through attach, never bare `opencode models` (it ignores attach):
+- Always set `model`, `agent`, and `variant`; `mbot-run` auto-picks an agent only for GPT.
+  `colin-mbot-grok` pins no model, so a Grok slot without `model` silently runs GPT. Never
+  `build` / `general`.
+- Provider is `xai`, not `x-ai`; `xai/grok-4.6` is the fallback if 4.7 is not listed. GPT goes
+  through `openai`, not OpenCode Zen.
+- `claude-code/opus` is the parent harness model — never a participant.
+- `"concurrency": 3` (4 max): all slots, and an OpenCode parent, share one server. Wall-clock
+  20 min per slot (`--timeout-ms 1200000`).
+- `plan.json` `"attach": "http://127.0.0.1:4096"` (the bot serve already in
+  `OPENCODE_SERVER_HOST`/`PORT`). Never retarget to the personal server (`:4095`,
+  `100.110.251.42`, `seamus`), and never call `occtl` or `run-opencode.ts` directly.
+- List models through the bot serve (bare `opencode models` ignores attach):
 
 ```bash
 curl -sS "http://127.0.0.1:4096/config/providers" \
   | jq -r '.providers[] | .id as $p | .models | to_entries[] | "\($p)/\(.key)\t\(.value.name)"'
 ```
-
-## What is in the container image
-
-Present: `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, `occtl`, `opencode`.
-
-Absent: `grok`, `botctl`, `cr`, `pi`, `gemini`, and the `agentsview` CLI.
-
-Never plan a route through a CLI that is not there. `AGENTSVIEW_URL` is injected into the
-environment — run `mbot-run usage` **without** `--no-agentsview`; it speaks HTTP to that URL when
-the CLI is missing.
-
-## Required `--title` format (cost reporting)
-
-Every OpenCode participant title (set on the `mbot-run` plan slot) must include:
-
-```text
-ultra|{gitlabProjectPath}|!{mrIid}|{bucketOr-}|{role}|{modelShort}|retry{N}
-```
-
-Example: `ultra|shipstream/server|!2740|-|state|gpt-6-sol|retry0`
-
-Use `-` for bucket when not bucketed. Bump `retryN` and use a distinct `--out` for every
-re-launch.

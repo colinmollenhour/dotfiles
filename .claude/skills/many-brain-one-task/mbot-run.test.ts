@@ -124,12 +124,12 @@ describe("Ultra Review version", () => {
   delete noSeamus.SEAMUS_GIT_SHA
   delete noSeamus.GIT_COMMIT
 
-  test("identity is Ultra Review 0.6", () => {
+  test("identity is Ultra Review 0.7", () => {
     const id = loadUltraReviewIdentity(noSeamus)
     expect(id.product).toBe("Ultra Review")
-    expect(id.version).toBe("0.5")
-    expect(id.label).toBe("Ultra Review 0.6")
-    expect(id.header).toBe("AI Ultra Review 0.6")
+    expect(id.version).toBe("0.7")
+    expect(id.label).toBe("Ultra Review 0.7")
+    expect(id.header).toBe("AI Ultra Review 0.7")
   })
 
   test("SEAMUS_GIT_SHA overrides the skill version with a short sha", () => {
@@ -151,10 +151,10 @@ describe("Ultra Review version", () => {
     })
     expect(r.exitCode).toBe(0)
     const printed = JSON.parse(r.stdout.toString())
-    expect(printed.ultra_review.label).toBe("Ultra Review 0.5")
+    expect(printed.ultra_review.label).toBe("Ultra Review 0.7")
     const state = JSON.parse(readFileSync(join(runDir, "STATE.json"), "utf8"))
-    expect(state.ultra_review.version).toBe("0.5")
-    expect(state.ultra_review.header).toBe("AI Ultra Review 0.5")
+    expect(state.ultra_review.version).toBe("0.7")
+    expect(state.ultra_review.header).toBe("AI Ultra Review 0.7")
   })
 })
 

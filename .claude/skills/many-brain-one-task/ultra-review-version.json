@@ -1,5 +1,5 @@
 {
   "product": "Ultra Review",
-  "version": "0.6",
-  "notes": "OpenCode-stable control plane: detach launch, path de-dup, plan merge, GPT high/colin-mbot-gpt-sol, candidates command, published version stamp."
+  "version": "0.7",
+  "notes": "Seamus bot profile: Grok on craft only; validator pass replaced by one cross-family adversarial adjudication per round."
 }
