@@ -8,6 +8,7 @@ This directory packages Megamind for both OMP and Pi while preserving the origin
 - `.claude/skills/many-brain-one-task/` → `skills/many-brain-one-task/`
 - `.claude/skills/many-brain-one-decision/` → `skills/many-brain-one-decision/`
 - `.claude/skills/educational-brief/` → `skills/educational-brief/`
+- `.claude/skills/colin-mr-description/` → `skills/colin-mr-description/`
 - `.claude/skills/gh-cli/` → `skills/gh-cli/`
 - `.claude/skills/glab-cli/` → `skills/glab-cli/`
 - `.claude/skills/claude-cli/` → `skills/claude-cli/`

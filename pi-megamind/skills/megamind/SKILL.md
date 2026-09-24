@@ -470,21 +470,17 @@ Always deliver through a hosted review item.
 4. Review `git status --short` and `git log <base>..HEAD --oneline`.
 5. Stage and commit any remaining files created or modified for this task; there may be none.
 6. Push to origin.
-7. Create or update the PR/MR.
+7. Create or update the PR/MR. Load `colin-mr-description` and follow it for body structure, attribution, and create/update mechanics.
 
 The branch intentionally carries milestone commits (work packages, fix rounds, drain fixes, gates). Do not squash them.
 
-The PR/MR body must include:
+Megamind-specific inputs to `colin-mr-description`:
 
-- Summary
-- Test plan with exact command outcomes
-- Links or paths to `plans/final.md`, `reviews/validated-findings.md`, latest `reviews/fixed-review-N.md`, and `final/local-gates.md`
-- Paths to `reviews/roborev-drain-*.md`, when `--roborev` integration was active
-- AI attribution header:
-
-```text
-> **AI Megamind** - By: <harness/model if known>
-```
+- Attribution label: `AI Megamind`
+- Evidence: the run directory, which outranks session memory
+- Test Plan: from `final/local-gates.md`
+- Changes: also summarize validated review findings and their fixes from `reviews/validated-findings.md` and the latest `reviews/fixed-review-N.md`, and, when `--roborev` integration was active, the outcomes in `reviews/roborev-drain-*.md`
+- Do not create the Educational Brief section here; Phase 13 adds it once the PR/MR URL is known
 
 Save:
 
@@ -494,9 +490,9 @@ final/delivery.md
 
 ## Phase 13: Educational Delivery Note
 
-After the PR/MR URL is known, load the `educational-brief` skill and launch one educational synthesis sub-agent. This preserves the parent/main conversation context while still producing a useful teaching artifact for reviewers and future agents.
+After the PR/MR URL is known, follow the Educational Brief section of `colin-mr-description`: synthesis via one `educational-brief` sub-agent, validation, diagram hosting, and section replacement. Megamind always includes the brief; the trivial-change skip does not apply. This keeps synthesis out of the parent/main conversation context.
 
-Provide the skill and sub-agent with the run directory, PR/MR URL, base branch, head branch, and grounded evidence:
+Provide the sub-agent with the run directory, PR/MR URL, base branch, head branch, and grounded evidence:
 
 - PR/MR URL and number/IID
 - Base branch and head branch
@@ -525,29 +521,19 @@ The skill/sub-agent must write:
 final/educational-material.md
 ```
 
-The brief format, grounding rules, section requirements, diagram format selection, and density expectations are owned by the skill. Do not inline or reinvent those instructions in Megamind.
+The brief format, grounding rules, and diagram selection are owned by `educational-brief`; validation, image hosting, and posting are owned by `colin-mr-description`. Do not inline or reinvent those instructions in Megamind.
 
-After the sub-agent writes `final/educational-material.md`, Megamind must validate it before posting:
-
-1. Read `final/educational-material.md`.
-2. Spot-check each substantive claim against run artifacts, changed files, diffs, local gate output, or PR/MR metadata.
-3. Correct or remove claims that are ungrounded, overstated, stale, or unsupported.
-4. Ensure every diagram matches the actual code/configuration structure. For tldraw diagrams, also verify that each referenced PNG and its `.tldr` source exist in `final/`; for Mermaid fallback diagrams, ensure the Mermaid lint passed.
-5. Write:
+Megamind validates the brief itself before posting, per `colin-mr-description`, and writes:
 
 ```text
 final/educational-validation.md
 ```
 
-`final/educational-validation.md` must list checked claim groups, corrections made, and any residual uncertainty.
-
-Append the validated educational material to the PR/MR description using `gh-cli` or `glab-cli` under this heading:
+Post the validated brief under this heading, replacing any existing copy:
 
 ```markdown
 ## Megamind Educational Brief
 ```
-
-Before appending a brief that references local tldraw PNGs, upload each PNG with the platform's supported attachment workflow and replace the local Markdown reference with the returned hosted Markdown or URL. Keep the `.tldr` source and local PNG in the run directory as durable artifacts. Mermaid fallback diagrams need no upload step.
 
 If the PR/MR platform update fails because of permissions or API errors, write the exact attempted command and error excerpt to `final/educational-validation.md` and continue to CI monitoring.
 

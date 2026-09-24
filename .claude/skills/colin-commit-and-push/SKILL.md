@@ -29,7 +29,9 @@ Based on that state and the context of this session:
 3. Stage files you created/modified/deleted. Do not add `PLANS-*.md`, `SPECS-*.md`, or pre-existing untracked plans unless specified.
 4. Create a single commit with a message matching recent style (`git log -n 3`).
 5. Push to `origin` unless a different remote is specified or already tracked. **Never push a feature branch to main.**
-6. Open or update the hosted review item with the **ship script** (do **not** Skill-load full `glab-cli` / `gh-cli` for the happy path):
+6. Write the PR/MR body and any commit note by loading `colin-mr-description` and following it. If the user or Special Instructions ask for a quick, fast, or simple PR/MR, skip that skill and write a short Summary and Test Plan instead.
+
+   Open or update the hosted review item with the **ship script** (do **not** Skill-load full `glab-cli` / `gh-cli` for the happy path):
 
    **GitLab** (detect via `git remote`):
    ```bash
@@ -51,16 +53,7 @@ Based on that state and the context of this session:
    For full PR context later, use `gh-cli/pr-context.ts` — not needed for ship.
 
    - Unless told otherwise, create the PR/MR if none exists.
-   - If one already exists, post a short note describing the new commit.
-   - When **this session's agent authored the code changes**, prefix the note with:
-
-     ```text
-     > **AI Commit Note** · Commit: <sha> · By: <harness> with <model>
-
-     <short description>
-     ```
-
-     Omit the header when the human wrote the code and the agent only ships it.
+   - If one already exists, post a short commit note and refresh the description per `colin-mr-description`.
    - Load full `glab-cli` / `gh-cli` **only** if the ship script/API fails or you need inline discussions, uploads, or pagination edge cases.
 
 7. `git status --short` after push.

@@ -8,6 +8,7 @@ Installable Megamind autonomous-delivery workflow with supporting multi-agent sk
 - `skills/many-brain-one-task/` — MBOT multi-model fan-out skill plus helper scripts.
 - `skills/many-brain-one-decision/` — MBOD moderated multi-agent decision workflow.
 - `skills/educational-brief/` — grounded educational brief synthesis.
+- `skills/colin-mr-description/` — PR/MR description structure, validation, and posting.
 - `skills/gh-cli/`, `skills/glab-cli/` — hosted PR/MR and CI platform operations.
 - `skills/claude-cli/`, `skills/codex-cli/`, `skills/grok-cli/` — CLI routing references used by MBOT/MBOD.
 - `prompts/megamind.md` — shared `/megamind` prompt template.
