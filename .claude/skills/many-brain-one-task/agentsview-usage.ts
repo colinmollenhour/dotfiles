@@ -20,9 +20,12 @@
 
 import { spawnSync } from "node:child_process"
 import {
+  closeSync,
   existsSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   writeFileSync,
 } from "node:fs"
 import { isAbsolute, join, resolve } from "node:path"
@@ -142,6 +145,7 @@ interface SlotUsage {
     | "session_file"
     | "title"
     | "claude_child"
+    | "claude_transcript"
     | "parent_session"
     | "none"
   error?: string
@@ -330,7 +334,8 @@ function runAgentsviewHttp(
   const a = args.filter((x) => x !== "--json")
   if (a[0] === "session" && a[1] === "usage" && a[2]) {
     const id = encodeURIComponent(a[2])
-    return curlJson(`${base}/api/v1/sessions/${id}/usage?subagents=true`, timeoutMs)
+    const qs = a.includes("--own-only") ? "" : "?subagents=true"
+    return curlJson(`${base}/api/v1/sessions/${id}/usage${qs}`, timeoutMs)
   }
   if (a[0] === "session" && a[1] === "get" && a[2]) {
     const id = encodeURIComponent(a[2])
@@ -619,30 +624,39 @@ function titleForSlot(
 const usageCache = new Map<string, AgentsviewUsage | null>()
 const sessionGetCache = new Map<string, AgentsviewSession | null>()
 
+/**
+ * ownOnly excludes subagent transcripts. Parents need it: their Agent
+ * children are counted as slices, and the subagent rollup can report
+ * has_cost=false while the parent is still live.
+ */
 function fetchUsage(
   sessionId: string,
   retries = 2,
   harness?: string,
+  ownOnly = false,
 ): AgentsviewUsage | null {
+  const cacheKey = (k: string) => (ownOnly ? `own:${k}` : k)
   const keys = sessionIdCandidates(sessionId, harness)
   for (const key of keys) {
-    if (usageCache.has(key)) {
-      const hit = usageCache.get(key)
+    if (usageCache.has(cacheKey(key))) {
+      const hit = usageCache.get(cacheKey(key))
       if (hit) return hit
     }
   }
   // If any candidate is cached as a definitive miss, still try other uncached forms.
   for (const key of keys) {
     for (let attempt = 0; attempt <= retries; attempt++) {
-      const r = runAgentsview(["session", "usage", key, "--json"], 45_000)
+      const args = ["session", "usage", key, "--json"]
+      if (ownOnly) args.push("--own-only")
+      const r = runAgentsview(args, 45_000)
       if (!r.ok) {
         if (attempt < retries) continue
         break
       }
       try {
         const u = JSON.parse(r.stdout) as AgentsviewUsage
-        for (const k of keys) usageCache.set(k, u)
-        if (u.session_id) usageCache.set(u.session_id, u)
+        for (const k of keys) usageCache.set(cacheKey(k), u)
+        if (u.session_id) usageCache.set(cacheKey(u.session_id), u)
         return u
       } catch {
         if (attempt < retries) continue
@@ -650,7 +664,7 @@ function fetchUsage(
     }
   }
   for (const k of keys) {
-    if (!usageCache.has(k)) usageCache.set(k, null)
+    if (!usageCache.has(cacheKey(k))) usageCache.set(cacheKey(k), null)
   }
   return null
 }
@@ -989,6 +1003,72 @@ function rollupRole(role: SessionRole, list: SlotUsage[]): RoleRollup {
   }
 }
 
+/**
+ * Native Claude Agent slots have no session id, but each child transcript
+ * lives at <claude>/projects/<encoded cwd>/<parent>/subagents/agent-<id>.jsonl
+ * and its first prompt names the slot's .out path. Returns every child whose
+ * prompt names an out path (retries share one), plus the owning parent ids.
+ */
+function findClaudeAgentChildren(
+  runDir: string,
+  outPaths: string[],
+): { byOut: Map<string, Array<{ id: string; parent: string }>>; parents: Set<string> } {
+  const byOut = new Map<string, Array<{ id: string; parent: string }>>()
+  const parents = new Set<string>()
+  const claudeRoot =
+    process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME || "", ".claude")
+  const projectsRoot = join(claudeRoot, "projects")
+  if (!existsSync(projectsRoot) || outPaths.length === 0) return { byOut, parents }
+
+  const projectDirs: string[] = []
+  let dir = runDir
+  while (dir && dir !== "/") {
+    const p = join(projectsRoot, dir.replace(/[^a-zA-Z0-9]/g, "-"))
+    if (existsSync(p)) projectDirs.push(p)
+    dir = resolve(dir, "..")
+  }
+
+  for (const projectDir of projectDirs) {
+    let entries: string[] = []
+    try {
+      entries = readdirSync(projectDir)
+    } catch {
+      continue
+    }
+    for (const parent of entries) {
+      const subDir = join(projectDir, parent, "subagents")
+      if (!UUID_RE.test(parent) || !existsSync(subDir)) continue
+      let files: string[] = []
+      try {
+        files = readdirSync(subDir).filter((f) => /^agent-.*\.jsonl$/.test(f))
+      } catch {
+        continue
+      }
+      for (const f of files) {
+        let head = ""
+        try {
+          const fd = openSync(join(subDir, f), "r")
+          const buf = Buffer.alloc(64 * 1024)
+          const n = readSync(fd, buf, 0, buf.length, 0)
+          closeSync(fd)
+          head = buf.subarray(0, n).toString("utf8").split("\n")[0] || ""
+        } catch {
+          continue
+        }
+        const hits = outPaths.filter((o) => head.includes(o))
+        // A prompt naming several outs is an orchestrator helper, not a slot.
+        if (hits.length !== 1) continue
+        const id = f.replace(/\.jsonl$/, "")
+        const list = byOut.get(hits[0]) || []
+        list.push({ id, parent })
+        byOut.set(hits[0], list)
+        parents.add(parent)
+      }
+    }
+  }
+  return { byOut, parents }
+}
+
 function listSessions(opts: {
   agent?: string
   since: string
@@ -1319,10 +1399,16 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
       limit: 500,
     })
     const prefix = titlePrefix
+    // Re-reviews of the same MR share the title prefix; skip earlier runs.
+    const slotStarts = slots
+      .map((r) => parseIsoMs(r.started_at))
+      .filter((t): t is number => t != null)
+    const notBefore = slotStarts.length ? Math.min(...slotStarts) - 5 * 60_000 : null
     const extras = opencodeSessions.filter(
       (s) =>
         typeof s.first_message === "string" &&
         s.first_message.startsWith(prefix) &&
+        (notBefore == null || (parseIsoMs(s.started_at) ?? notBefore) >= notBefore) &&
         s.id &&
         !matchedAvIds.has(s.id) &&
         !matchedAvIds.has(normalizeSessionId(s.id) || ""),
@@ -1402,6 +1488,61 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
     }
   }
 
+  // Native Claude Agent slots: match children by the out path in their prompt.
+  const transcriptParents = new Set<string>()
+  if (agentsviewAvailable) {
+    const external = slots.filter(
+      (r) => !r.has_cost && !r.session_id && r.harness === "external",
+    )
+    const outFor = new Map<SlotUsage, string>()
+    for (const row of external) {
+      const m = metas.find((x) => (x.meta.slot || slotNameFromMetaPath(x.path)) === row.slot)
+      if (m) outFor.set(row, outPathFromMeta(runDir, m.meta, m.path))
+    }
+    const found = findClaudeAgentChildren(runDir, [...outFor.values()])
+    for (const [row, out] of outFor) {
+      const kids = found.byOut.get(out)
+      if (!kids?.length) continue
+      let micro = 0
+      let priced = 0
+      let outTokens = 0
+      let peak: number | null = null
+      const models = new Set<string>()
+      for (const k of kids) {
+        const u = fetchUsage(k.id)
+        if (!u) continue
+        const f = mapUsageToSlotFields(u)
+        if (f.has_cost && f.cost_microdollars != null) {
+          micro += f.cost_microdollars
+          priced++
+        }
+        outTokens += f.total_output_tokens ?? 0
+        if (f.peak_context_tokens != null) peak = Math.max(peak ?? 0, f.peak_context_tokens)
+        for (const m of f.models) models.add(m)
+        matchedAvIds.add(k.id)
+      }
+      const first = kids[0]
+      row.session_id = first.id
+      row.agentsview_id = first.id
+      row.parent_session_id = first.parent
+      row.has_cost = priced > 0
+      row.cost_microdollars = priced > 0 ? micro : null
+      row.cost_usd = microToUsd(row.cost_microdollars)
+      row.cost_source = priced > 0 ? "agentsview" : "unavailable"
+      row.total_output_tokens = outTokens
+      row.peak_context_tokens = peak
+      row.has_peak_context = peak != null
+      row.models = [...models]
+      row.match = "claude_transcript"
+      row.role = "slice"
+      row.error =
+        priced < kids.length ? `${kids.length - priced}/${kids.length} child sessions unpriced` : undefined
+      if (kids.length > 1) row.error = [row.error, `${kids.length} child sessions summed`].filter(Boolean).join("; ")
+      applySessionSignals(row, first.id)
+      transcriptParents.add(first.parent)
+    }
+  }
+
   // Optional: match Claude agent children by time window for external slots lacking session_id.
   // Prefer prompts that look like ultra slices; reject foreign-parent children later via parent filter.
   if (agentsviewAvailable && includeClaude) {
@@ -1434,6 +1575,7 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
       const unmatched = slots.filter(
         (s) =>
           !s.has_cost &&
+          s.match !== "claude_transcript" &&
           (s.harness === "external" ||
             s.harness === "claude" ||
             s.actual_model.includes("claude") ||
@@ -1567,6 +1709,9 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
   const ultraParents = new Set<string>()
   if (explicitList.length > 0) {
     for (const id of explicitList) ultraParents.add(id)
+  } else if (transcriptParents.size > 0) {
+    // Owner of this run's Agent transcripts; exact, unlike prompt heuristics.
+    for (const id of transcriptParents) ultraParents.add(id)
   } else if (runDirParents.size > 0) {
     for (const id of runDirParents) ultraParents.add(id)
   } else if (childParentCounts.size > 0) {
@@ -1653,7 +1798,7 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
     for (const pid of ultraParents) {
       const s = fetchSessionGet(pid)
       if (!s?.id) continue
-      const usage = fetchUsage(pid)
+      const usage = fetchUsage(pid, 2, undefined, true)
       const prow = sessionToParentRow(s, usage)
       if (usage?.models?.[0]) prow.actual_model = usage.models[0]
       parents.push(prow)
