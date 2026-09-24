@@ -3,7 +3,7 @@ description: Many brain, one task with Grok 4.7 - only to be used by the MBOT sk
 mode: subagent
 hidden: true
 # Do not pin a provider here. The in-container bot serve registers `xai`,
-# not `x-ai`; a pinned unavailable model silently falls through to gpt-5.6-sol.
+# not `x-ai`; a pinned unavailable model silently falls through to gpt-6-sol.
 # plan.json `model:` (e.g. xai/grok-4.7) is the performer.
 permission:
   edit: deny

@@ -97,8 +97,8 @@ describe("inferProjectDir", () => {
 
 describe("OpenCode defaults", () => {
   test("GPT Sol models get colin-mbot-gpt-sol", () => {
-    expect(defaultOpencodeAgent("openai/gpt-5.6-sol")).toBe("colin-mbot-gpt-sol")
-    expect(defaultOpencodeAgent("gpt-5.6-sol")).toBe("colin-mbot-gpt-sol")
+    expect(defaultOpencodeAgent("openai/gpt-6-sol")).toBe("colin-mbot-gpt-sol")
+    expect(defaultOpencodeAgent("gpt-6-sol")).toBe("colin-mbot-gpt-sol")
   })
   test("GPT Astra models get colin-mbot-gpt-astra", () => {
     expect(defaultOpencodeAgent("openai/gpt-6-astra")).toBe("colin-mbot-gpt-astra")
@@ -279,7 +279,7 @@ describe("mbot-run launch path + plan merge (external slots, no models)", () => 
     const plan = writePlan("plan-b.json", [
       {
         slot: "integration-gpt",
-        planned_model: "gpt-5.6-sol",
+        planned_model: "gpt-6-sol",
         harness: "external",
         prompt: "prompts/integration.md",
         out: "results/integration-gpt.out",
@@ -420,7 +420,7 @@ describe("OpenCode attach via env, not --attach", () => {
   test("occtl run args never include --attach; spawn only without attach", () => {
     expect(occtlAttachArgs("127.0.0.1:4096")).toEqual([])
     const attached = occtlRunArgs({
-      model: "openai/gpt-5.6-sol",
+      model: "openai/gpt-6-sol",
       promptPath: "prompts/x.md",
       outPath: "results/x.out",
       timeoutMs: 1200000,
@@ -431,7 +431,7 @@ describe("OpenCode attach via env, not --attach", () => {
     expect(attached).not.toContain("--attach")
     expect(attached).not.toContain("--spawn")
     const local = occtlRunArgs({
-      model: "openai/gpt-5.6-sol",
+      model: "openai/gpt-6-sol",
       promptPath: "prompts/x.md",
       outPath: "results/x.out",
       timeoutMs: 1200000,

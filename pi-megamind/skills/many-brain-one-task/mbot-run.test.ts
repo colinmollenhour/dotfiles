@@ -91,8 +91,8 @@ describe("inferProjectDir", () => {
 
 describe("OpenCode defaults", () => {
   test("GPT Sol models get colin-mbot-gpt-sol", () => {
-    expect(defaultOpencodeAgent("openai/gpt-5.6-sol")).toBe("colin-mbot-gpt-sol")
-    expect(defaultOpencodeAgent("gpt-5.6-sol")).toBe("colin-mbot-gpt-sol")
+    expect(defaultOpencodeAgent("openai/gpt-6-sol")).toBe("colin-mbot-gpt-sol")
+    expect(defaultOpencodeAgent("gpt-6-sol")).toBe("colin-mbot-gpt-sol")
   })
   test("GPT Astra models get colin-mbot-gpt-astra", () => {
     expect(defaultOpencodeAgent("openai/gpt-6-astra")).toBe("colin-mbot-gpt-astra")
@@ -273,7 +273,7 @@ describe("mbot-run launch path + plan merge (external slots, no models)", () => 
     const plan = writePlan("plan-b.json", [
       {
         slot: "integration-gpt",
-        planned_model: "gpt-5.6-sol",
+        planned_model: "gpt-6-sol",
         harness: "external",
         prompt: "prompts/integration.md",
         out: "results/integration-gpt.out",

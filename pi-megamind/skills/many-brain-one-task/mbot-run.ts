@@ -15,7 +15,7 @@
  *
  * Commands:
  *   bun mbot-run.ts init --run-dir .tmp/ultra-N
- *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://seamus:4095 --model openai/gpt-5.6-sol
+ *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://seamus:4095 --model openai/gpt-6-sol
  *   bun mbot-run.ts launch --plan .tmp/ultra-N/plan.json [--detach]
  *   bun mbot-run.ts harvest --run-dir .tmp/ultra-N
  *   bun mbot-run.ts candidates --run-dir .tmp/ultra-N
@@ -1351,7 +1351,7 @@ async function cmdSmoke(opts: {
   const pf = await smokeOpencode({
     runDir,
     attach: opts.attach,
-    model: opts.model || "openai/gpt-5.6-sol",
+    model: opts.model || "openai/gpt-6-sol",
     password: opts.password,
     timeoutMs: opts.timeoutMs ?? DEFAULT_SMOKE_TIMEOUT_MS,
     forceMode: opts.mode,
@@ -1457,7 +1457,7 @@ async function cmdLaunch(planPath: string): Promise<void> {
         plan.slots.find((s) => s.harness === "opencode" || s.harness === "occtl")
           ?.provider_model_id ||
         plan.slots.find((s) => s.harness === "opencode" || s.harness === "occtl")?.planned_model ||
-        "openai/gpt-5.6-sol"
+        "openai/gpt-6-sol"
       preflight = await smokeOpencode({
         runDir,
         attach: plan.attach,

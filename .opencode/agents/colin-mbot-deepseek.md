@@ -1,8 +1,8 @@
 ---
-description: Many brain, one task with Deepseek V4 Pro - only to be used by the MBOT skill
+description: Many brain, one task with Deepseek V4.1 Flash - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: openrouter/deepseek/deepseek-v4-pro-0813
+model: openrouter/deepseek/deepseek-v4.1-flash
 permission:
   edit: deny
   task: deny

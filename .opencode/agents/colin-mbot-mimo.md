@@ -1,8 +1,8 @@
 ---
-description: Many brain, one task with MiMo V2.5 Pro - only to be used by the MBOT skill
+description: Many brain, one task with MiMo V2.6 Pro - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: openrouter/xiaomi/mimo-v2.5-pro
+model: openrouter/xiaomi/mimo-v2.6-pro
 permission:
   edit: deny
   task: deny

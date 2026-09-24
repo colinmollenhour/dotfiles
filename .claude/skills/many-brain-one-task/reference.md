@@ -60,7 +60,7 @@ The host harness (you, the one running this skill right now) limits which models
 
 | Family | slot `agent` | typical slot `model` |
 |---|---|---|
-| Opus | `colin-mbot-opus` | `anthropic/claude-opus-5` |
+| Opus | `colin-mbot-opus` | `anthropic/claude-opus-5-5` |
 | Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
@@ -334,8 +334,8 @@ If the `Agent` tool is unavailable, fall back to **`botctl prompt`** (preferred)
 ```json
 {
   "slot": "opus-state",
-  "planned_model": "anthropic/claude-opus-5",
-  "model": "anthropic/claude-opus-5",
+  "planned_model": "anthropic/claude-opus-5-5",
+  "model": "anthropic/claude-opus-5-5",
   "agent": "colin-mbot-opus",
   "variant": "high",
   "harness": "opencode",

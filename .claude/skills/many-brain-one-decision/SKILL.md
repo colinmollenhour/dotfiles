@@ -88,8 +88,8 @@ Do not call `occtl` or `run-opencode.ts` from this skill.
   "slots": [
     {
       "slot": "gpt-tech-bro",
-      "planned_model": "openai/gpt-5.6-sol",
-      "model": "openai/gpt-5.6-sol",
+      "planned_model": "openai/gpt-6-sol",
+      "model": "openai/gpt-6-sol",
       "agent": "colin-mbot-gpt-sol",
       "variant": "high",
       "harness": "opencode",
@@ -98,8 +98,8 @@ Do not call `occtl` or `run-opencode.ts` from this skill.
     },
     {
       "slot": "opus-bean-counter",
-      "planned_model": "anthropic/claude-opus-5",
-      "model": "anthropic/claude-opus-5",
+      "planned_model": "anthropic/claude-opus-5-5",
+      "model": "anthropic/claude-opus-5-5",
       "agent": "colin-mbot-opus",
       "variant": "high",
       "harness": "opencode",
@@ -114,10 +114,10 @@ Do not call `occtl` or `run-opencode.ts` from this skill.
 
 | Family | slot `agent` | typical slot `model` |
 |---|---|---|
-| Opus | `colin-mbot-opus` | `anthropic/claude-opus-5` |
+| Opus | `colin-mbot-opus` | `anthropic/claude-opus-5-5` |
 | Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
-| GPT | `colin-mbot-gpt-sol` | `openai/gpt-5.6-sol` |
+| GPT | `colin-mbot-gpt-sol` | `openai/gpt-6-sol` |
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
 | GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from attach `/config/providers` |
 

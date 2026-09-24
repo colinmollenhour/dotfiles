@@ -6,9 +6,9 @@ operator's host. Read Step 0 before writing `plan.json`.
 
 ## Participants
 
-- **Claude Opus 5** at **high** thinking effort (not `max` / `xhigh`) — also the model for
+- **Claude Opus 5.5** at **high** thinking effort (not `max` / `xhigh`) — also the model for
   discovery, validation, integration, and summarization slots
-- **GPT-5.6 Sol** at high reasoning effort (via OpenAI, not OpenCode Zen)
+- **GPT-6 Sol** at high reasoning effort (via OpenAI, not OpenCode Zen)
 - **Grok** at high reasoning effort
 
 Backup when a primary cannot run: **Grok only** — never invent a substitute lineup.
@@ -34,8 +34,8 @@ OpenCode parent has the OpenCode `task` tool and no `Agent`.
 
 | Participant | Route |
 |---|---|
-| Opus 5 | native `Agent` tool — list the slot in `plan.json` with `harness: "external"` so harvest still scores its `.out` |
-| GPT-5.6 Sol | `mbot-run` OpenCode slot |
+| Opus 5.5 | native `Agent` tool — list the slot in `plan.json` with `harness: "external"` so harvest still scores its `.out` |
+| GPT-6 Sol | `mbot-run` OpenCode slot |
 | Grok | `mbot-run` OpenCode slot — the `grok` CLI is **not** in this image |
 
 Blocking `mbot-run launch` is fine here; pass Bash `timeout: 1320000` (22 min).
@@ -66,8 +66,8 @@ explicitly on the slot.
 
 | Participant | slot `model` | slot `agent` | `variant` |
 |---|---|---|---|
-| Opus 5 | `anthropic/claude-opus-5` | `colin-mbot-opus` | `high` |
-| GPT-5.6 Sol | `openai/gpt-5.6-sol` | `colin-mbot-gpt-sol` | `high` |
+| Opus 5.5 | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `high` |
+| GPT-6 Sol | `openai/gpt-6-sol` | `colin-mbot-gpt-sol` | `high` |
 | Grok | `xai/grok-4.7` | `colin-mbot-grok` | `high` |
 
 - The provider id on this server is `xai`, **not** `x-ai`. `colin-mbot-grok` deliberately pins no
@@ -116,7 +116,7 @@ Every OpenCode participant title (set on the `mbot-run` plan slot) must include:
 ultra|{gitlabProjectPath}|!{mrIid}|{bucketOr-}|{role}|{modelShort}|retry{N}
 ```
 
-Example: `ultra|shipstream/server|!2740|-|state|gpt-5.6-sol|retry0`
+Example: `ultra|shipstream/server|!2740|-|state|gpt-6-sol|retry0`
 
 Use `-` for bucket when not bucketed. Bump `retryN` and use a distinct `--out` for every
 re-launch.
