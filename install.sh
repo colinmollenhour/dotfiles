@@ -344,13 +344,28 @@ install_file() {
   fi
 }
 
+# Hash a rendered dotfile with its install stamp ($INSTALL_REPO_HEAD / $INSTALL_DATE) masked,
+# so files that differ only in the stamped commit and date compare equal.
+stamp_normalized_hash() {
+  sed -E \
+    -e 's/(Revision committed on ).*/\1<date>/' \
+    -e "s/^(.{0,3}# Colin's .*\()([0-9a-f]{40}|unknown)\)\$/\1<sha>)/" \
+    "$1" | sha256sum | cut -d' ' -f1
+}
+
+# A rendered dest that differs from the incoming render only by its stamp is not a user edit.
+only_stamp_differs() {
+  local dest="$1" tmpfile="$2"
+  [[ -f "$dest" ]] && [[ "$(stamp_normalized_hash "$dest")" == "$(stamp_normalized_hash "$tmpfile")" ]]
+}
+
 # Move a pre-rendered tmpfile → dest, recording src_rel in the manifest; always removes tmpfile
 install_rendered() {
   local src_rel="$1" tmpfile="$2" dest="$3"
   local existed=false mtime_source="$SCRIPT_DIR/$src_rel"
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
-    if can_overwrite "$dest" "$tmpfile" "$mtime_source"; then
+    if only_stamp_differs "$dest" "$tmpfile" || can_overwrite "$dest" "$tmpfile" "$mtime_source"; then
       if same_hash_and_mtime "$dest" "$tmpfile" "$mtime_source"; then
         record_unchanged "$dest"
       elif [[ -f "$dest" ]]; then
@@ -364,7 +379,7 @@ install_rendered() {
     rm -f "$tmpfile"
     return 0
   fi
-  if ! can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel"; then
+  if ! only_stamp_differs "$dest" "$tmpfile" && ! can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel"; then
     rm -f "$tmpfile"
     return 0
   fi

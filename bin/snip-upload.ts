@@ -652,6 +652,20 @@ async function verifyConfig(cfg): Promise<boolean> {
     process.stderr.write(`  ${publicUrl} is not publicly readable. Set the bucket's access to Public in the Tigris console\n  (bucket Settings), or fix the public base URL.\n`)
   }
 
+  // The test object exists right now, so a listing that works would include it.
+  const listUrl = new URL(cfg.publicBaseUrl)
+  listUrl.pathname = '/'
+  listUrl.search = `?list-type=2&prefix=${encodeURIComponent(cfg.prefix)}`
+  process.stderr.write('Checking that the bucket cannot be listed publicly... ')
+  res = await fetch(listUrl).catch(e => e)
+  if (res instanceof Response && res.ok && (await res.text()).includes('<ListBucketResult')) {
+    ok = false
+    process.stderr.write('failed\n  Anyone can list every uploaded file. In the Tigris console, turn on "Disable Directory Listing"\n  (bucket Settings → Access and Sharing).\n')
+  }
+  else {
+    process.stderr.write('ok\n')
+  }
+
   const empty = Buffer.alloc(0)
   await fetch(s3Url(cfg, key), { method: 'DELETE', headers: sigV4Headers(cfg, 'DELETE', key, empty, type) }).catch(() => {})
   return ok

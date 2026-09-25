@@ -140,6 +140,21 @@ assert_file_missing "$home/.bashrc"
 assert_file_missing "$home/.gitconfig"
 assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
 
+# --- Test that a stale install stamp (commit/date) alone is not a conflict ---
+stamp_home="$TEST_ROOT/stamp-home"
+mkdir -p "$stamp_home"
+run_install "$stamp_home" --dotfiles --no-input --quiet >/dev/null
+old_sha="0123456789abcdef0123456789abcdef01234567"
+sed -i -E "s/\([0-9a-f]{40}\)/($old_sha)/; s/(Revision committed on ).*/\1Wed, 16 Sep 2026 15:04:13 +0000/" \
+  "$stamp_home/.bashrc.colin"
+output="$(run_install "$stamp_home" --dotfiles --no-input)"
+assert_not_contains "$output" "Skipping"
+assert_not_contains "$(<"$stamp_home/.bashrc.colin")" "$old_sha"
+
+echo "# local edit" >> "$stamp_home/.bashrc.colin"
+output="$(run_install "$stamp_home" --dotfiles --no-input)"
+assert_contains "$output" "Skipping file modified since the last install: $stamp_home/.bashrc.colin"
+
 # --- Test --bins install and uninstall ---
 bins_home="$TEST_ROOT/bins-home"
 mkdir -p "$bins_home"
@@ -175,8 +190,8 @@ assert_files_equal "$ROOT_DIR/.claude/agents/megamind.md" \
   "$agents_home/.claude/agents/megamind.md"
 assert_files_equal "$ROOT_DIR/.opencode/agents/megamind.md" \
   "$agents_home/.opencode/agents/megamind.md"
-assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/default.md" \
-  "$agents_home/.claude/skills/many-brain-one-task/default.md"
+assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/defaults.md" \
+  "$agents_home/.claude/skills/many-brain-one-task/defaults.md"
 assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \
   "$agents_home/.claude/skills/many-brain-one-task/code-review.md"
 assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \

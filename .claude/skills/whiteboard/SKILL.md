@@ -54,6 +54,11 @@ printed URL uses the host the user connects to. Editing board files needs no spe
 1. `whiteboard start`, then `whiteboard new <project>/<topic>`. Use the repo or task name as `<project>`
    and a kebab-case topic.
 2. Give the user the board URL once, as a clickable link. After that, don't repeat it.
+   **Under Paseo** (`PASEO_AGENT_ID` is set and the Paseo browser tools are available), also open the
+   board with `browser_new_tab` right after `whiteboard new`. Call `browser_list_tabs` first and reuse
+   an existing tab for the same URL instead of opening a duplicate. The tab opens in the background, and
+   agents cannot place it in a split pane, so tell the user to use Paseo's "Split pane right" to view it
+   beside the conversation. Opening the tab makes the board a viewer, so `whiteboard errors` works.
 3. Build the board in passes. The user watches it fill in, so save a useful skeleton first (title, one-line
    subtitle, section headings), then fill each section. Use the Edit tool for changes to an existing board;
    don't rewrite the whole file, because the user may be reading one part while you change another.
@@ -81,7 +86,9 @@ with that message.
   binaries as data URIs. The live-reload client is left out.
 - Remote URLs stay as they are. Mermaid and highlight.js load from their CDNs when the page is viewed.
 - The upload keeps `snip-upload`'s random suffix, so the URL can't be guessed. The bucket deletes files
-  after 90 days. `--no-random` gives a predictable URL, and `--out FILE` writes the bundle without uploading.
+  after 90 days. Keep the suffix: the random suffix is the only thing keeping a published board private, because
+  the bucket can't be listed and there's no index. Use `--no-random` only when the user asks for a predictable
+  URL. `--out FILE` writes the bundle without uploading.
 - It prints what it inlined on stderr. Read the `WARNING not bundled` line: missing files and links to
   other local boards won't work in the published copy. Publish those boards separately, or remove the links.
 - It can't see paths a script builds at runtime (`fetch('data.json')`). Put that data inline in the

@@ -16,7 +16,7 @@ If the prompt names specific models/agents, use those. Otherwise resolve exactly
 2. A known task type (`code-review`, `critique`) loads the same-named profile.
 3. Otherwise load `defaults.md`.
 
-Profile names are exact. Do not silently substitute similarly named files such as `defaults.md`. If the selected profile is missing, try `default.md`; if that is also missing, use the built-in defaults below.
+Profile names are exact: `--profile foo` loads `foo.md` and nothing else. If the selected profile is missing, fall back to `defaults.md`; if that is also missing, use the built-in defaults below.
 
 Before launching, write `.tmp/<run-id>/participants.json` containing:
 

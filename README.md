@@ -116,7 +116,7 @@ Skills, agents, a status line, and worktree helpers install into `~/.claude/`. T
 `--bins` installs standalone tools from `bin/` into `~/.local/bin`, and `--all` includes them unless you pass `--no-bins`. An interactive run asks about each one. `./uninstall.sh --bins` removes them.
 
 - **`snip-upload`** — Upload a file or the clipboard to an S3-compatible bucket and print a public URL, with a random suffix so the URL can't be guessed. Images are converted to WebP. Needs [bun](https://bun.sh).
-  - `snip-upload auth` sets up the bucket interactively. It walks you through creating a [Tigris](https://storage.new/) bucket (public, directory listing off, optionally a lifecycle rule that expires old snips) and an access key scoped to that bucket. It then checks the keys with a test upload and public read, and writes `~/.local/colin/snips.json` with `0600` permissions. An interactive install offers to run it, and an upload with no config prompts for it.
+  - `snip-upload auth` sets up the bucket interactively. It walks you through creating a [Tigris](https://storage.new/) bucket (public, directory listing off, optionally a lifecycle rule that expires old snips) and an access key scoped to that bucket. It then checks the keys with a test upload and public read, confirms the bucket can't be listed publicly, and writes `~/.local/colin/snips.json` with `0600` permissions. An interactive install offers to run it, and an upload with no config prompts for it.
   - `snip-upload auth status [--verify]` shows the configured bucket without revealing the secret, and exits 3 when nothing is configured. `--verify` runs the live check. Agents use it as a preflight (the `whiteboard` skill does before `publish`).
   - `snip-upload <file>`, `snip-upload xclip`, `snip-upload wslclip` — see `snip-upload --help`.
 
@@ -367,10 +367,10 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 - **`nano-banana`** — Required for any image generation or editing. Wraps the Gemini CLI.
 - **`whiteboard`** — A poor man's [dev.fast](https://dev.fast/) whiteboard. The agent sketches an explanation (Mermaid diagrams, cards, stickies, diffs, code) in a plain HTML file, and your browser tab reloads on every save at the same scroll position. It's driven by the `whiteboard` CLI, a zero-dependency Node server that `--agents` links into `~/.local/bin`:
-  - `whiteboard start` / `new <project>/<topic>` / `status` / `stop` manage the server and boards. Boards live in `~/.whiteboard` by default, and the index at `/` lists them all.
+  - `whiteboard start` / `new <project>/<topic>` / `status` / `stop` manage the server and boards. Boards live in `~/.whiteboard` by default. The live server's index at `/` lists them all, which is fine because only you reach it over Tailscale. Published copies have no index (see `publish` below).
   - The server listens on the Tailscale address by default; pass `--host 0.0.0.0` for every adapter. `status` shows connected viewers and their remote addresses.
   - `whiteboard errors` prints the JS and Mermaid errors that open browsers report back, so the agent can fix a broken diagram without seeing the screen.
-  - `whiteboard publish <name>` bundles the board and its local CSS, JS, images, and fonts into one self-contained HTML file and uploads it with `snip-upload`.
+  - `whiteboard publish <name>` bundles the board and its local CSS, JS, images, and fonts into one self-contained HTML file and uploads it with `snip-upload`. Each copy is reachable only by its random-suffixed URL, since the bucket can't be listed.
   - One server is shared by every session and worktree, and boards are kept apart by `<project>/` folder. `whiteboard start` always succeeds: it reuses a running server and prints its URL, and a lock makes concurrent starts safe. Boards are plain files, so removing a worktree leaves nothing running.
   - `publish` runs `snip-upload auth status` first, and if no bucket is configured it tells you to run `snip-upload auth`.
 
@@ -422,21 +422,26 @@ When MBOT starts, it resolves exactly one profile:
 
 1. An explicit `--profile X` loads `X.md`.
 2. A known task type (`code-review` or `critique`) loads the same-named file.
-3. Anything else loads `default.md`.
-4. If the chosen file is missing, MBOT tries `default.md`; if that is also missing, it uses hardcoded defaults.
+3. Anything else loads `defaults.md`.
+4. If the chosen file is missing, MBOT falls back to `defaults.md`; if that is also missing, it uses hardcoded defaults.
 
-Profile names are exact: `defaults.md` is not an alias for `default.md`. The repo ships `default.md` and `code-review.md` beside `SKILL.md`; `install.sh --agents` copies them to each supported agent home.
+Profile names are exact: `--profile foo` loads `foo.md` and nothing else. The repo ships `defaults.md` and `code-review.md` beside `SKILL.md`; `install.sh --agents` copies them to each supported agent home.
 
 Before launch, MBOT records the resolved profile path plus every participant's display name, exact model/provider ID, harness, reasoning effort, and backup in `.tmp/<run-id>/participants.json`. Every raw result and metadata record is persisted under `.tmp/<run-id>/results/`, including native subagent output.
 
-### Shipped `default.md`
+### Shipped `defaults.md`
 
 ```markdown
-Use the following:
+Preferred models:
+- Opus 5.5 (high)
+- GPT 6 Sol (high)
+- Grok 4.7 (xhigh)
 
-- Claude CLI with the latest available Opus model at maximum reasoning effort
-- OpenCode with OpenAI/GPT-6 Sol at high reasoning effort
-- Grok CLI with Grok 4.7 at high reasoning effort
+Backup model (never more than one and ONLY these):
+- Qwen3.8 Max (xhigh)
+- GLM 5.3 (max)
+
+Do not use OpenCode Zen or OpenRouter providers except for the backup models.
 ```
 
 ### Shipped `code-review.md`
