@@ -21,7 +21,7 @@ WB=$(command -v whiteboard || echo "$HOME/.claude/skills/whiteboard/scripts/whit
 
 | Command | Does |
 |---|---|
-| `whiteboard start` | Starts the background server. Safe to repeat: when a server is already running it just prints the URL. |
+| `whiteboard start` | Starts the shared background server, or prints the URL of the one already running. Always exits 0 while a server is up; run it once per session and move on. |
 | `whiteboard new <project>/<topic>` | Creates `~/.whiteboard/<project>/<topic>.html` from the template and prints its path and URL. |
 | `whiteboard url [<name>]` | Prints the URL of a board, or of the index page. |
 | `whiteboard errors [--clear]` | Prints the JS and Mermaid errors reported by browsers that have a board open. |
@@ -35,13 +35,12 @@ and `start` then prints a URL for each one. The user bookmarks one index URL, an
 newest first. To move a running server to another host or port, run `whiteboard stop` first; `start`
 refuses to start a second server on the same directory.
 
-**Worktree-scoped boards.** The server exits on its own within a couple of seconds after its board directory
-is deleted or replaced. For work in a git worktree, keep the boards in the worktree so that removing the
-worktree also stops the server: pass `--dir "$(git rev-parse --show-toplevel)/.whiteboard"` to every
-`whiteboard` command (shell env doesn't persist between calls), and add `.whiteboard/` to
-`$(git rev-parse --git-common-dir)/info/exclude` so it stays out of `git status`. Each directory gets its
-own server. Without an explicit port, a busy one moves to the next free port starting at 4477, so read the
-URL `start` prints instead of assuming 4477.
+**One shared server.** Every session and worktree uses the same server and the same `~/.whiteboard`
+directory, and keeps its boards apart with the `<project>/` folder. Don't pass `--dir`, `--host`, or `--port`
+unless the user asks: `start` reuses whatever server is running, and concurrent starts are safe (one wins,
+and they all print its URL). Boards are plain files, so deleting a worktree leaves nothing running to clean
+up. If the default port is taken by something else, the server uses the next free one, so give the user the
+URL `start` prints rather than assuming 4477.
 
 `whiteboard status` lists the connected viewers (page and remote address). Use it to confirm the user
 actually has the board open, for example that a Tailscale address shows up.
@@ -68,6 +67,14 @@ printed URL uses the host the user connects to. Editing board files needs no spe
 ## Publishing
 
 `whiteboard publish <project>/<topic>` shares a board with someone who can't reach the live server.
+
+**Preflight first.** Before publishing, run `snip-upload auth status`. Exit 0 means a bucket is
+configured. Any other exit (3 = not configured), or `snip-upload` missing from PATH, means stop and tell
+the user to run `snip-upload auth` in their own terminal. It's an interactive setup that walks them through
+creating a Tigris bucket and access key, so don't try to run it for them. If `snip-upload` isn't installed,
+it comes from `./install.sh --bins` in colin-dotfiles. `publish` runs the same check itself and fails
+with that message.
+
 `snip-upload` stores one file per URL, so `publish` builds a single self-contained file:
 
 - Local stylesheets (including `@import` and `url()`), scripts, images, SVGs, and fonts are inlined, with

@@ -21,10 +21,18 @@ DOTFILES=(
   ".paseo/orchestration-preferences.json"
 )
 
+# Standalone CLIs installed to ~/.local/bin by --bins, as "source:name:runtime".
+BINS=(
+  "bin/snip-upload.ts:snip-upload:bun"
+)
+SNIPS_CONFIG="$HOME/.local/colin/snips.json"
+
 DO_DOTFILES=false
 DO_BASHRC=false
 DO_GITCONFIG=false
 DO_AGENTS=false
+DO_BINS=false
+NO_BINS=false
 DO_INTERACTIVE=false
 DO_ALL=false
 DRY_RUN=false
@@ -662,11 +670,13 @@ EXAMPLES
   $SCRIPT_NAME --interactive
 
 OPTIONS
-  -a, --all          Install everything: dotfiles, shell/git hooks, and agents
+  -a, --all          Install everything: dotfiles, shell/git hooks, agents, and bins
       --dotfiles     Install dotfiles into \$HOME
       --bashrc       Update ~/.bashrc to source ~/.bashrc.colin
       --gitconfig    Update ~/.gitconfig to include ~/.gitconfig.colin
       --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
+      --bins         Install standalone CLIs (snip-upload) to ~/.local/bin
+      --no-bins      Skip the CLIs when using --all
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
   -f, --force        Overwrite conflicting files without prompting
@@ -683,6 +693,11 @@ CONFLICTS
 DOTFILES
 EOF
   printf '  %s\n' "${DOTFILES[@]}"
+  printf '\nBINS\n'
+  local spec
+  for spec in "${BINS[@]}"; do
+    printf '  %s -> ~/.local/bin/%s\n' "${spec%%:*}" "$(cut -d: -f2 <<<"$spec")"
+  done
 }
 
 show_version() {
@@ -1039,6 +1054,37 @@ install_agents() {
   suggest_statusline_if_missing
 }
 
+install_bin() {
+  local src name runtime
+  IFS=: read -r src name runtime <<<"$1"
+  local dest="$HOME/.local/bin/$name"
+  install_file "$src" "$SCRIPT_DIR/$src" "$dest"
+  if [[ "$DRY_RUN" == false && -f "$dest" ]]; then
+    chmod +x "$dest"
+  fi
+  if [[ -n "$runtime" ]] && ! command -v "$runtime" >/dev/null 2>&1; then
+    warn "$name needs $runtime on PATH; install it first (bun: curl -fsSL https://bun.sh/install | bash)"
+  fi
+}
+
+snips_setup_hint() {
+  [[ -f "$SNIPS_CONFIG" ]] && return 0
+  log "snip-upload has no bucket configured yet. Run 'snip-upload auth' to connect a Tigris bucket."
+}
+
+install_bins() {
+  section "Installing CLIs to ~/.local/bin"
+  local spec
+  for spec in "${BINS[@]}"; do
+    install_bin "$spec"
+  done
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) warn "~/.local/bin is not on PATH; add it to use these CLIs" ;;
+  esac
+  snips_setup_hint
+}
+
 prompt_yes_no() {
   local prompt="$1"
 
@@ -1076,6 +1122,18 @@ interactive_install() {
   if prompt_yes_no "Install Claude/OpenCode/Gemini/OpenAI agent files"; then
     install_agents
   fi
+
+  local spec name
+  for spec in "${BINS[@]}"; do
+    name="$(cut -d: -f2 <<<"$spec")"
+    prompt_yes_no "Install the $name CLI to ~/.local/bin" || continue
+    install_bin "$spec"
+    if [[ "$name" == snip-upload && "$DRY_RUN" == false && ! -f "$SNIPS_CONFIG" ]] \
+      && command -v bun >/dev/null 2>&1 \
+      && prompt_yes_no "Set up snip-upload now (Tigris bucket and access key)"; then
+      "$HOME/.local/bin/snip-upload" auth || warn "snip-upload setup did not finish; run 'snip-upload auth' later"
+    fi
+  done
 }
 
 parse_args() {
@@ -1116,6 +1174,14 @@ parse_args() {
         ;;
       --agents)
         DO_AGENTS=true
+        shift
+        ;;
+      --bins)
+        DO_BINS=true
+        shift
+        ;;
+      --no-bins)
+        NO_BINS=true
         shift
         ;;
       --with-opus)
@@ -1169,7 +1235,9 @@ run_install() {
     DO_BASHRC=true
     DO_GITCONFIG=true
     DO_AGENTS=true
+    [[ "$NO_BINS" == true ]] || DO_BINS=true
   fi
+  [[ "$NO_BINS" == true && "$DO_BINS" == true ]] && die "--bins and --no-bins conflict"
 
   if [[ "$DO_DOTFILES" == true ]]; then
     install_dotfiles
@@ -1188,6 +1256,11 @@ run_install() {
 
   if [[ "$DO_AGENTS" == true ]]; then
     install_agents
+    ran=true
+  fi
+
+  if [[ "$DO_BINS" == true ]]; then
+    install_bins
     ran=true
   fi
 

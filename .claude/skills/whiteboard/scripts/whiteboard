@@ -30,8 +30,8 @@ Defaults:
         Use 0.0.0.0 (or 'all') for every IPv4 adapter, :: for IPv4+IPv6.
   PORT  $WHITEBOARD_PORT, else the first free port from ${DEFAULT_PORT}
 
-The server exits on its own when DIR is deleted, so a DIR inside a git worktree is
-cleaned up with the worktree.
+One server serves all of DIR; 'start' reuses it and always succeeds while it runs.
+The server exits on its own if DIR is deleted.
 
 NAME may contain slashes (e.g. myproject/auth-flow). Every save to a file under DIR
 reloads any browser tab showing it; the index page at / lists all boards.
@@ -172,8 +172,33 @@ ${boards.length ? `<ul class="wb-index">${rows}</ul>` : '<p class="wb-muted">No 
 }</script></body></html>`;
 }
 
+// One server per board directory. The lock makes concurrent `start`s race safely: the loser exits
+// quietly and every caller reads the winner's state file.
+function acquireLock(cfg) {
+  const lockFile = path.join(cfg.dir, '.whiteboard-server.lock');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
+      process.on('exit', () => {
+        try { if (fs.readFileSync(lockFile, 'utf8') === String(process.pid)) fs.unlinkSync(lockFile); } catch {}
+        try { if (JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')).pid === process.pid) fs.unlinkSync(cfg.stateFile); } catch {}
+      });
+      return true;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      const owner = Number(fs.readFileSync(lockFile, 'utf8'));
+      try { process.kill(owner || process.pid, 0); return false; } catch { fs.rmSync(lockFile, { force: true }); }
+    }
+  }
+  return false;
+}
+
 function serve(cfg) {
   fs.mkdirSync(cfg.dir, { recursive: true });
+  if (!acquireLock(cfg)) {
+    console.log(`another whiteboard server already serves ${cfg.dir}; exiting`);
+    return;
+  }
   const clients = new Set();
   const errors = [];
 
@@ -278,12 +303,8 @@ function serve(cfg) {
   server.on('listening', () => {
     const state = { pid: process.pid, host: cfg.host, port: cfg.port, dir: cfg.dir, started: new Date().toISOString() };
     fs.writeFileSync(cfg.stateFile, JSON.stringify(state, null, 2));
-    const cleanup = () => {
-      try { if (JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')).pid === process.pid) fs.unlinkSync(cfg.stateFile); } catch {}
-      process.exit(0);
-    };
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
+    process.on('SIGINT', () => process.exit(0));
+    process.on('SIGTERM', () => process.exit(0));
     console.log(`whiteboard serving ${cfg.dir} at ${allUrls(state).join(' ')}`);
   });
 }
@@ -302,10 +323,11 @@ async function waitForState(cfg, ms) {
 
 async function start(cfg) {
   const running = readState(cfg);
+  // Always succeed when a server is up, so agents never fight over it.
   if (running) {
     if (running.host !== cfg.host || (cfg.portExplicit && running.port !== cfg.port)) {
-      die(`a server for ${cfg.dir} is already running on ${running.host}:${running.port}; ` +
-        `run 'whiteboard stop' first to restart it on ${cfg.host}:${cfg.port}`);
+      process.stderr.write(`note: reusing the server on ${running.host}:${running.port}; ` +
+        `run 'whiteboard stop' first to move it to ${cfg.host}:${cfg.port}\n`);
     }
     console.log(`already running (pid ${running.pid})\n${allUrls(running).join('\n')}`);
     return;
@@ -421,11 +443,21 @@ function bundle(cfg, rel) {
   return { html, report };
 }
 
+function preflightSnipUpload() {
+  try {
+    execFileSync('snip-upload', ['auth', 'status'], { stdio: 'ignore' });
+  } catch (e) {
+    if (e.code === 'ENOENT') die('snip-upload is not installed; run ./install.sh --bins in colin-dotfiles');
+    die("snip-upload has no bucket configured. Ask the user to run 'snip-upload auth' in a terminal, then retry.");
+  }
+}
+
 function publish(cfg, opts) {
   const name = opts._[1];
   if (!name) die('publish requires NAME');
   const rel = boardPath(name);
   if (!fs.existsSync(path.join(cfg.dir, rel))) die(`no such board: ${path.join(cfg.dir, rel)}`);
+  if (!opts.out) preflightSnipUpload();
   const { html, report } = bundle(cfg, rel);
 
   const out = opts.out

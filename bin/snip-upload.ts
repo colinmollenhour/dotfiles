@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import { createHash, createHmac, randomBytes } from 'node:crypto'
-import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
-import { homedir, tmpdir } from 'node:os'
-import { basename, extname, join } from 'node:path'
+import { homedir, tmpdir, userInfo } from 'node:os'
+import { basename, dirname, extname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 
 const CONFIG_PATH = join(homedir(), '.local', 'colin', 'snips.json')
@@ -74,19 +74,24 @@ function withRandomSuffix(filename: string, len = 8) {
 }
 
 async function loadConfig() {
+  let raw
   try {
-    const cfg = JSON.parse(await readFile(CONFIG_PATH, 'utf8'))
-    for (const key of ['bucket', 'region', 'accessKeyId', 'secretAccessKey', 'prefix', 'publicBaseUrl']) {
-      if (!cfg[key]) fail(`Missing "${key}" in ${CONFIG_PATH}`)
-    }
-    return cfg
+    raw = await readFile(CONFIG_PATH, 'utf8')
   }
   catch (e: any) {
-    if (e?.code === 'ENOENT') {
-      fail(`Config not found: ${CONFIG_PATH}\n\nCreate it with:\n${JSON.stringify({ bucket: 'my-bucket', region: 'us-east-1', endpoint: 'https://s3.us-east-1.amazonaws.com', accessKeyId: 'AKIA...', secretAccessKey: '...', prefix: 'snips/', publicBaseUrl: 'https://cdn.example.com' }, null, 2)}`)
-    }
-    throw e
+    if (e?.code !== 'ENOENT') throw e
+    if (!process.stdin.isTTY) fail(`Config not found: ${CONFIG_PATH}\nRun 'snip-upload auth' in a terminal to set up a bucket.`)
+    process.stderr.write(`No bucket configured yet (${CONFIG_PATH}).\n`)
+    if (!await confirm('Set one up now?', true)) process.exit(1)
+    await cmdAuth()
+    raw = await readFile(CONFIG_PATH, 'utf8')
   }
+  const cfg = JSON.parse(raw)
+  for (const key of ['bucket', 'region', 'accessKeyId', 'secretAccessKey', 'publicBaseUrl']) {
+    if (!cfg[key]) fail(`Missing "${key}" in ${CONFIG_PATH}`)
+  }
+  if (typeof cfg.prefix !== 'string') fail(`Missing "prefix" in ${CONFIG_PATH} (use "" for none)`)
+  return cfg
 }
 
 // --- AWS SigV4 signing for S3 PUT ---
@@ -99,20 +104,25 @@ function sha256Hex(data) {
   return createHash('sha256').update(data).digest('hex')
 }
 
+// A custom endpoint defaults to path-style (endpoint/bucket/key) unless the config sets
+// "pathStyle": false, which uses virtual-hosted style (bucket.endpoint/key) like newer Tigris buckets need.
+function usePathStyle(cfg) {
+  return Boolean(cfg.endpoint) && cfg.pathStyle !== false
+}
+
 function s3Host(cfg) {
-  if (cfg.endpoint) {
-    const u = new URL(cfg.endpoint)
-    return u.host
-  }
-  return `${cfg.bucket}.s3.${cfg.region}.amazonaws.com`
+  if (!cfg.endpoint) return `${cfg.bucket}.s3.${cfg.region}.amazonaws.com`
+  const host = new URL(cfg.endpoint).host
+  return usePathStyle(cfg) ? host : `${cfg.bucket}.${host}`
 }
 
 function s3Url(cfg, s3Key) {
-  if (cfg.endpoint) {
+  if (usePathStyle(cfg)) {
     const base = cfg.endpoint.replace(/\/+$/, '')
     return `${base}/${cfg.bucket}/${s3Key}`
   }
-  return `https://${cfg.bucket}.s3.${cfg.region}.amazonaws.com/${s3Key}`
+  const protocol = cfg.endpoint ? new URL(cfg.endpoint).protocol : 'https:'
+  return `${protocol}//${s3Host(cfg)}/${s3Key}`
 }
 
 function sigV4Headers(cfg, method, s3Key, body, contentType) {
@@ -131,7 +141,7 @@ function sigV4Headers(cfg, method, s3Key, body, contentType) {
   ].join('\n') + '\n'
   const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date'
 
-  const canonicalUri = cfg.endpoint ? `/${cfg.bucket}/${s3Key}` : '/' + s3Key
+  const canonicalUri = usePathStyle(cfg) ? `/${cfg.bucket}/${s3Key}` : '/' + s3Key
   const canonicalRequest = [
     method,
     canonicalUri,
@@ -562,12 +572,179 @@ async function pressAnyKey() {
   process.stderr.write('\n')
 }
 
+// --- Auth (interactive setup) ---
+
+async function ask(question: string, def = ''): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr })
+  const answer = (await rl.question(def ? `${question} [${def}]: ` : `${question}: `)).trim()
+  rl.close()
+  return answer || def
+}
+
+async function confirm(question: string, def: boolean): Promise<boolean> {
+  const answer = (await ask(`${question} ${def ? '[Y/n]' : '[y/N]'}`)).toLowerCase()
+  return answer ? answer.startsWith('y') : def
+}
+
+// Read a line without echoing it, for secrets.
+async function askSecret(question: string): Promise<string> {
+  process.stderr.write(`${question}: `)
+  if (!process.stdin.isTTY) return ask('')
+  process.stdin.setRawMode(true)
+  process.stdin.resume()
+  let value = ''
+  try {
+    await new Promise<void>((resolve) => {
+      const onData = (buf: Buffer) => {
+        for (const ch of buf.toString('utf8')) {
+          if (ch === '\r' || ch === '\n') { process.stdin.off('data', onData); return resolve() }
+          if (ch === '\u0003') { process.stderr.write('\n'); process.exit(130) }
+          if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1)
+          else if (ch >= ' ') value += ch
+        }
+      }
+      process.stdin.on('data', onData)
+    })
+  }
+  finally {
+    process.stdin.setRawMode(false)
+    process.stdin.pause()
+  }
+  process.stderr.write('\n')
+  return value.trim()
+}
+
+async function readExistingConfig() {
+  try {
+    return JSON.parse(await readFile(CONFIG_PATH, 'utf8'))
+  }
+  catch {
+    return null
+  }
+}
+
+// Upload, read back through the public URL, then delete a small test object.
+async function verifyConfig(cfg): Promise<boolean> {
+  const key = `${cfg.prefix}.snip-upload-check-${randomBase62(8)}.txt`
+  const body = Buffer.from(`snip-upload check ${new Date().toISOString()}\n`)
+  const type = 'text/plain; charset=utf-8'
+
+  process.stderr.write('Checking upload... ')
+  let res = await fetch(s3Url(cfg, key), { method: 'PUT', headers: sigV4Headers(cfg, 'PUT', key, body, type), body }).catch(e => e)
+  if (!(res instanceof Response) || !res.ok) {
+    const detail = res instanceof Response ? `${res.status} ${(await res.text()).slice(0, 300)}` : String(res)
+    process.stderr.write(`failed\n  ${detail}\n`)
+    process.stderr.write('  Check the bucket name, and that the access key is scoped to this bucket with Editor permission.\n')
+    return false
+  }
+  process.stderr.write('ok\n')
+
+  let ok = true
+  const publicUrl = cfg.publicBaseUrl.replace(/\/+$/, '') + '/' + key
+  process.stderr.write('Checking public URL... ')
+  res = await fetch(publicUrl).catch(e => e)
+  if (res instanceof Response && res.ok && (await res.text()) === body.toString()) {
+    process.stderr.write('ok\n')
+  }
+  else {
+    ok = false
+    process.stderr.write(`failed (${res instanceof Response ? res.status : res})\n`)
+    process.stderr.write(`  ${publicUrl} is not publicly readable. Set the bucket's access to Public in the Tigris console\n  (bucket Settings), or fix the public base URL.\n`)
+  }
+
+  const empty = Buffer.alloc(0)
+  await fetch(s3Url(cfg, key), { method: 'DELETE', headers: sigV4Headers(cfg, 'DELETE', key, empty, type) }).catch(() => {})
+  return ok
+}
+
+async function cmdAuth() {
+  if (!process.stdin.isTTY) fail('snip-upload auth is interactive; run it in a terminal.')
+
+  const existing = await readExistingConfig()
+  if (existing) {
+    const id = String(existing.accessKeyId || '')
+    process.stderr.write(`Current config (${CONFIG_PATH}):\n  bucket ${existing.bucket}\n  endpoint ${existing.endpoint || '(AWS)'}\n  key ${id.slice(0, 8)}…\n  public ${existing.publicBaseUrl}${existing.prefix}\n`)
+    if (!await confirm('Replace it?', false)) return
+  }
+
+  process.stderr.write(`
+snip-upload stores files in an S3-compatible bucket and prints a public URL for each.
+These steps set up a Tigris bucket (the free tier is plenty for snips):
+
+  1. Sign up at https://storage.new/, then open the console at https://console.storage.dev/.
+  2. Create a bucket. Use a name without dots, e.g. "${defaultUser()}-snips".
+     In the bucket's Settings, set access to Public so uploads get shareable URLs,
+     and turn on "Disable Directory Listing" so nobody can browse your files.
+  3. Optional: add a lifecycle rule that expires objects after N days (e.g. 90),
+     so old snips delete themselves.
+  4. On the Access Keys page, create a key scoped to that bucket with Editor
+     permission. Copy the Access Key ID (tid_…) and Secret Access Key (tsec_…).
+     The secret is shown only once.
+
+`)
+
+  let bucket = ''
+  while (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket)) {
+    if (bucket) process.stderr.write('  Bucket names are 3-63 lowercase letters, digits, or hyphens (no dots).\n')
+    bucket = (await ask('Bucket name')).toLowerCase()
+  }
+  let accessKeyId = ''
+  while (!accessKeyId) accessKeyId = await ask('Access Key ID')
+  if (!accessKeyId.startsWith('tid_')) process.stderr.write('  (Tigris key IDs usually start with tid_; continuing anyway)\n')
+  let secretAccessKey = ''
+  while (!secretAccessKey) secretAccessKey = await askSecret('Secret Access Key (hidden)')
+
+  let prefix = await ask('Key prefix (a folder inside the bucket; "-" for none)', `${defaultUser()}/`)
+  prefix = prefix === '-' ? '' : prefix.replace(/^\/+/, '').replace(/\/*$/, '/')
+  const endpoint = (await ask('S3 endpoint', 'https://t3.storage.dev')).replace(/\/+$/, '')
+  const publicBaseUrl = (await ask('Public base URL', `https://${bucket}.t3.tigrisfiles.io`)).replace(/\/+$/, '')
+
+  const cfg = { bucket, region: 'auto', endpoint, pathStyle: false, accessKeyId, secretAccessKey, prefix, publicBaseUrl }
+  process.stderr.write('\n')
+  if (!await verifyConfig(cfg) && !await confirm('Save this config anyway?', false)) fail('Not saved.')
+
+  await mkdir(dirname(CONFIG_PATH), { recursive: true })
+  await writeFile(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 })
+  await chmod(CONFIG_PATH, 0o600)
+  process.stderr.write(`Saved ${CONFIG_PATH}\nTry it: snip-upload <file>\n`)
+}
+
+// Non-interactive: exit 0 when a usable config exists, 3 when not. --verify also runs a live upload check.
+async function cmdAuthStatus(args) {
+  const cfg = await readExistingConfig()
+  const missing = cfg ? ['bucket', 'region', 'accessKeyId', 'secretAccessKey', 'publicBaseUrl'].filter(k => !cfg[k]) : []
+  if (cfg && typeof cfg.prefix !== 'string') missing.push('prefix')
+  if (!cfg || missing.length) {
+    console.log(cfg ? `not configured: ${CONFIG_PATH} is missing ${missing.join(', ')}` : `not configured: ${CONFIG_PATH} not found`)
+    console.log(`Run 'snip-upload auth' in a terminal to set up a bucket.`)
+    process.exit(3)
+  }
+  console.log(`configured (${CONFIG_PATH})`)
+  console.log(`  bucket   ${cfg.bucket}`)
+  console.log(`  endpoint ${cfg.endpoint || `AWS S3 (${cfg.region})`}`)
+  console.log(`  key      ${String(cfg.accessKeyId).slice(0, 8)}…`)
+  console.log(`  public   ${cfg.publicBaseUrl.replace(/\/+$/, '')}/${cfg.prefix}`)
+  if (args.includes('--verify') && !await verifyConfig(cfg)) process.exit(1)
+}
+
+function defaultUser() {
+  try {
+    return (process.env.USER || userInfo().username).toLowerCase().replace(/[^a-z0-9-]/g, '') || 'me'
+  }
+  catch {
+    return 'me'
+  }
+}
+
 // --- CLI ---
 
 function usage() {
   process.stdout.write(`snip-upload — upload files (or clipboard contents) to S3
 
 Usage:
+  snip-upload auth                      Set up the bucket and access key (interactive)
+  snip-upload auth status [--verify]    Show the configured bucket; exit 3 if none
+                                        (--verify: live upload + public-read check)
   snip-upload <file> [options]          Upload a file; prints the public URL
   snip-upload xclip [options]           Upload clipboard contents (X11 / xclip)
   snip-upload wslclip [options]         Upload clipboard contents (Windows, via WSL)
@@ -595,9 +772,10 @@ Other options:
   --name NAME        Override the basename used in the S3 key
                      (random suffix is still added unless --no-random)
 
-Config: ${CONFIG_PATH}
+Config: ${CONFIG_PATH} (written by 'snip-upload auth')
   Required keys: bucket, region, accessKeyId, secretAccessKey, prefix, publicBaseUrl
-  Optional keys: endpoint (for S3-compatible services; uses path-style addressing)
+  Optional keys: endpoint (for S3-compatible services such as Tigris)
+                 pathStyle (default true with an endpoint; false = bucket.endpoint/key)
 `)
 }
 
@@ -622,6 +800,11 @@ if (argv.length === 0) {
 }
 else if (cmd === '--help' || cmd === '-h') {
   usage()
+}
+else if (cmd === 'auth') {
+  if (argv[1] === 'status') await cmdAuthStatus(argv.slice(2))
+  else if (argv[1] && argv[1] !== 'login') fail(`Unknown auth command: ${argv[1]}\nUsage: snip-upload auth [status [--verify]]`)
+  else await cmdAuth()
 }
 else if (cmd === 'xclip') {
   await cmdXclip(argv.slice(1))

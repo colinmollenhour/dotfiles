@@ -46,6 +46,12 @@ cd ~/.dotfiles
 # Install only the dotfiles
 ./install.sh --dotfiles
 
+# Install only the standalone CLIs (snip-upload) to ~/.local/bin
+./install.sh --bins
+
+# Everything except the CLIs
+./install.sh --all --no-bins
+
 # Show every flag
 ./install.sh --help
 ```
@@ -104,6 +110,15 @@ Running `./uninstall.sh` uses this same manifest to cleanly undo installation at
 ### Claude Code config
 
 Skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors skills into the shared `~/.agents/skills/` directory used by Codex, OpenCode, and agy. Workflows that used to live in `.claude/commands/` are skills now; leftover copies under `~/.claude/commands` and `~/.opencode/commands` are deleted on install. Side-effect skills (`/colin-review`, `/megamind`, commit/push/cleanup, and similar) set `disable-model-invocation: true` so they only run when you type `/name`. Library skills (`gh-cli`, `many-brain-one-task`, ORM/docs helpers) set `user-invocable: false` so they stay off the `/` menu. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
+
+### CLIs
+
+`--bins` installs standalone tools from `bin/` into `~/.local/bin`, and `--all` includes them unless you pass `--no-bins`. An interactive run asks about each one. `./uninstall.sh --bins` removes them.
+
+- **`snip-upload`** — Upload a file or the clipboard to an S3-compatible bucket and print a public URL, with a random suffix so the URL can't be guessed. Images are converted to WebP. Needs [bun](https://bun.sh).
+  - `snip-upload auth` sets up the bucket interactively. It walks you through creating a [Tigris](https://storage.new/) bucket (public, directory listing off, optionally a lifecycle rule that expires old snips) and an access key scoped to that bucket. It then checks the keys with a test upload and public read, and writes `~/.local/colin/snips.json` with `0600` permissions. An interactive install offers to run it, and an upload with no config prompts for it.
+  - `snip-upload auth status [--verify]` shows the configured bucket without revealing the secret, and exits 3 when nothing is configured. `--verify` runs the live check. Agents use it as a preflight (the `whiteboard` skill does before `publish`).
+  - `snip-upload <file>`, `snip-upload xclip`, `snip-upload wslclip` — see `snip-upload --help`.
 
 ## Shell helpers
 
@@ -356,7 +371,8 @@ Claude loads these automatically when a task matches, or you can reference them 
   - The server listens on the Tailscale address by default; pass `--host 0.0.0.0` for every adapter. `status` shows connected viewers and their remote addresses.
   - `whiteboard errors` prints the JS and Mermaid errors that open browsers report back, so the agent can fix a broken diagram without seeing the screen.
   - `whiteboard publish <name>` bundles the board and its local CSS, JS, images, and fonts into one self-contained HTML file and uploads it with `snip-upload`.
-  - With `--dir <worktree>/.whiteboard`, each worktree gets its own server on the next free port. The server exits when its directory is deleted, so removing the worktree stops it.
+  - One server is shared by every session and worktree, and boards are kept apart by `<project>/` folder. `whiteboard start` always succeeds: it reuses a running server and prints its URL, and a lock makes concurrent starts safe. Boards are plain files, so removing a worktree leaves nothing running.
+  - `publish` runs `snip-upload auth status` first, and if no bucket is configured it tells you to run `snip-upload auth`.
 
 ## Using MBOD (Many Brain One Decision)
 

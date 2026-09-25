@@ -140,6 +140,25 @@ assert_file_missing "$home/.bashrc"
 assert_file_missing "$home/.gitconfig"
 assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
 
+# --- Test --bins install and uninstall ---
+bins_home="$TEST_ROOT/bins-home"
+mkdir -p "$bins_home"
+output="$(run_install "$bins_home" --bins --no-input)"
+assert_files_equal "$ROOT_DIR/bin/snip-upload.ts" "$bins_home/.local/bin/snip-upload"
+[[ -x "$bins_home/.local/bin/snip-upload" ]] || { echo "snip-upload is not executable" >&2; exit 1; }
+assert_contains "$output" "snip-upload auth"
+
+output="$(run_install "$bins_home" --all --no-bins --no-input --dry-run --quiet)"
+assert_not_contains "$output" ".local/bin/snip-upload"
+
+if run_install "$bins_home" --bins --no-bins --no-input >/dev/null; then
+  echo "--bins with --no-bins should fail" >&2
+  exit 1
+fi
+
+output="$(run_uninstall "$bins_home" --bins --no-input --quiet)"
+assert_file_missing "$bins_home/.local/bin/snip-upload"
+
 agents_home="$TEST_ROOT/agents-home"
 mkdir -p "$agents_home/.claude"
 cp -p "$ROOT_DIR/.claude/settings.json" "$agents_home/.claude/settings.json"

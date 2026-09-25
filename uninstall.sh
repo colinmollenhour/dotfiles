@@ -25,6 +25,7 @@ DO_DOTFILES=false
 DO_BASHRC=false
 DO_GITCONFIG=false
 DO_AGENTS=false
+DO_BINS=false
 DO_INTERACTIVE=false
 DO_ALL=false
 DRY_RUN=false
@@ -162,6 +163,11 @@ is_agent_dest() {
   return 1
 }
 
+is_bin_dest() {
+  local dest="$1" src="${2:-}"
+  [[ "$dest" == "$HOME/.local/bin/"* && "$src" == bin/* ]]
+}
+
 should_uninstall_dest() {
   local dest="$1" src="${2:-}"
   if [[ "$DO_ALL" == true ]]; then
@@ -177,6 +183,9 @@ should_uninstall_dest() {
     return 0
   fi
   if [[ "$DO_AGENTS" == true ]] && is_agent_dest "$dest" "$src"; then
+    return 0
+  fi
+  if [[ "$DO_BINS" == true ]] && is_bin_dest "$dest" "$src"; then
     return 0
   fi
   return 1
@@ -393,11 +402,13 @@ EXAMPLES
   $SCRIPT_NAME --interactive
 
 OPTIONS
-  -a, --all          Uninstall everything: dotfiles, shell/git hooks, and agents
+  -a, --all          Uninstall everything: dotfiles, shell/git hooks, agents, and bins
       --dotfiles     Uninstall dotfiles from \$HOME
       --bashrc       Remove ~/.bashrc.colin include from ~/.bashrc
       --gitconfig    Remove ~/.gitconfig.colin include from ~/.gitconfig
       --agents       Uninstall Claude, OpenCode, Gemini, and OpenAI agent files
+      --bins         Uninstall standalone CLIs (snip-upload) from ~/.local/bin
+                     (~/.local/colin/snips.json credentials are left in place)
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without removing files
   -f, --force        Force removal of modified files without prompting
@@ -449,6 +460,10 @@ interactive_uninstall() {
   if prompt_yes_no "Uninstall Claude/OpenCode/Gemini/OpenAI agent files"; then
     DO_AGENTS=true
   fi
+
+  if prompt_yes_no "Uninstall CLIs from ~/.local/bin (snip-upload)"; then
+    DO_BINS=true
+  fi
 }
 
 parse_args() {
@@ -489,6 +504,10 @@ parse_args() {
         ;;
       --agents)
         DO_AGENTS=true
+        shift
+        ;;
+      --bins)
+        DO_BINS=true
         shift
         ;;
       -i|--interactive)
@@ -537,6 +556,7 @@ run_uninstall() {
     DO_BASHRC=true
     DO_GITCONFIG=true
     DO_AGENTS=true
+    DO_BINS=true
   fi
 
   # Gather target files to uninstall
