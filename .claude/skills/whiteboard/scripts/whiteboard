@@ -1,0 +1,514 @@
+#!/usr/bin/env node
+// whiteboard: serve a directory of HTML boards with live reload. Zero dependencies.
+import { spawn, execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SELF = fileURLToPath(import.meta.url);
+const ASSETS = path.join(path.dirname(SELF), '..', 'assets');
+const DEFAULT_PORT = 4477;
+
+const HELP = `whiteboard - live-reloading HTML whiteboards for agents
+
+Usage:
+  whiteboard start [--dir DIR] [--host HOST] [--port N]   Start server in background (idempotent)
+  whiteboard serve [--dir DIR] [--host HOST] [--port N]   Run server in foreground
+  whiteboard new NAME [--title TITLE] [--force]           Create DIR/NAME.html from the template
+  whiteboard url [NAME]                                   Print the board URL
+  whiteboard errors [--clear]                             Print browser errors reported by open boards
+  whiteboard status                                       Show server status and connected viewers
+  whiteboard publish NAME [--out FILE] [--no-random]      Bundle NAME into one self-contained HTML file and
+                                                          upload it with snip-upload (--out: write only)
+  whiteboard stop                                         Stop the background server
+
+Defaults:
+  DIR   $WHITEBOARD_DIR or ~/.whiteboard
+  HOST  $WHITEBOARD_HOST, else the Tailscale (100.64/10) address, else 127.0.0.1.
+        Use 0.0.0.0 (or 'all') for every IPv4 adapter, :: for IPv4+IPv6.
+  PORT  $WHITEBOARD_PORT, else the first free port from ${DEFAULT_PORT}
+
+The server exits on its own when DIR is deleted, so a DIR inside a git worktree is
+cleaned up with the worktree.
+
+NAME may contain slashes (e.g. myproject/auth-flow). Every save to a file under DIR
+reloads any browser tab showing it; the index page at / lists all boards.
+`;
+
+function parseArgs(argv) {
+  const opts = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '-h' || a === '--help') opts.help = true;
+    else if (a === '--force' || a === '--clear') opts[a.slice(2)] = true;
+    else if (a === '--no-random') opts.noRandom = true;
+    else if (a.startsWith('--')) {
+      const [k, v] = a.includes('=') ? a.slice(2).split(/=(.*)/s) : [a.slice(2), argv[++i]];
+      if (v === undefined) die(`missing value for --${k}`);
+      opts[k] = v;
+    } else opts._.push(a);
+  }
+  return opts;
+}
+
+function die(msg) {
+  process.stderr.write(`whiteboard: ${msg}\nRun 'whiteboard --help' for usage.\n`);
+  process.exit(1);
+}
+
+function tailscaleAddress() {
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const a of addrs || []) {
+      if (a.family !== 'IPv4') continue;
+      const [o1, o2] = a.address.split('.').map(Number);
+      if (o1 === 100 && o2 >= 64 && o2 <= 127) return a.address;
+    }
+  }
+  return null;
+}
+
+function config(opts) {
+  const dir = path.resolve(opts.dir || process.env.WHITEBOARD_DIR || path.join(os.homedir(), '.whiteboard'));
+  let host = opts.host || process.env.WHITEBOARD_HOST || tailscaleAddress() || '127.0.0.1';
+  if (host === 'all') host = '0.0.0.0';
+  const portExplicit = Boolean(opts.port || process.env.WHITEBOARD_PORT);
+  const port = Number(opts.port || process.env.WHITEBOARD_PORT || DEFAULT_PORT);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) die(`invalid port: ${opts.port}`);
+  return { dir, host, port, portExplicit, stateFile: path.join(dir, '.whiteboard-server.json') };
+}
+
+function readState(cfg) {
+  try {
+    const s = JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8'));
+    process.kill(s.pid, 0);
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+const isWildcard = host => host === '0.0.0.0' || host === '::';
+const urlFor = (host, port) => `http://${host.includes(':') ? `[${host}]` : host}:${port}/`;
+
+// The URL to hand out. For a wildcard bind, prefer the Tailscale address, then the hostname.
+function baseUrl(s) {
+  return urlFor(isWildcard(s.host) ? tailscaleAddress() || os.hostname() : s.host, s.port);
+}
+
+// Every URL the server answers on, one per adapter for a wildcard bind.
+function allUrls(s) {
+  if (!isWildcard(s.host)) return [baseUrl(s)];
+  const hosts = [os.hostname()];
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    if (/^(docker|br-|veth|virbr|cni|flannel)/.test(name)) continue; // container bridges: noise
+    for (const a of addrs || []) {
+      if (a.family === 'IPv4' || (s.host === '::' && !a.address.startsWith('fe80'))) hosts.push(a.address);
+    }
+  }
+  return hosts.map(h => urlFor(h, s.port));
+}
+
+function boardPath(name) {
+  const clean = name.replace(/\.html?$/i, '');
+  if (!clean || clean.split(/[\\/]/).some(p => p === '..' || p === '')) die(`invalid board name: ${name}`);
+  return `${clean}.html`;
+}
+
+// ---------- server ----------
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.ico': 'image/x-icon',
+  '.avif': 'image/avif', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.pdf': 'application/pdf',
+};
+
+const CLIENT_TAG = '<script src="/_wb/client.js"></script>';
+
+function injectClient(html) {
+  const i = html.search(/<\/body\s*>/i);
+  return i === -1 ? html + CLIENT_TAG : html.slice(0, i) + CLIENT_TAG + html.slice(i);
+}
+
+function listBoards(dir) {
+  const out = [];
+  const walk = rel => {
+    for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+      if (e.name.startsWith('.') || e.name === 'node_modules') continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(r);
+      else if (/\.html?$/i.test(e.name)) {
+        const full = path.join(dir, r);
+        const html = fs.readFileSync(full, 'utf8');
+        const title = html.match(/<title>([^<]*)<\/title>/i)?.[1].trim() || r;
+        out.push({ path: r, title, mtime: fs.statSync(full).mtimeMs });
+      }
+    }
+  };
+  walk('');
+  return out.sort((a, b) => b.mtime - a.mtime);
+}
+
+const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+function indexPage(dir) {
+  const boards = listBoards(dir);
+  const rows = boards.map(b => `<li><a href="/${encodeURI(b.path)}">${esc(b.title)}</a>
+    <span class="wb-muted">${esc(b.path)} &middot; <time data-ts="${b.mtime}"></time></span></li>`).join('');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Whiteboards</title>
+<link rel="stylesheet" href="/_wb/board.css"></head><body><main class="wb-page">
+<h1>Whiteboards</h1>
+${boards.length ? `<ul class="wb-index">${rows}</ul>` : '<p class="wb-muted">No boards yet. Run <code>whiteboard new NAME</code>.</p>'}
+<p class="wb-muted">Serving <code>${esc(dir)}</code></p></main>
+<script>for (const t of document.querySelectorAll('time[data-ts]')) {
+  const s = (Date.now() - Number(t.dataset.ts)) / 1000;
+  t.textContent = s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + 'm ago' : s < 86400 ? Math.round(s / 3600) + 'h ago' : new Date(Number(t.dataset.ts)).toLocaleDateString();
+}</script></body></html>`;
+}
+
+function serve(cfg) {
+  fs.mkdirSync(cfg.dir, { recursive: true });
+  const clients = new Set();
+  const errors = [];
+
+  const broadcast = (event, data) => {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const res of clients) res.write(msg);
+  };
+
+  // Debounce per path: editors and agents often write in several steps.
+  const pending = new Map();
+  // Exit once the board directory is deleted or replaced (e.g. its worktree was removed).
+  const dirIno = fs.statSync(cfg.dir).ino;
+  const exitIfDirGone = () => {
+    let ino = null;
+    try { ino = fs.statSync(cfg.dir).ino; } catch {}
+    if (ino === dirIno) return;
+    console.log(`board directory ${cfg.dir} is gone; exiting`);
+    process.exit(0);
+  };
+  setInterval(exitIfDirGone, 2000).unref();
+
+  const watcher = fs.watch(cfg.dir, { recursive: true }, (_type, filename) => {
+    if (!filename) return exitIfDirGone();
+    const rel = filename.split(path.sep).join('/');
+    if (rel.split('/').some(p => p.startsWith('.'))) return;
+    clearTimeout(pending.get(rel));
+    pending.set(rel, setTimeout(() => { pending.delete(rel); broadcast('change', { path: rel }); }, 80));
+  });
+
+  watcher.on('error', exitIfDirGone);
+
+  setInterval(() => { for (const res of clients) res.write(': ping\n\n'); }, 25000).unref();
+
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://x');
+    const send = (code, body, type = 'text/plain; charset=utf-8') => {
+      res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' });
+      res.end(body);
+    };
+
+    if (url.pathname === '/_wb/events') {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+      res.write('retry: 1000\n\n');
+      res.viewer = { page: url.searchParams.get('page') || '?', from: req.socket.remoteAddress, since: new Date().toISOString() };
+      clients.add(res);
+      req.on('close', () => clients.delete(res));
+      return;
+    }
+    if (url.pathname === '/_wb/errors') {
+      if (req.method === 'POST') {
+        let body = '';
+        req.on('data', c => { if (body.length < 20000) body += c; });
+        req.on('end', () => {
+          try {
+            errors.push({ at: new Date().toISOString(), ...JSON.parse(body) });
+            if (errors.length > 100) errors.splice(0, errors.length - 100);
+          } catch {}
+          send(204, '');
+        });
+        return;
+      }
+      if (req.method === 'DELETE') { errors.length = 0; return send(204, ''); }
+      return send(200, JSON.stringify(errors, null, 2), MIME['.json']);
+    }
+    if (url.pathname === '/_wb/viewers') {
+      return send(200, JSON.stringify([...clients].map(c => c.viewer), null, 2), MIME['.json']);
+    }
+    if (url.pathname.startsWith('/_wb/')) {
+      const name = path.basename(url.pathname);
+      const file = path.join(ASSETS, name);
+      if (!/^[\w.-]+$/.test(name) || !fs.existsSync(file)) return send(404, 'not found');
+      return send(200, fs.readFileSync(file), MIME[path.extname(file)] || 'application/octet-stream');
+    }
+    if (url.pathname === '/') return send(200, injectClient(indexPage(cfg.dir)), MIME['.html']);
+
+    let rel;
+    try { rel = decodeURIComponent(url.pathname); } catch { return send(400, 'bad path'); }
+    const file = path.resolve(cfg.dir, '.' + rel);
+    if (file !== cfg.dir && !file.startsWith(cfg.dir + path.sep)) return send(403, 'forbidden');
+    let target = file;
+    if (!fs.existsSync(target) && fs.existsSync(target + '.html')) target += '.html';
+    if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+    if (!fs.existsSync(target)) {
+      return send(404, injectClient(`<!doctype html><title>Not found</title><link rel="stylesheet" href="/_wb/board.css">
+<main class="wb-page"><h1>Waiting for ${esc(rel)}</h1><p class="wb-muted">This page reloads when the file appears. <a href="/">All boards</a></p></main>`), MIME['.html']);
+    }
+    const ext = path.extname(target).toLowerCase();
+    const type = MIME[ext] || 'application/octet-stream';
+    if (ext === '.html' || ext === '.htm') return send(200, injectClient(fs.readFileSync(target, 'utf8')), type);
+    return send(200, fs.readFileSync(target), type);
+  });
+
+  // With no explicit port, step past busy ones so several boards dirs (worktrees) can each run a server.
+  const lastPort = cfg.portExplicit ? cfg.port : cfg.port + 19;
+  server.on('error', e => {
+    if (e.code !== 'EADDRINUSE') die(e.message);
+    if (cfg.port >= lastPort) die(`port ${cfg.port} on ${cfg.host} is already in use`);
+    cfg.port++;
+    server.listen(cfg.port, cfg.host);
+  });
+  server.listen(cfg.port, cfg.host);
+  server.on('listening', () => {
+    const state = { pid: process.pid, host: cfg.host, port: cfg.port, dir: cfg.dir, started: new Date().toISOString() };
+    fs.writeFileSync(cfg.stateFile, JSON.stringify(state, null, 2));
+    const cleanup = () => {
+      try { if (JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')).pid === process.pid) fs.unlinkSync(cfg.stateFile); } catch {}
+      process.exit(0);
+    };
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+    console.log(`whiteboard serving ${cfg.dir} at ${allUrls(state).join(' ')}`);
+  });
+}
+
+// ---------- commands ----------
+
+async function waitForState(cfg, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const s = readState(cfg);
+    if (s) return s;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return null;
+}
+
+async function start(cfg) {
+  const running = readState(cfg);
+  if (running) {
+    if (running.host !== cfg.host || (cfg.portExplicit && running.port !== cfg.port)) {
+      die(`a server for ${cfg.dir} is already running on ${running.host}:${running.port}; ` +
+        `run 'whiteboard stop' first to restart it on ${cfg.host}:${cfg.port}`);
+    }
+    console.log(`already running (pid ${running.pid})\n${allUrls(running).join('\n')}`);
+    return;
+  }
+  fs.mkdirSync(cfg.dir, { recursive: true });
+  const log = fs.openSync(path.join(cfg.dir, '.whiteboard-server.log'), 'a');
+  const args = [SELF, 'serve', '--dir', cfg.dir, '--host', cfg.host];
+  if (cfg.portExplicit) args.push('--port', String(cfg.port));
+  const child = spawn(process.execPath, args, {
+    detached: true, stdio: ['ignore', log, log],
+  });
+  child.unref();
+  const s = await waitForState(cfg, 5000);
+  if (!s) die(`server did not start; see ${path.join(cfg.dir, '.whiteboard-server.log')}`);
+  console.log(`started (pid ${s.pid}) serving ${s.dir}\n${allUrls(s).join('\n')}`);
+}
+
+function requireRunning(cfg) {
+  const s = readState(cfg);
+  if (!s) die(`no server running for ${cfg.dir}; run 'whiteboard start'`);
+  return s;
+}
+
+// ---------- publish ----------
+
+// Resolve a URL referenced from `fromUrl` (a server path like /demo/x.html) to a local file,
+// or null when it is remote, a data URI, an anchor, or outside the board directory.
+function localFile(cfg, ref, fromUrl) {
+  if (!ref || /^(?:[a-z][\w+.-]*:|\/\/|#)/i.test(ref)) return null;
+  let p;
+  try { p = decodeURIComponent(new URL(ref, 'http://x' + fromUrl).pathname); } catch { return null; }
+  if (p.startsWith('/_wb/')) {
+    const f = path.join(ASSETS, path.basename(p));
+    return fs.existsSync(f) ? { file: f, url: p } : null;
+  }
+  const f = path.resolve(cfg.dir, '.' + p);
+  if (!f.startsWith(cfg.dir + path.sep) || !fs.existsSync(f) || !fs.statSync(f).isFile()) return null;
+  return { file: f, url: p };
+}
+
+const dataUri = file => `data:${(MIME[path.extname(file).toLowerCase()] || 'application/octet-stream').split(';')[0]};base64,${fs.readFileSync(file).toString('base64')}`;
+
+// Inline url(...) and @import in CSS, relative to the stylesheet's own URL.
+function inlineCss(cfg, css, fromUrl, seen, report) {
+  css = css.replace(/@import\s+(?:url\()?\s*(['"]?)([^'")\s;]+)\1\s*\)?\s*;/g, (m, _q, ref) => {
+    const hit = localFile(cfg, ref, fromUrl);
+    if (!hit || seen.has(hit.file)) return m;
+    seen.add(hit.file);
+    report.inlined.push(hit.url);
+    return inlineCss(cfg, fs.readFileSync(hit.file, 'utf8'), hit.url, seen, report);
+  });
+  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, _q, ref) => {
+    const hit = localFile(cfg, ref, fromUrl);
+    if (!hit) return m;
+    report.inlined.push(hit.url);
+    return `url("${dataUri(hit.file)}")`;
+  });
+}
+
+// Produce one self-contained HTML file: local stylesheets, scripts, images, and fonts are inlined;
+// remote URLs (CDNs) are left as they are and listed in the report.
+function bundle(cfg, rel) {
+  const fromUrl = '/' + rel;
+  const report = { inlined: [], remote: new Set(), unresolved: new Set() };
+  const note = ref => {
+    if (/^(?:https?:)?\/\//i.test(ref)) report.remote.add(ref);
+    else if (ref && !/^(?:data:|#|mailto:|javascript:)/i.test(ref)) report.unresolved.add(ref);
+  };
+  const attr = (tag, name) => tag.match(new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'is'))?.[2];
+  let html = fs.readFileSync(path.join(cfg.dir, rel), 'utf8');
+
+  // <link rel="stylesheet" href> -> <style>
+  html = html.replace(/<link\b[^>]*>/gi, tag => {
+    const href = attr(tag, 'href');
+    const relAttr = (attr(tag, 'rel') || '').toLowerCase();
+    const hit = localFile(cfg, href, fromUrl);
+    if (!hit) { note(href); return tag; }
+    report.inlined.push(hit.url);
+    if (relAttr.split(/\s+/).includes('stylesheet')) {
+      const css = inlineCss(cfg, fs.readFileSync(hit.file, 'utf8'), hit.url, new Set([hit.file]), report);
+      return `<style>/* ${hit.url} */\n${css}</style>`;
+    }
+    return tag.replace(href, dataUri(hit.file));
+  });
+
+  // <script src> -> inline script (type/module preserved)
+  html = html.replace(/<script\b([^>]*)>\s*<\/script>/gi, (tag, attrs) => {
+    const src = attr(tag, 'src');
+    if (!src) return tag;
+    const hit = localFile(cfg, src, fromUrl);
+    if (!hit) { note(src); return tag; }
+    report.inlined.push(hit.url);
+    const code = fs.readFileSync(hit.file, 'utf8').replace(/<\/script/gi, '<\\/script');
+    return `<script${attrs.replace(/\s+src\s*=\s*(["']).*?\1/is, '')}>/* ${hit.url} */\n${code}</script>`;
+  });
+
+  // Inline <style> blocks and style="" attributes may reference local url(...) too.
+  html = html.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (m, open, css, close) =>
+    open + inlineCss(cfg, css, fromUrl, new Set(), report) + close);
+
+  // Media and SVG references -> data URIs
+  html = html.replace(/(<(?:img|source|video|audio|image|use|input|embed|object)\b[^>]*?\s(?:src|href|xlink:href|poster|data)\s*=\s*)(["'])(.*?)\2/gis, (m, pre, q, ref) => {
+    const hit = localFile(cfg, ref, fromUrl);
+    if (!hit) { note(ref); return m; }
+    report.inlined.push(hit.url);
+    return `${pre}${q}${dataUri(hit.file)}${q}`;
+  });
+
+  // Links to other local boards won't exist once published.
+  for (const m of html.matchAll(/<a\b[^>]*\shref\s*=\s*(["'])(.*?)\1/gis)) {
+    if (localFile(cfg, m[2], fromUrl)) report.unresolved.add(m[2] + ' (link to a local file)');
+  }
+  return { html, report };
+}
+
+function publish(cfg, opts) {
+  const name = opts._[1];
+  if (!name) die('publish requires NAME');
+  const rel = boardPath(name);
+  if (!fs.existsSync(path.join(cfg.dir, rel))) die(`no such board: ${path.join(cfg.dir, rel)}`);
+  const { html, report } = bundle(cfg, rel);
+
+  const out = opts.out
+    ? path.resolve(opts.out)
+    : path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'whiteboard-')), rel.replaceAll('/', '-'));
+  fs.writeFileSync(out, html);
+
+  const log = msg => process.stderr.write(msg + '\n');
+  log(`bundled ${rel} (${(Buffer.byteLength(html) / 1024).toFixed(1)} KiB) -> ${out}`);
+  if (report.inlined.length) log(`  inlined: ${[...new Set(report.inlined)].join(', ')}`);
+  if (report.remote.size) log(`  remote (loaded from CDN at view time): ${[...report.remote].join(', ')}`);
+  if (report.unresolved.size) log(`  WARNING not bundled: ${[...report.unresolved].join(', ')}`);
+  if (opts.out) return console.log(out);
+
+  const args = [out, '--no-copy', '--html'];
+  if (opts.noRandom) args.push('--no-random');
+  let url;
+  try {
+    url = execFileSync('snip-upload', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim().split('\n').pop();
+  } catch (e) {
+    die(e.code === 'ENOENT' ? 'snip-upload not found on PATH' : `snip-upload failed; bundle kept at ${out}`);
+  }
+  fs.rmSync(path.dirname(out), { recursive: true, force: true });
+  console.log(url);
+}
+
+function newBoard(cfg, opts) {
+  const name = opts._[1];
+  if (!name) die('new requires NAME');
+  const rel = boardPath(name);
+  const file = path.join(cfg.dir, rel);
+  if (fs.existsSync(file) && !opts.force) die(`${file} already exists (use --force to overwrite)`);
+  const title = opts.title || path.basename(rel, '.html').replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const html = fs.readFileSync(path.join(ASSETS, 'template.html'), 'utf8').replaceAll('{{TITLE}}', esc(title));
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, html);
+  console.log(file);
+  const s = readState(cfg);
+  if (s) console.log(baseUrl(s) + encodeURI(rel));
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  const cmd = opts._[0];
+  if (opts.help || !cmd || cmd === 'help') return process.stdout.write(HELP);
+  const cfg = config(opts);
+  switch (cmd) {
+    case 'serve': return serve(cfg);
+    case 'start': return start(cfg);
+    case 'new': return newBoard(cfg, opts);
+    case 'publish': return publish(cfg, opts);
+    case 'url': {
+      const s = requireRunning(cfg);
+      return console.log(baseUrl(s) + (opts._[1] ? encodeURI(boardPath(opts._[1])) : ''));
+    }
+    case 'status': {
+      const s = readState(cfg);
+      if (!s) { console.log(`not running (dir ${cfg.dir})`); process.exit(3); }
+      console.log(`running (pid ${s.pid}) since ${s.started}\ndir ${s.dir}\nlistening ${s.host}:${s.port}\n${allUrls(s).join('\n')}`);
+      try {
+        const viewers = await (await fetch(baseUrl(s) + '_wb/viewers')).json();
+        console.log(`viewers ${viewers.length}`);
+        for (const v of viewers) console.log(`  ${v.page} from ${v.from} since ${v.since}`);
+      } catch {}
+      return;
+    }
+    case 'stop': {
+      const s = readState(cfg);
+      if (!s) return console.log('not running');
+      process.kill(s.pid, 'SIGTERM');
+      return console.log(`stopped (pid ${s.pid})`);
+    }
+    case 'errors': {
+      const s = requireRunning(cfg);
+      const res = await fetch(baseUrl(s) + '_wb/errors', { method: opts.clear ? 'DELETE' : 'GET' });
+      if (opts.clear) return console.log('cleared');
+      const list = await res.json();
+      if (!list.length) return console.log('no errors reported');
+      for (const e of list) console.log(`${e.at} ${e.page}\n  ${e.message}${e.detail ? `\n  ${e.detail.split('\n').join('\n  ')}` : ''}`);
+      return;
+    }
+    default: die(`unknown command: ${cmd}`);
+  }
+}
+
+main();

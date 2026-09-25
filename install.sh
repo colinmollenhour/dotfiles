@@ -999,6 +999,21 @@ install_agents() {
     fi
   fi
 
+  # Symlink (not copy) so the script still finds its ../assets next to the installed skill.
+  local wb_dest="$HOME/.local/bin/whiteboard"
+  local wb_target="$HOME/.agents/skills/whiteboard/scripts/whiteboard"
+  if [[ -f "$SCRIPT_DIR/.claude/skills/whiteboard/scripts/whiteboard" ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "link $wb_dest -> $wb_target"
+    elif [[ ! -e "$wb_dest" || -L "$wb_dest" ]]; then
+      mkdir -p "$HOME/.local/bin"
+      chmod +x "$wb_target"
+      ln -sfn "$wb_target" "$wb_dest"
+    else
+      warn "$wb_dest exists and is not a symlink; leaving it alone"
+    fi
+  fi
+
   if command -v omp >/dev/null 2>&1; then
     if [[ "$DRY_RUN" == true ]]; then
       dry_run_msg "omp install $SCRIPT_DIR/pi-megamind"

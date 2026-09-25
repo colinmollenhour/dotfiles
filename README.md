@@ -351,6 +351,12 @@ Claude loads these automatically when a task matches, or you can reference them 
 ### Media
 
 - **`nano-banana`** — Required for any image generation or editing. Wraps the Gemini CLI.
+- **`whiteboard`** — A poor man's [dev.fast](https://dev.fast/) whiteboard. The agent sketches an explanation (Mermaid diagrams, cards, stickies, diffs, code) in a plain HTML file, and your browser tab reloads on every save at the same scroll position. It's driven by the `whiteboard` CLI, a zero-dependency Node server that `--agents` links into `~/.local/bin`:
+  - `whiteboard start` / `new <project>/<topic>` / `status` / `stop` manage the server and boards. Boards live in `~/.whiteboard` by default, and the index at `/` lists them all.
+  - The server listens on the Tailscale address by default; pass `--host 0.0.0.0` for every adapter. `status` shows connected viewers and their remote addresses.
+  - `whiteboard errors` prints the JS and Mermaid errors that open browsers report back, so the agent can fix a broken diagram without seeing the screen.
+  - `whiteboard publish <name>` bundles the board and its local CSS, JS, images, and fonts into one self-contained HTML file and uploads it with `snip-upload`.
+  - With `--dir <worktree>/.whiteboard`, each worktree gets its own server on the next free port. The server exits when its directory is deleted, so removing the worktree stops it.
 
 ## Using MBOD (Many Brain One Decision)
 
