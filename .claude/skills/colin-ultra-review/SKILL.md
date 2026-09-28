@@ -8,7 +8,7 @@ argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [
 
 # Ultra Code Review
 
-Current version: **Ultra Review 0.7**. Identity lives in `many-brain-one-task/ultra-review-version.json` and is frozen by `mbot-run init` into `STATE.json` as `ultra_review`. Use `ultra_review.header` / `ultra_review.label` verbatim on every published comment and on `prepared-summary.md`. Do not invent, omit, or bump the version in the parent session. Bump the JSON when the control plane, roles, validation contract, or publication format changes.
+Current version: **Ultra Review 0.8**. Identity lives in `many-brain-one-task/ultra-review-version.json` and is frozen by `mbot-run init` into `STATE.json` as `ultra_review`. Use `ultra_review.header` / `ultra_review.label` verbatim on every published comment and on `prepared-summary.md`. Do not invent, omit, or bump the version in the parent session. Bump the JSON when the control plane, roles, validation contract, or publication format changes.
 
 Multi-model bug review. Discovery is recall-oriented; an independent evidence pass protects publication precision. **Parent is a thin control plane** — disk under `.tmp/ultra-<id>/` is durable memory.
 
@@ -29,7 +29,7 @@ Resolve `CLAUDE_SKILL_DIR` to the installed skill roots (`~/.claude/skills/...` 
 |---|---|
 | GitLab MR gather | `bun …/glab-cli/mr-context.ts --project G/R --mr N --out-dir .tmp/ultra-N/mr-context` |
 | GitHub PR gather | `bun …/gh-cli/pr-context.ts --repo O/R --pr N --out-dir .tmp/ultra-N/pr-context` |
-| Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` — prints and freezes `ultra_review` (`label`: `Ultra Review 0.7`) |
+| Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` — prints and freezes `ultra_review` (`label`: `Ultra Review 0.8`) |
 | Skill version | `bun …/mbot-run.ts version` |
 | Assemble prompts | `bun …/many-brain-one-task/assemble-prompts.ts --append context/bucket.md --out-dir prompts role.md:slot.full.md …` |
 | OpenCode smoke | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6-sol` (launch also smokes; omit `--attach` when `OPENCODE_SERVER_HOST`/`PORT` are already set) |
@@ -68,6 +68,22 @@ Task type `code-review`. Profile: user `--profile X`, else `code-review.md`; Sea
 - Thread budget: `((3 × participants) + 1) × buckets` + merits fan-out + integration fan-out  
 
 A `failure` thread with no scale/cost assessment is incomplete — one retry under MBOT policy.
+
+### Size tier (scale the fleet to the diff)
+
+Count **reviewable lines** = added + deleted lines in primary artifacts (`git diff --numstat <base>...<head>`, excluding the context-only artifacts from triage: lockfiles, generated code, snapshots, vendored files). Pick the tier before writing `plan.json`:
+
+| Tier | Reviewable lines | Discovery | Merits | Integration | `--max-rounds` |
+|---|---|---|---|---|---|
+| `small` | ≤ 150 | one **combined-lens** thread per participant (state + contracts + failure + craft in one prompt) | one participant | none — the single thread already saw the whole change | 1 |
+| `medium` | 151–600 | full role grid, one bucket | one participant | round 2 only, and only if round 1 confirmed a medium-or-higher issue | 2 |
+| `standard` | > 600, or more than one bucket | Allocation above | Allocation above | Allocation above | 3 |
+
+- Move `small` up to `medium` when the diff touches a migration or schema, an auth/permission check, money, or locking/concurrency. Record the reason.
+- Combined-lens prompt: `assemble-prompts --append roles/contracts.md --append roles/failure.md --append roles/craft.md --append context/bucket.md --out-dir prompts roles/state.md:small.full.md`. It must still carry the `failure` scale/cost requirement, and each candidate names the lens it came from.
+- Validation, pre-publication gate, summary tables and posting are unchanged in every tier. Skip validation/adjudication when there are no candidates.
+- `--full` or an explicit `--roles` / agent list / `--max-rounds` overrides the tier. A profile may override the tier table's participants but not its thresholds.
+- Record `size_tier`, `reviewable_lines` and any bump reason in the triage line and in `run-summary.json`.
 
 ### plan.json slots
 
@@ -122,7 +138,7 @@ Primary vs context-only artifacts. Bucket by behavior (~800–1500 changed lines
 ### 4. Report triage
 
 ```text
-Triage: <N primary>, <M context-only>, <L> lines
+Triage: <N primary>, <M context-only>, <L> reviewable lines · Tier: <small|medium|standard> (<bump reason>)
 Roles / Skipped / Buckets / Rounds / Allocation / Thread budget
 ```
 
@@ -233,7 +249,7 @@ Call out under run accounting:
 - Compactions: total + mid-task counts per model (from agentsview `session get`)
 - Distinct `--out` paths and any clobber/recovery/remap events
 
-`run-summary.json` must also record: `ultra_review` (from `STATE.json`), `buckets`, `participants`, `bucket_slots = buckets × ((3 × participants) + 1)`, `merits_slots`, `integration_slots`, `planned_primary_slots`, with retries/timeouts/incomplete/auxiliary slots counted separately so they do not inflate the planned primary total.
+`run-summary.json` must also record: `ultra_review` (from `STATE.json`), `size_tier`, `reviewable_lines`, `buckets`, `participants`, `bucket_slots` (`buckets × ((3 × participants) + 1)` in `medium`/`standard`, `participants` in `small`), `merits_slots`, `integration_slots`, `planned_primary_slots`, with retries/timeouts/incomplete/auxiliary slots counted separately so they do not inflate the planned primary total.
 
 **Scoring hygiene:** exit 124 with a complete `.out` = completed; re-stat before marking incomplete; retry + original both score if both rich; self-duplicates of an already-posted finding affect thread counts only, not Unique/Shared.
 
@@ -245,10 +261,10 @@ Git-diff / `--no-post`: display only.
 No confirmed: single summary comment with `**AI Ultra Review <version>**` header.  
 Issues: one inline per unique issue; severity order critical→low; cap **8 low** posted.  
 
-Header on every inline (`<version>` from `STATE.json` `ultra_review.version`, currently `0.7`):
+Header on every inline (`<version>` from `STATE.json` `ultra_review.version`, currently `0.8`):
 
 ```text
-> **AI Ultra Review 0.7** · Commit: <sha> · Severity: <…> · Role: <…> · Flagged by: <…>
+> **AI Ultra Review 0.8** · Commit: <sha> · Severity: <…> · Role: <…> · Flagged by: <…>
 ```
 
 Severities: `critical` | `high` | `medium` | `low`. Merits has no severity / no inline.  

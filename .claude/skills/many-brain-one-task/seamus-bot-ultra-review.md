@@ -22,6 +22,14 @@ findings were all low and came from that lens. Thread budget: `7 × buckets` + 2
 2 integration per round, plus adjudication. Record `participants: 2` (+ Grok craft) in
 `run-summary.json`.
 
+The table above is the `standard` tier. Smaller diffs use colin-ultra-review "Size tier"
+thresholds with these participants:
+
+| Tier | Discovery | Merits | Integration | Typical threads |
+|---|---|---|---|---|
+| `small` | Opus 5.5 + GPT-6 Sol, combined-lens; no Grok | Opus 5.5 | none | 3 + ≤2 adjudication |
+| `medium` | `standard` grid, one bucket (7) | Opus 5.5 | Opus 5.5 + GPT-6 Sol in round 2 only if round 1 confirmed medium+ | 8–10 + adjudication |
+
 ## Validation (overrides colin-ultra-review §8)
 
 **No separate validator pass** — validators mostly rubber-stamped (0–5% rejected) or rejected

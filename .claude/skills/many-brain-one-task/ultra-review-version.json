@@ -1,5 +1,5 @@
 {
   "product": "Ultra Review",
-  "version": "0.7",
-  "notes": "Seamus bot profile: Grok on craft only; validator pass replaced by one cross-family adversarial adjudication per round."
+  "version": "0.8",
+  "notes": "Size tiers: small (<=150 reviewable lines) runs one combined-lens thread per participant with no integration; medium (151-600) runs one bucket with integration only after a medium+ confirm."
 }
