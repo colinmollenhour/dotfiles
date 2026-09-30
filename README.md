@@ -407,7 +407,7 @@ Profiles live in `~/.claude/skills/many-brain-one-decision/` and use the same pl
 
 ```markdown
 Use the following:
-- OpenCode with GPT-6 Sol with "high" variant as "tech-bro"
+- OpenCode with GPT-6.1 Sol with "high" variant as "tech-bro"
 - OpenCode with Grok 4.7 as "truth-seeker"
 - Claude Opus with "max" thinking as "pragmatic-operator"
 ```
@@ -434,7 +434,7 @@ Before launch, MBOT records the resolved profile path plus every participant's d
 ```markdown
 Preferred models:
 - Opus 5.5 (high)
-- GPT 6 Sol (high)
+- GPT 6.1 Sol (high)
 - Grok 4.7 (xhigh)
 
 Backup model (never more than one and ONLY these):
@@ -452,7 +452,7 @@ The review profile uses the same model families, requires fresh independent sess
 
 Copy one of the examples above and edit to taste. You can specify:
 
-- **Which models** (e.g. Opus 5.5, GPT 6 Sol, Grok 4.7, Kimi K3, MiniMax M3).
+- **Which models** (e.g. Opus 5.5, GPT 6.1 Sol, Grok 4.7, Kimi K3, MiniMax M3).
 - **Which harness** drives each model (`claude` CLI, `grok` CLI, `codex`, `gemini`, `opencode`). Constraints:
   - Claude Code can only run Claude models natively. Non-Claude models go through another harness (prefer `grok` CLI for Grok; otherwise typically OpenCode).
   - OpenCode **must** call `claude` for Claude models, and should prefer the first-party `grok` CLI for Grok when installed; other non-Claude models run as OpenCode subagents.
@@ -486,8 +486,8 @@ Sorted roughly by capability:
 |---|---|
 | `colin-mbot-opus` | Anthropic Claude Opus 5.5 |
 | `colin-mbot-gpt-astra` | OpenAI GPT 6 Astra |
-| `colin-mbot-gpt-sol` | OpenAI GPT 6 Sol |
-| `colin-mbot-gpt-sol-zen` | GPT 6 Sol through OpenCode Zen |
+| `colin-mbot-gpt-sol` | OpenAI GPT 6.1 Sol |
+| `colin-mbot-gpt-sol-zen` | GPT 6.1 Sol through OpenCode Zen |
 | `colin-mbot-gpt-terra` | OpenAI GPT 5.6 Terra |
 | `colin-mbot-gpt-terra-zen` | GPT 5.6 Terra through OpenCode Zen |
 | `colin-mbot-grok` | xAI Grok 4.7 (OpenCode fallback; prefer `grok` CLI when available) |

@@ -1,8 +1,8 @@
 ---
-description: Many brain, one task with GPT 6 Sol - only to be used by the MBOT skill
+description: Many brain, one task with GPT 6.1 Sol - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: openai/gpt-6-sol
+model: openai/gpt-6.1-sol
 reasoningEffort: high
 permission:
   edit: deny

@@ -12,10 +12,10 @@ summarization. Backup when a primary cannot run: **Grok only**.
 
 | Lens | Participants |
 |---|---|
-| `state` / `contracts` / `failure` | Opus 5.5 + GPT-6 Sol, × each bucket |
+| `state` / `contracts` / `failure` | Opus 5.5 + GPT-6.1 Sol, × each bucket |
 | `craft` | Grok, one slot per bucket (Opus if Grok cannot run) |
-| `merits` | Opus 5.5 + GPT-6 Sol, once |
-| `integration` (every round) | Opus 5.5 + GPT-6 Sol |
+| `merits` | Opus 5.5 + GPT-6.1 Sol, once |
+| `integration` (every round) | Opus 5.5 + GPT-6.1 Sol |
 
 Grok keeps only `craft`: it was the slowest lane, timed out most, and its unique confirmed
 findings were all low and came from that lens. Thread budget: `7 × buckets` + 2 merits +
@@ -27,8 +27,8 @@ thresholds with these participants:
 
 | Tier | Discovery | Merits | Integration | Typical threads |
 |---|---|---|---|---|
-| `small` | Opus 5.5 + GPT-6 Sol, combined-lens; no Grok | Opus 5.5 | none | 3 + ≤2 adjudication |
-| `medium` | `standard` grid, one bucket (7) | Opus 5.5 | Opus 5.5 + GPT-6 Sol in round 2 only if round 1 confirmed medium+ | 8–10 + adjudication |
+| `small` | Opus 5.5 + GPT-6.1 Sol, combined-lens; no Grok | Opus 5.5 | none | 3 + ≤2 adjudication |
+| `medium` | `standard` grid, one bucket (7) | Opus 5.5 | Opus 5.5 + GPT-6.1 Sol in round 2 only if round 1 confirmed medium+ | 8–10 + adjudication |
 
 ## Validation (overrides colin-ultra-review §8)
 
@@ -37,7 +37,7 @@ everything, and the adversarial pass after them did the real filtering. Once per
 
 1. `mbot-run candidates`, then cluster by **root cause** (bookkeeping, not a verdict), recording
    which model families raised each cluster.
-2. **Adjudicate across families:** Opus-only clusters → one GPT-6 Sol slot; clusters raised by GPT
+2. **Adjudicate across families:** Opus-only clusters → one GPT-6.1 Sol slot; clusters raised by GPT
    and/or Grok (with or without Opus) → one Opus adjudicator. Split batches over ~40 clusters
    into two slots of the same family.
 3. The adjudicator tries to **refute** each cluster against the source at head. Status is exactly
@@ -68,7 +68,7 @@ Check your tool surface — never assume.
 | Participant | `model` | `agent` | `variant` |
 |---|---|---|---|
 | Opus 5.5 | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `high` |
-| GPT-6 Sol | `openai/gpt-6-sol` | `colin-mbot-gpt-sol` | `high` |
+| GPT-6.1 Sol | `openai/gpt-6.1-sol` | `colin-mbot-gpt-sol` | `high` |
 | Grok | `xai/grok-4.7` | `colin-mbot-grok` | `high` |
 
 - Always set `model`, `agent`, and `variant`; `mbot-run` auto-picks an agent only for GPT.
