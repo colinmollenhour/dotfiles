@@ -436,9 +436,13 @@ function git-ignore-symlinks {
 }
 function readthenburn {
   [[ -n "$1" ]] || { echo "Usage: pass filename to upload file or use - to read stdin"; return 1; }
+  local base="${READTHENBURN_URL:-https://readthenburn.shipstream.io}" secret action url
   [[ "$1" = '-' ]] && { secret='<-'; action=write; } || { secret="@$1"; action=upload; }
-  url=$(curl -s -XPOST -F "secret=$secret" https://secure.bss-llc.com/readthenburn?action=$action)
-  if [[ $? -eq 0 && $action = "write" ]]; then echo "$url/raw"; else echo $url; fi
+  [[ "$action" = upload && ! -f "$1" ]] && { echo "File not found: $1" >&2; return 1; }
+  # Prints the link page URL (safe to paste in Teams/ClickUp: previews can't burn it).
+  # Append /raw to a text link for a script-friendly GET that consumes it.
+  url=$(curl -fsS -A curl -XPOST -F "secret=$secret" "$base/$action") || return 1
+  echo "$url"
 }
 function reencrypt-ssh-key {
   [ -f $1 ] || { echo "Usage: reencrypt-ssh-key <file>"; return 1; }
