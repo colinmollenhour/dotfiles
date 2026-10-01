@@ -439,8 +439,8 @@ function readthenburn {
   local base="${READTHENBURN_URL:-https://readthenburn.shipstream.io}" secret action url
   [[ "$1" = '-' ]] && { secret='<-'; action=write; } || { secret="@$1"; action=upload; }
   [[ "$action" = upload && ! -f "$1" ]] && { echo "File not found: $1" >&2; return 1; }
-  # Prints the link page URL (safe to paste in Teams/ClickUp: previews can't burn it).
-  # Append /raw to a text link for a script-friendly GET that consumes it.
+  # Prints the link. Browsers and chat previews (Teams/ClickUp) get a Reveal page that can't be
+  # burned by a GET; `curl $url` reveals/burns instantly and prints the raw secret.
   url=$(curl -fsS -A curl -XPOST -F "secret=$secret" "$base/$action") || return 1
   echo "$url"
 }
