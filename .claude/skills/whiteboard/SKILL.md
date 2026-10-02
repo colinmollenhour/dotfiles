@@ -132,3 +132,9 @@ What makes a good board:
 - **Park open questions on stickies** so they stay visible until they are resolved, then delete them.
 - **Escape `<` and `&`** as `&lt;` and `&amp;` inside `<pre>` and `<code>`, Mermaid source included.
   `>` is safe, so arrows like `-->` and `->>` can be written as they are.
+- **Keep Mermaid colors theme-neutral.** `board.js` picks Mermaid's `dark` or `default` theme from the
+  viewer's color scheme, and the theme sets the node text color. A solid light `fill` in a `classDef` or
+  `style` line puts light dark-theme text on a light box, which is unreadable. Use a translucent fill
+  (8-digit hex such as `fill:#3aa55d33`) with a solid `stroke`, so the box tints whatever background the
+  theme draws and the theme's text color stays readable. If a solid fill is required, also set `color:`
+  explicitly on the same class.
