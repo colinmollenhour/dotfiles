@@ -1,9 +1,11 @@
-Use the following:
+Preferred models:
+- Opus 5.5 (high)
+- GPT 6.1 Sol (high)
+- Grok 4.7 (xhigh)
 
-- Shell out to claude CLI with "opus" and "max" thinking
-- OpenCode with OpenAI/GPT-6.1 Sol with "high" variant (via OpenAI, NOT Zen)
-- OpenCode with Grok 4.7 (prefer Grok CLI when available)
+Backup model (never more than one and ONLY these):
+- Qwen3.8 Max (xhigh)
+- GLM 5.3 (max)
 
-For all OpenCode agents from a non-OpenCode host, use `--attach seamus:4095`.
+Do not use OpenCode Zen or OpenRouter providers except for the backup models.
 
-Do not use Kimi as a default or backup participant unless the user explicitly names it.

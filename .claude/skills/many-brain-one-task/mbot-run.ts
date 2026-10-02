@@ -7,7 +7,9 @@
  * - Prefer `occtl run` against OPENCODE_SERVER_HOST/PORT (HTTP API, session sidecar, timeout salvage).
  *   Do not pass `--attach` — occtl 1.3.0 rejects it; 1.5+ still honors the env vars.
  * - Fallback: run-opencode.ts when occtl is missing or older than 1.2.0
- * - Attach smoke before fan-out; fall back to local spawn on failure
+ * - Cheap preflight before fan-out: HTTP probe of the attach server, else `opencode --version`.
+ *   No model call unless `smoke --deep` / plan `smoke_deep`. Unreachable attach → local spawn.
+ * - A slot whose attach run cannot connect retries once locally; later slots skip attach.
  * - Pin models against attach /config/providers when possible
  * - Default concurrency 3 for OpenCode (shared server contention)
  * - Fail-closed harvest: empty after launch = failed, not "wait forever"
@@ -16,7 +18,7 @@
  *
  * Commands:
  *   bun mbot-run.ts init --run-dir .tmp/ultra-N
- *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.1-sol
+ *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.1-sol [--deep]
  *   bun mbot-run.ts launch --plan .tmp/ultra-N/plan.json [--detach]
  *   bun mbot-run.ts harvest --run-dir .tmp/ultra-N
  *   bun mbot-run.ts candidates --run-dir .tmp/ultra-N
@@ -114,12 +116,15 @@ interface Plan {
   password?: string
   timeout_ms?: number
   concurrency?: number
-  /** Force OpenCode transport. Default auto (smoke then attach|local). */
+  /** Force OpenCode transport. Default auto (probe then attach|local). */
   opencode_mode?: OpencodeMode
   /** Default OpenCode agent when a slot does not set `agent`. */
   opencode_agent?: string
   /** Default OpenCode variant when a slot does not set `variant`. */
   variant?: string
+  /** Preflight with a real model call instead of the HTTP/binary probe. */
+  smoke_deep?: boolean
+  /** Timeout for the deep (model-call) smoke only. */
   smoke_timeout_ms?: number
   slots: Slot[]
 }
@@ -135,6 +140,8 @@ interface Meta {
   planned_harness?: string
   actual_harness?: string
   attach_mode?: "attach" | "local" | "none"
+  /** Set when the attach run could not connect and the slot re-ran locally. */
+  attach_fallback?: string
   backup_used: boolean
   prompt: string
   out: string
@@ -183,6 +190,8 @@ interface OpencodePreflight {
   smoke_ok: boolean
   smoke_ms?: number
   smoke_error?: string
+  /** http = attach /config/providers, binary = `opencode --version`, model = deep smoke. */
+  probe?: "http" | "binary" | "model"
   model_requested?: string
   model_resolved?: string
   models_checked?: number
@@ -636,16 +645,37 @@ async function mapPool<T, R>(
 }
 
 /** Fetch provider/model ids from attach server (best effort). */
-async function listAttachModels(attach: string, timeoutMs = 8000): Promise<string[]> {
+async function listAttachModels(
+  attach: string,
+  password?: string,
+  timeoutMs = 8000,
+): Promise<string[]> {
+  return (await probeAttach(attach, password, timeoutMs)).models
+}
+
+/** GET /config/providers. ok = server answered 2xx; doubles as the attach preflight. */
+async function probeAttach(
+  attach: string,
+  password?: string,
+  timeoutMs = 8000,
+): Promise<{ ok: boolean; models: string[]; ms: number; error?: string }> {
+  const t0 = Date.now()
   const url = normalizeAttachUrl(attach)
-  if (!url) return []
+  if (!url) return { ok: false, models: [], ms: 0, error: "no attach url" }
   const endpoint = `${url}/config/providers`
+  const pw = password || process.env.OPENCODE_SERVER_PASSWORD
+  const headers: Record<string, string> = {}
+  if (pw) {
+    const user = process.env.OPENCODE_SERVER_USERNAME || "opencode"
+    headers.Authorization = `Basic ${Buffer.from(`${user}:${pw}`).toString("base64")}`
+  }
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), timeoutMs)
   try {
-    const ac = new AbortController()
-    const t = setTimeout(() => ac.abort(), timeoutMs)
-    const res = await fetch(endpoint, { signal: ac.signal })
-    clearTimeout(t)
-    if (!res.ok) return []
+    const res = await fetch(endpoint, { signal: ac.signal, headers })
+    if (!res.ok) {
+      return { ok: false, models: [], ms: Date.now() - t0, error: `${endpoint}: HTTP ${res.status}` }
+    }
     const data = (await res.json()) as {
       providers?: Array<{ id?: string; models?: Record<string, unknown> | unknown[] }>
     }
@@ -663,10 +693,35 @@ async function listAttachModels(attach: string, timeoutMs = 8000): Promise<strin
         for (const mid of Object.keys(models)) out.push(`${pid}/${mid}`)
       }
     }
-    return out
-  } catch {
-    return []
+    return { ok: true, models: out, ms: Date.now() - t0 }
+  } catch (e) {
+    const msg = ac.signal.aborted ? `timed out after ${timeoutMs}ms` : String((e as Error)?.message || e)
+    return { ok: false, models: [], ms: Date.now() - t0, error: `${endpoint}: ${msg}` }
+  } finally {
+    clearTimeout(t)
   }
+}
+
+/** Local preflight: the `opencode` binary that both occtl --spawn and run-opencode.ts need. */
+function probeLocalOpencode(): { ok: boolean; ms: number; error?: string } {
+  const t0 = Date.now()
+  const res = spawnSync("opencode", ["--version"], { encoding: "utf8", timeout: 8000 })
+  const ms = Date.now() - t0
+  if (res.error) return { ok: false, ms, error: `opencode --version: ${res.error.message}` }
+  if (res.status !== 0) {
+    return { ok: false, ms, error: `opencode --version exited ${res.status}: ${(res.stderr || "").trim().slice(0, 200)}` }
+  }
+  return { ok: true, ms }
+}
+
+const ATTACH_CONNECT_ERROR =
+  /cannot connect to opencode server|ECONNREFUSED|ECONNRESET|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|fetch failed|unable to connect|socket hang up/i
+
+/** True when an attach run died before reaching the server (not a model/tool failure). */
+export function isAttachConnectFailure(code: number, stderr: string, body: string): boolean {
+  if (code === 0 || code === 124) return false
+  if (body.trim()) return false
+  return ATTACH_CONNECT_ERROR.test(stderr)
 }
 
 /**
@@ -693,11 +748,17 @@ async function smokeOpencode(opts: {
   password?: string
   timeoutMs: number
   forceMode?: OpencodeMode
+  /** Real model call instead of the HTTP/binary probe. */
+  deep?: boolean
 }): Promise<OpencodePreflight> {
   const runDir = resolve(opts.runDir)
   mkdirSync(join(runDir, "results"), { recursive: true })
   const attachUrl = normalizeAttachUrl(opts.attach)
-  const available = attachUrl ? await listAttachModels(attachUrl) : []
+  const attachProbe =
+    attachUrl && opts.forceMode !== "skip" && opts.forceMode !== "local"
+      ? await probeAttach(attachUrl, opts.password)
+      : undefined
+  const available = attachProbe?.models ?? []
   const model = resolveModelId(opts.model, available)
 
   const occtl = detectOcctl()
@@ -707,6 +768,7 @@ async function smokeOpencode(opts: {
     attach: opts.attach,
     attach_url: attachUrl,
     smoke_ok: false,
+    probe: opts.deep ? "model" : undefined,
     model_requested: opts.model,
     model_resolved: model,
     models_checked: available.length,
@@ -717,6 +779,24 @@ async function smokeOpencode(opts: {
     timestamp: nowIso(),
   }
 
+  const check = async (
+    target: "attach" | "local",
+  ): Promise<{ ok: boolean; ms: number; error?: string }> => {
+    if (opts.deep) {
+      return runSmokeOnce({
+        runDir,
+        model,
+        attach: target === "attach" ? attachUrl : undefined,
+        password: opts.password,
+        timeoutMs: opts.timeoutMs,
+        tag: target,
+        transport,
+      })
+    }
+    base.probe = target === "attach" ? "http" : "binary"
+    return target === "attach" && attachProbe ? attachProbe : probeLocalOpencode()
+  }
+
   if (opts.forceMode === "skip") {
     base.mode = "skip"
     base.smoke_error = "opencode_mode=skip"
@@ -724,15 +804,7 @@ async function smokeOpencode(opts: {
     return base
   }
   if (opts.forceMode === "local") {
-    const local = await runSmokeOnce({
-      runDir,
-      model,
-      attach: undefined,
-      password: opts.password,
-      timeoutMs: opts.timeoutMs,
-      tag: "local",
-      transport,
-    })
+    const local = await check("local")
     base.mode = "local"
     base.smoke_ok = local.ok
     base.smoke_ms = local.ms
@@ -742,16 +814,8 @@ async function smokeOpencode(opts: {
   }
 
   // Try attach first when URL present and mode auto|attach
-  if (attachUrl && opts.forceMode !== "local") {
-    const att = await runSmokeOnce({
-      runDir,
-      model,
-      attach: attachUrl,
-      password: opts.password,
-      timeoutMs: opts.timeoutMs,
-      tag: "attach",
-      transport,
-    })
+  if (attachUrl) {
+    const att = await check("attach")
     if (att.ok) {
       base.mode = "attach"
       base.smoke_ok = true
@@ -770,15 +834,7 @@ async function smokeOpencode(opts: {
     // fall through to local
   }
 
-  const local = await runSmokeOnce({
-    runDir,
-    model,
-    attach: undefined,
-    password: opts.password,
-    timeoutMs: opts.timeoutMs,
-    tag: "local",
-    transport,
-  })
+  const local = await check("local")
   base.mode = local.ok ? "local" : "skip"
   base.smoke_ok = local.ok
   base.smoke_ms = local.ms
@@ -861,11 +917,8 @@ async function runSmokeOnce(opts: {
       body = ""
     }
   }
-  const ok =
-    r.code === 0 &&
-    body.trim().length > 0 &&
-    (/OPENCODE_SMOKE_OK/i.test(body) || body.trim().length >= 4)
-  if (ok) return { ok: true, ms }
+  // Any reply proves the model path works; the exact token is not required.
+  if (r.code === 0 && body.trim()) return { ok: true, ms }
   const errText = existsSync(err)
     ? readFileSync(err, "utf8").trim().slice(0, 400)
     : r.stderr.trim().slice(0, 400)
@@ -930,6 +983,17 @@ function loadPreflight(runDir: string): OpencodePreflight | null {
     return readJson<OpencodePreflight>(p)
   } catch {
     return null
+  }
+}
+
+/** Set by the first slot whose attach run could not connect; later slots go local. */
+let attachUnreachable = false
+
+function readTextSafe(path: string): string {
+  try {
+    return existsSync(path) ? readFileSync(path, "utf8") : ""
+  } catch {
+    return ""
   }
 }
 
@@ -1078,6 +1142,7 @@ async function launchSlot(
   let capturedCostUsd: number | null = null
   let capturedCostSource: Meta["cost_source"]
   let capturedUsage: Record<string, unknown> | undefined
+  let attachFallback: string | undefined
 
   if (slot.harness === "grok") {
     actualHarness = "grok"
@@ -1143,23 +1208,26 @@ async function launchSlot(
       })
     }
 
+    const useAttach =
+      mode === "attach" &&
+      !attachUnreachable &&
+      Boolean(preflight?.attach_url || plan.attach)
+    let attachUrl = useAttach
+      ? preflight?.attach_url || normalizeAttachUrl(plan.attach)
+      : undefined
+    attachMode = useAttach ? "attach" : "local"
+
     // A slot's own model always wins. preflight.model_resolved comes from the
-    // single smoke probe, so letting it through here would silently collapse a
+    // single preflight probe, so letting it through here would silently collapse a
     // multi-model plan onto one model.
     if (actualModel) {
-      if (preflight?.attach_url) {
-        const avail = await listAttachModels(preflight.attach_url)
+      if (attachUrl) {
+        const avail = await listAttachModels(attachUrl, plan.password)
         actualModel = resolveModelId(actualModel, avail)
       }
     } else if (preflight?.model_resolved) {
       actualModel = preflight.model_resolved
     }
-
-    const useAttach = mode === "attach" && Boolean(preflight?.attach_url || plan.attach)
-    const attachUrl = useAttach
-      ? preflight?.attach_url || normalizeAttachUrl(plan.attach)
-      : undefined
-    attachMode = useAttach ? "attach" : "local"
 
     const transport =
       preflight?.transport ?? (detectOcctl().ok ? "occtl" : "run-opencode")
@@ -1181,33 +1249,31 @@ async function launchSlot(
         ? requestedAgent
         : undefined
 
-    if (useOcctl) {
-      const r = await runCmd(
-        "occtl",
-        occtlRunArgs({
-          model: actualModel,
-          promptPath,
-          outPath,
-          errPath,
-          timeoutMs,
-          dir: projectDir,
-          attach: attachUrl,
-          password: plan.password,
-          variant,
-          agent,
-          title: slot.title,
-          message: HARNESS_FOOTER,
-        }),
-        {
-          cwd: projectDir,
-          env: attachEnv(attachUrl, plan.password),
-          timeoutMs: timeoutMs + 120_000,
-        },
-      )
-      code = r.code
-      stderr = r.stderr
-      if (stderr) writeFileSync(errPath, stderr)
-    } else {
+    const invoke = async (attach: string | undefined) => {
+      if (useOcctl) {
+        return runCmd(
+          "occtl",
+          occtlRunArgs({
+            model: actualModel,
+            promptPath,
+            outPath,
+            errPath,
+            timeoutMs,
+            dir: projectDir,
+            attach,
+            password: plan.password,
+            variant,
+            agent,
+            title: slot.title,
+            message: HARNESS_FOOTER,
+          }),
+          {
+            cwd: projectDir,
+            env: attachEnv(attach, plan.password),
+            timeoutMs: timeoutMs + 120_000,
+          },
+        )
+      }
       const args = [
         RUN_OPENCODE,
         "--model",
@@ -1224,19 +1290,33 @@ async function launchSlot(
       if (variant) args.push("--variant", variant)
       if (agent) args.push("--agent", agent)
       if (slot.title) args.push("--title", slot.title)
-      if (attachUrl) args.push("--attach", attachUrl)
+      if (attach) args.push("--attach", attach)
       if (plan.password) args.push("--password", plan.password)
       args.push("--", HARNESS_FOOTER)
-
-      const r = await runCmd("bun", args, {
+      return runCmd("bun", args, {
         cwd: projectDir,
-        env: attachEnv(attachUrl, plan.password),
+        env: attachEnv(attach, plan.password),
         timeoutMs: timeoutMs + 120_000,
       })
-      code = r.code
-      stderr = r.stderr
-      if (stderr) writeFileSync(errPath, stderr)
     }
+
+    let r = await invoke(attachUrl)
+    // The preflight is only an HTTP probe, so a server that died since (or never
+    // accepted runs) shows up here. Re-run locally unless attach was forced.
+    if (attachUrl && plan.opencode_mode !== "attach") {
+      const firstErr = [r.stderr, readTextSafe(errPath)].join("\n")
+      if (isAttachConnectFailure(r.code, firstErr, readTextSafe(outPath))) {
+        attachUnreachable = true
+        attachFallback = firstErr.trim().slice(0, 300)
+        attachUrl = undefined
+        attachMode = "local"
+        if (existsSync(errPath)) writeFileSync(errPath, "")
+        r = await invoke(undefined)
+      }
+    }
+    code = r.code
+    stderr = r.stderr
+    if (stderr) writeFileSync(errPath, stderr)
   } else {
     return finish({
       ...baseMeta,
@@ -1292,6 +1372,7 @@ async function launchSlot(
     cost_source: capturedCostSource,
     usage: capturedUsage,
     recovered: recovered.recovered || undefined,
+    attach_fallback: attachFallback,
     terminal: isTerminal(status),
     error:
       status === "ok"
@@ -1335,6 +1416,7 @@ async function cmdSmoke(opts: {
   password?: string
   timeoutMs?: number
   mode?: OpencodeMode
+  deep?: boolean
 }): Promise<void> {
   const runDir = resolve(opts.runDir)
   mkdirSync(join(runDir, "results"), { recursive: true })
@@ -1345,6 +1427,7 @@ async function cmdSmoke(opts: {
     password: opts.password,
     timeoutMs: opts.timeoutMs ?? DEFAULT_SMOKE_TIMEOUT_MS,
     forceMode: opts.mode,
+    deep: opts.deep,
   })
   const state = loadState(runDir)
   state.opencode = pf
@@ -1434,29 +1517,20 @@ async function cmdLaunch(planPath: string): Promise<void> {
     (s) => (s.harness === "opencode" || s.harness === "occtl") && !s.skip,
   )
 
-  // Preflight OpenCode once per launch (unless mode skip or no OC slots)
+  // Preflight OpenCode on every launch. The default probe costs milliseconds,
+  // so re-checking beats trusting a preflight from an earlier launch.
   let preflight = loadPreflight(runDir)
   if (hasOpencode) {
-    const forceMode = plan.opencode_mode || "auto"
-    const needSmoke =
-      !preflight ||
-      forceMode !== preflight.mode ||
-      (forceMode === "auto" && !preflight.smoke_ok && preflight.mode === "attach")
-    if (needSmoke || forceMode !== "auto") {
-      const modelHint =
-        plan.slots.find((s) => s.harness === "opencode" || s.harness === "occtl")
-          ?.provider_model_id ||
-        plan.slots.find((s) => s.harness === "opencode" || s.harness === "occtl")?.planned_model ||
-        "openai/gpt-6.1-sol"
-      preflight = await smokeOpencode({
-        runDir,
-        attach: plan.attach,
-        model: modelHint,
-        password: plan.password,
-        timeoutMs: plan.smoke_timeout_ms ?? DEFAULT_SMOKE_TIMEOUT_MS,
-        forceMode,
-      })
-    }
+    const ocSlot = plan.slots.find((s) => s.harness === "opencode" || s.harness === "occtl")
+    preflight = await smokeOpencode({
+      runDir,
+      attach: plan.attach,
+      model: ocSlot?.provider_model_id || ocSlot?.planned_model || "openai/gpt-6.1-sol",
+      password: plan.password,
+      timeoutMs: plan.smoke_timeout_ms ?? DEFAULT_SMOKE_TIMEOUT_MS,
+      forceMode: plan.opencode_mode || "auto",
+      deep: plan.smoke_deep,
+    })
   }
 
   const state = loadState(runDir)
@@ -1934,7 +2008,7 @@ async function main(): Promise<void> {
   if (!command || command === "-h" || command === "--help") {
     process.stdout.write(`Usage:
   mbot-run.ts init --run-dir <dir>
-  mbot-run.ts smoke --run-dir <dir> [--attach URL] [--model ID] [--mode auto|attach|local|skip]
+  mbot-run.ts smoke --run-dir <dir> [--attach URL] [--model ID] [--mode auto|attach|local|skip] [--deep]
   mbot-run.ts launch --plan <plan.json> [--detach]
   mbot-run.ts harvest --run-dir <dir>
   mbot-run.ts candidates --run-dir <dir>
@@ -1965,6 +2039,7 @@ async function main(): Promise<void> {
       "parent-session-id": { type: "string", multiple: true },
       "no-agentsview": { type: "boolean" },
       detach: { type: "boolean" },
+      deep: { type: "boolean" },
     },
   }) as {
     values: {
@@ -1983,6 +2058,7 @@ async function main(): Promise<void> {
       "parent-session-id"?: string | string[]
       "no-agentsview"?: boolean
       detach?: boolean
+      deep?: boolean
     }
   }
 
@@ -1998,6 +2074,7 @@ async function main(): Promise<void> {
       password: values.password,
       timeoutMs: values["timeout-ms"] ? Number(values["timeout-ms"]) : undefined,
       mode: (values.mode as OpencodeMode) || "auto",
+      deep: values.deep,
     })
   } else if (command === "launch") {
     if (!values.plan) die("--plan is required")

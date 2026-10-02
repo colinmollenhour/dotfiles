@@ -409,7 +409,7 @@ bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" candidates --run-dir .tmp/<run-id>
 
 Launching a later phase plan (`plan-integration.json`, `plan-validate.json`) **merges** those slots into `plan.json`. It does not replace prior slots. Prompt/out may be `prompts/x.md` (relative to `run_dir`) or repo-relative `.tmp/<id>/prompts/x.md`; `mbot-run` strips a duplicated run-dir prefix. Always set `project_dir` to the repo root (inferred when `run_dir` is `<repo>/.tmp/<id>`).
 
-`mbot-run` picks the transport once during smoke:
+`mbot-run` picks the transport once during preflight:
 
 1. **`occtl run`** with `OPENCODE_SERVER_HOST`/`PORT` when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`. Do not pass `--attach` (missing on occtl 1.3.0).
 2. **`run-opencode.ts`** only if occtl is missing or too old.

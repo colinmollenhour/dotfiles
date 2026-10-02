@@ -31,7 +31,8 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
 4. **Write `plan.json`** with one entry per harness-owned slot (`opencode` / `occtl` / `grok`). Native Claude `Agent` slots use `harness: "external"` — launch those via the Agent tool yourself; still list them so harvest scores their `.out`. **On an OpenCode host there are no `external` slots**: every participant, Claude models included, is an `opencode` slot with a `colin-mbot-*` agent.
 5. **OpenCode preflight + launch + harvest.** Do **not** invoke `occtl` or `run-opencode.ts` from this skill — `mbot-run` owns both (occtl by default; run-opencode.ts only as an internal fallback).
    ```bash
-   # Optional explicit smoke (launch also smokes automatically when slots use opencode)
+   # Optional explicit preflight (launch probes automatically when slots use opencode).
+   # Default is an HTTP/binary probe; add --deep for a real model round trip.
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" smoke \
      --run-dir .tmp/<run-id> \
      --attach http://127.0.0.1:4096 \
@@ -51,7 +52,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
 ## OpenCode reliability (hard)
 
 1. **All flags before `--`** in every OpenCode invocation. After `--` is only the harness footer text.
-2. **Smoke before fan-out** — if attach hangs/fails, mbot-run falls back to local spawn; if both fail, OpenCode slots fail-closed (`opencode_mode=skip`).
+2. **Preflight before fan-out** — `launch` probes the attach server (`GET /config/providers`) or, locally, `opencode --version`; no model call unless `"smoke_deep": true`. Unreachable attach → local spawn; neither → OpenCode slots fail-closed (`opencode_mode=skip`). A slot whose attach run can't connect re-runs locally once (`meta.attach_fallback`) and later slots skip attach, unless `opencode_mode` is `attach`.
 3. **Never wait on `test -s empty.out`** and never `sleep N; rg VERDICT`. Use `mbot-run barrier`.
 4. **Cap attach concurrency** (default 3) to avoid shared-server stalls.
 5. **Pin model ids** from attach `/config/providers` when available (`openai/gpt-6.1-sol` preferred when listed).

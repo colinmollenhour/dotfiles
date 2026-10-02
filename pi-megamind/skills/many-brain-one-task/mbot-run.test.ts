@@ -12,7 +12,14 @@ import {
   stripDuplicateRunPrefix,
 } from "./mbot-paths.ts"
 import { collectCandidates, parseIssueBlocks } from "./mbot-candidates.ts"
-import { isRich, loadUltraReviewIdentity } from "./mbot-run.ts"
+import {
+  attachEnv,
+  isAttachConnectFailure,
+  isRich,
+  loadUltraReviewIdentity,
+  occtlAttachArgs,
+  occtlRunArgs,
+} from "./mbot-run.ts"
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "mbot-run.ts")
 const TMP = mkdtempSync(join(tmpdir(), "mbot-run-test-"))
@@ -118,12 +125,12 @@ describe("Ultra Review version", () => {
   delete noSeamus.SEAMUS_GIT_SHA
   delete noSeamus.GIT_COMMIT
 
-  test("identity is Ultra Review 0.5", () => {
+  test("identity is Ultra Review 0.8", () => {
     const id = loadUltraReviewIdentity(noSeamus)
     expect(id.product).toBe("Ultra Review")
-    expect(id.version).toBe("0.5")
-    expect(id.label).toBe("Ultra Review 0.5")
-    expect(id.header).toBe("AI Ultra Review 0.5")
+    expect(id.version).toBe("0.8")
+    expect(id.label).toBe("Ultra Review 0.8")
+    expect(id.header).toBe("AI Ultra Review 0.8")
   })
 
   test("SEAMUS_GIT_SHA overrides the skill version with a short sha", () => {
@@ -145,10 +152,10 @@ describe("Ultra Review version", () => {
     })
     expect(r.exitCode).toBe(0)
     const printed = JSON.parse(r.stdout.toString())
-    expect(printed.ultra_review.label).toBe("Ultra Review 0.5")
+    expect(printed.ultra_review.label).toBe("Ultra Review 0.8")
     const state = JSON.parse(readFileSync(join(runDir, "STATE.json"), "utf8"))
-    expect(state.ultra_review.version).toBe("0.5")
-    expect(state.ultra_review.header).toBe("AI Ultra Review 0.5")
+    expect(state.ultra_review.version).toBe("0.8")
+    expect(state.ultra_review.header).toBe("AI Ultra Review 0.8")
   })
 })
 
@@ -373,5 +380,102 @@ invariant: x
     expect(bySlot["z-slot"].id).toBe("z-slot/R001")
     expect(bySlot["a-slot"].actual_model).toBe("gpt")
     expect(bySlot["m-slot"].id).toBe("m-slot/R001")
+  })
+})
+
+describe("OpenCode attach via env, not --attach", () => {
+  test("attachEnv fills HOST/PORT from attach URL when unset", () => {
+    const prevHost = process.env.OPENCODE_SERVER_HOST
+    const prevPort = process.env.OPENCODE_SERVER_PORT
+    delete process.env.OPENCODE_SERVER_HOST
+    delete process.env.OPENCODE_SERVER_PORT
+    try {
+      const env = attachEnv("http://127.0.0.1:4096")
+      expect(env.OPENCODE_SERVER_HOST).toBe("127.0.0.1")
+      expect(env.OPENCODE_SERVER_PORT).toBe("4096")
+    } finally {
+      if (prevHost === undefined) delete process.env.OPENCODE_SERVER_HOST
+      else process.env.OPENCODE_SERVER_HOST = prevHost
+      if (prevPort === undefined) delete process.env.OPENCODE_SERVER_PORT
+      else process.env.OPENCODE_SERVER_PORT = prevPort
+    }
+  })
+
+  test("existing OPENCODE_SERVER_* env wins over the attach URL", () => {
+    const prevHost = process.env.OPENCODE_SERVER_HOST
+    const prevPort = process.env.OPENCODE_SERVER_PORT
+    process.env.OPENCODE_SERVER_HOST = "10.0.0.5"
+    process.env.OPENCODE_SERVER_PORT = "4095"
+    try {
+      const env = attachEnv("http://127.0.0.1:4096")
+      expect(env.OPENCODE_SERVER_HOST).toBe("10.0.0.5")
+      expect(env.OPENCODE_SERVER_PORT).toBe("4095")
+    } finally {
+      if (prevHost === undefined) delete process.env.OPENCODE_SERVER_HOST
+      else process.env.OPENCODE_SERVER_HOST = prevHost
+      if (prevPort === undefined) delete process.env.OPENCODE_SERVER_PORT
+      else process.env.OPENCODE_SERVER_PORT = prevPort
+    }
+  })
+
+  test("occtl run args never include --attach; spawn only without attach", () => {
+    expect(occtlAttachArgs("127.0.0.1:4096")).toEqual([])
+    const attached = occtlRunArgs({
+      model: "openai/gpt-6.1-sol",
+      promptPath: "prompts/x.md",
+      outPath: "results/x.out",
+      timeoutMs: 1200000,
+      dir: "/tmp",
+      attach: "http://127.0.0.1:4096",
+      message: "hi",
+    })
+    expect(attached).not.toContain("--attach")
+    expect(attached).not.toContain("--spawn")
+    const local = occtlRunArgs({
+      model: "openai/gpt-6.1-sol",
+      promptPath: "prompts/x.md",
+      outPath: "results/x.out",
+      timeoutMs: 1200000,
+      dir: "/tmp",
+      message: "hi",
+    })
+    expect(local).toContain("--spawn")
+  })
+})
+
+describe("opencode preflight", () => {
+  test("isAttachConnectFailure only matches connection errors with no body", () => {
+    const refused = "Error: Cannot connect to OpenCode server at http://127.0.0.1:4096"
+    expect(isAttachConnectFailure(1, refused, "")).toBe(true)
+    expect(isAttachConnectFailure(1, "fetch failed: ECONNREFUSED", "")).toBe(true)
+    expect(isAttachConnectFailure(1, refused, "partial review")).toBe(false)
+    expect(isAttachConnectFailure(124, refused, "")).toBe(false)
+    expect(isAttachConnectFailure(0, refused, "")).toBe(false)
+    expect(isAttachConnectFailure(1, "model not found: openai/nope", "")).toBe(false)
+  })
+
+  test("smoke picks attach from the HTTP probe without a model call", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) =>
+        new URL(req.url).pathname === "/config/providers"
+          ? Response.json({ providers: [{ id: "openai", models: { "gpt-6.1-sol": {} } }] })
+          : new Response("nope", { status: 404 }),
+    })
+    try {
+      const runDir = join(TMP, "smoke-attach")
+      const proc = Bun.spawn(
+        ["bun", SCRIPT, "smoke", "--run-dir", runDir, "--attach", `http://127.0.0.1:${server.port}`, "--model", "gpt-6.1-sol"],
+        { stdout: "pipe", stderr: "pipe" },
+      )
+      const stdout = await new Response(proc.stdout).text()
+      expect(await proc.exited).toBe(0)
+      const pf = JSON.parse(stdout).preflight
+      expect(pf.mode).toBe("attach")
+      expect(pf.probe).toBe("http")
+      expect(pf.model_resolved).toBe("openai/gpt-6.1-sol")
+    } finally {
+      server.stop(true)
+    }
   })
 })

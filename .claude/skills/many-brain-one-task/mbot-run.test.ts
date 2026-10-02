@@ -14,6 +14,7 @@ import {
 import { collectCandidates, parseIssueBlocks } from "./mbot-candidates.ts"
 import {
   attachEnv,
+  isAttachConnectFailure,
   isRich,
   loadUltraReviewIdentity,
   occtlAttachArgs,
@@ -439,5 +440,42 @@ describe("OpenCode attach via env, not --attach", () => {
       message: "hi",
     })
     expect(local).toContain("--spawn")
+  })
+})
+
+describe("opencode preflight", () => {
+  test("isAttachConnectFailure only matches connection errors with no body", () => {
+    const refused = "Error: Cannot connect to OpenCode server at http://127.0.0.1:4096"
+    expect(isAttachConnectFailure(1, refused, "")).toBe(true)
+    expect(isAttachConnectFailure(1, "fetch failed: ECONNREFUSED", "")).toBe(true)
+    expect(isAttachConnectFailure(1, refused, "partial review")).toBe(false)
+    expect(isAttachConnectFailure(124, refused, "")).toBe(false)
+    expect(isAttachConnectFailure(0, refused, "")).toBe(false)
+    expect(isAttachConnectFailure(1, "model not found: openai/nope", "")).toBe(false)
+  })
+
+  test("smoke picks attach from the HTTP probe without a model call", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) =>
+        new URL(req.url).pathname === "/config/providers"
+          ? Response.json({ providers: [{ id: "openai", models: { "gpt-6.1-sol": {} } }] })
+          : new Response("nope", { status: 404 }),
+    })
+    try {
+      const runDir = join(TMP, "smoke-attach")
+      const proc = Bun.spawn(
+        ["bun", SCRIPT, "smoke", "--run-dir", runDir, "--attach", `http://127.0.0.1:${server.port}`, "--model", "gpt-6.1-sol"],
+        { stdout: "pipe", stderr: "pipe" },
+      )
+      const stdout = await new Response(proc.stdout).text()
+      expect(await proc.exited).toBe(0)
+      const pf = JSON.parse(stdout).preflight
+      expect(pf.mode).toBe("attach")
+      expect(pf.probe).toBe("http")
+      expect(pf.model_resolved).toBe("openai/gpt-6.1-sol")
+    } finally {
+      server.stop(true)
+    }
   })
 })
