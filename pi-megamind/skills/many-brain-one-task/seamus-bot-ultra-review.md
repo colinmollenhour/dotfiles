@@ -8,27 +8,25 @@ and the CodeRabbit / off-profile-model bans; they are not repeated here.
 ## Participants and allocation (overrides colin-ultra-review "Allocation")
 
 All at **high** effort (never `max` / `xhigh`). Opus also runs adjudication, integration, and
-summarization. Backup when a primary cannot run: **Grok only**.
+summarization. Backup when a primary cannot run: **none** (retry once with the same model; if
+still down, proceed with the available primary).
 
 | Lens | Participants |
 |---|---|
 | `state` / `contracts` / `failure` | Opus 5.5 + GPT-6.1 Sol, × each bucket |
-| `craft` | Grok, one slot per bucket (Opus if Grok cannot run) |
 | `merits` | Opus 5.5 + GPT-6.1 Sol, once |
 | `integration` (every round) | Opus 5.5 + GPT-6.1 Sol |
 
-Grok keeps only `craft`: it was the slowest lane, timed out most, and its unique confirmed
-findings were all low and came from that lens. Thread budget: `7 × buckets` + 2 merits +
-2 integration per round, plus adjudication. Record `participants: 2` (+ Grok craft) in
-`run-summary.json`.
+Thread budget: `6 × buckets` + 2 merits + 2 integration per round, plus adjudication. Record
+`participants: 2` in `run-summary.json`.
 
 The table above is the `standard` tier. Smaller diffs use colin-ultra-review "Size tier"
 thresholds with these participants:
 
 | Tier | Discovery | Merits | Integration | Typical threads |
 |---|---|---|---|---|
-| `small` | Opus 5.5 + GPT-6.1 Sol, combined-lens; no Grok | Opus 5.5 | none | 3 + ≤2 adjudication |
-| `medium` | `standard` grid, one bucket (7) | Opus 5.5 | Opus 5.5 + GPT-6.1 Sol in round 2 only if round 1 confirmed medium+ | 8–10 + adjudication |
+| `small` | Opus 5.5 + GPT-6.1 Sol, combined-lens | Opus 5.5 | none | 3 + ≤2 adjudication |
+| `medium` | `standard` grid, one bucket (6) | Opus 5.5 | Opus 5.5 + GPT-6.1 Sol in round 2 only if round 1 confirmed medium+ | 7–9 + adjudication |
 
 ## Validation (overrides colin-ultra-review §8)
 
@@ -38,8 +36,8 @@ everything, and the adversarial pass after them did the real filtering. Once per
 1. `mbot-run candidates`, then cluster by **root cause** (bookkeeping, not a verdict), recording
    which model families raised each cluster.
 2. **Adjudicate across families:** Opus-only clusters → one GPT-6.1 Sol slot; clusters raised by GPT
-   and/or Grok (with or without Opus) → one Opus adjudicator. Split batches over ~40 clusters
-   into two slots of the same family.
+   (with or without Opus) → one Opus adjudicator. Split batches over ~40 clusters into two slots
+   of the same family.
 3. The adjudicator tries to **refute** each cluster against the source at head. Status is exactly
    `confirmed` | `rejected` (concrete refutation) | `unresolved` (names the missing instrument). A
    severity disagreement is `confirmed` at the corrected severity. Never reject for single-model
@@ -57,7 +55,7 @@ session, has `task` and no `Agent`). `--harness claude|opencode` picks it; Claud
 Check your tool surface — never assume.
 
 - **Claude parent:** Opus slots use native `Agent`, listed in `plan.json` with
-  `harness: "external"` so harvest still scores the `.out`. GPT and Grok are `mbot-run` OpenCode
+  `harness: "external"` so harvest still scores the `.out`. GPT slots are `mbot-run` OpenCode
   slots.
 - **OpenCode parent:** every participant, Opus included, is an `mbot-run` slot with a
   `colin-mbot-*` agent; no `external` slots. The `task` tool skips `--out` harvest and timeout
@@ -69,13 +67,10 @@ Check your tool surface — never assume.
 |---|---|---|---|
 | Opus 5.5 | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `high` |
 | GPT-6.1 Sol | `openai/gpt-6.1-sol` | `colin-mbot-gpt-sol` | `high` |
-| Grok | `xai/grok-4.7` | `colin-mbot-grok` | `high` |
 
 - Always set `model`, `agent`, and `variant`; `mbot-run` auto-picks an agent only for GPT.
-  `colin-mbot-grok` pins no model, so a Grok slot without `model` silently runs GPT. Never
-  `build` / `general`.
-- Provider is `xai`, not `x-ai`; `xai/grok-4.6` is the fallback if 4.7 is not listed. GPT goes
-  through `openai`, not OpenCode Zen.
+  Never `build` / `general`.
+- GPT goes through `openai`, not OpenCode Zen.
 - `claude-code/opus` is the parent harness model — never a participant.
 - `"concurrency": 3` (4 max): all slots, and an OpenCode parent, share one server. Wall-clock
   20 min per slot (`--timeout-ms 1200000`).
