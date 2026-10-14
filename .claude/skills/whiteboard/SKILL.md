@@ -42,6 +42,13 @@ and they all print its URL). Boards are plain files, so deleting a worktree leav
 up. If the default port is taken by something else, the server uses the next free one, so give the user the
 URL `start` prints rather than assuming 4477.
 
+**systemd service.** On Linux, `install.sh --agents` installs and enables the user unit
+`whiteboard.service`, which runs `whiteboard serve --wait-tailscale 60` at login (or boot with lingering)
+and restarts it after a crash. With the unit installed, a default `whiteboard start` / `stop` goes through
+`systemctl --user`, so the server is not tied to the agent or shell that started it. Logs are in
+`journalctl --user -u whiteboard.service`. The address is chosen when the server starts, so after the
+machine's Tailscale address changes, run `systemctl --user restart whiteboard.service`.
+
 `whiteboard status` lists the connected viewers (page and remote address). Use it to confirm the user
 actually has the board open, for example that a Tailscale address shows up.
 

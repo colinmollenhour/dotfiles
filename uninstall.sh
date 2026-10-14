@@ -587,6 +587,18 @@ run_uninstall() {
     TARGETS["$HOME/.gitconfig.colin"]=".gitconfig.colin"
   fi
 
+  # Stop the board server while its unit file still exists, so `disable` can remove the wants link.
+  local wb_unit="$HOME/.config/systemd/user/whiteboard.service"
+  # Only the user manager that owns this $HOME; tests uninstall from a temporary HOME.
+  if [[ -n "${TARGETS[$wb_unit]+x}" ]] && command -v systemctl >/dev/null 2>&1 \
+    && [[ "$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HOME=//p')" == "$HOME" ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "systemctl --user disable --now whiteboard.service"
+    else
+      systemctl --user disable --now whiteboard.service >/dev/null 2>&1 || true
+    fi
+  fi
+
   # Process file uninstalls
   for dest in "${!TARGETS[@]}"; do
     uninstall_single_file "$dest" "${TARGETS[$dest]}"

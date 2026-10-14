@@ -1044,6 +1044,31 @@ install_agents() {
     fi
   fi
 
+  # Run the board server under the user manager so it survives the agent or shell that started it.
+  local wb_unit_src=".claude/skills/whiteboard/systemd/whiteboard.service"
+  local wb_unit_dest="$HOME/.config/systemd/user/whiteboard.service"
+  # systemctl --user reaches the session's manager whatever $HOME is, so skip it when $HOME is not that
+  # manager's home (tests and sandboxes install into a temporary HOME).
+  if [[ -f "$SCRIPT_DIR/$wb_unit_src" ]] && command -v systemctl >/dev/null 2>&1 \
+    && [[ "$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HOME=//p')" == "$HOME" ]]; then
+    install_file "$wb_unit_src" "$SCRIPT_DIR/$wb_unit_src" "$wb_unit_dest"
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "systemctl --user enable + restart whiteboard.service"
+    elif [[ -f "$wb_unit_dest" ]]; then
+      systemctl --user daemon-reload
+      # A detached server from `whiteboard start` holds the port and lock; hand it over to the unit.
+      if ! systemctl --user is-active --quiet whiteboard.service; then
+        "$wb_dest" stop >/dev/null 2>&1 || true
+      fi
+      # Restart rather than start so an updated script takes effect; open boards reconnect on their own.
+      { systemctl --user enable whiteboard.service && systemctl --user restart whiteboard.service; } >/dev/null 2>&1 \
+        || warn "could not start whiteboard.service; see journalctl --user -u whiteboard.service"
+      if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]]; then
+        warn "user lingering is off; whiteboard.service starts at login, not boot (loginctl enable-linger $USER)"
+      fi
+    fi
+  fi
+
   if command -v omp >/dev/null 2>&1; then
     if [[ "$DRY_RUN" == true ]]; then
       dry_run_msg "omp install $SCRIPT_DIR/pi-megamind"

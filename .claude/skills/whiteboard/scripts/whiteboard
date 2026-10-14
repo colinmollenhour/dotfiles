@@ -10,12 +10,15 @@ import { fileURLToPath } from 'node:url';
 const SELF = fileURLToPath(import.meta.url);
 const ASSETS = path.join(path.dirname(SELF), '..', 'assets');
 const DEFAULT_PORT = 4477;
+const SYSTEMD_UNIT = 'whiteboard.service';
 
 const HELP = `whiteboard - live-reloading HTML whiteboards for agents
 
 Usage:
   whiteboard start [--dir DIR] [--host HOST] [--port N]   Start server in background (idempotent)
   whiteboard serve [--dir DIR] [--host HOST] [--port N]   Run server in foreground
+                   [--wait-tailscale SECONDS]             (wait for a Tailscale address before
+                                                           falling back to 127.0.0.1)
   whiteboard new NAME [--title TITLE] [--force]           Create DIR/NAME.html from the template
   whiteboard url [NAME]                                   Print the board URL
   whiteboard errors [--clear]                             Print browser errors reported by open boards
@@ -32,6 +35,10 @@ Defaults:
 
 One server serves all of DIR; 'start' reuses it and always succeeds while it runs.
 The server exits on its own if DIR is deleted.
+
+When the user unit ${SYSTEMD_UNIT} is installed, 'start' and 'stop' on the default DIR,
+HOST and PORT go through systemctl --user, so the server outlives the shell or agent
+that started it. Other invocations run a detached process as before.
 
 NAME may contain slashes (e.g. myproject/auth-flow). Every save to a file under DIR
 reloads any browser tab showing it; the index page at / lists all boards.
@@ -76,7 +83,10 @@ function config(opts) {
   const portExplicit = Boolean(opts.port || process.env.WHITEBOARD_PORT);
   const port = Number(opts.port || process.env.WHITEBOARD_PORT || DEFAULT_PORT);
   if (!Number.isInteger(port) || port < 1 || port > 65535) die(`invalid port: ${opts.port}`);
-  return { dir, host, port, portExplicit, stateFile: path.join(dir, '.whiteboard-server.json') };
+  // The systemd unit runs `serve` with no overrides, so only a default invocation may be routed to it.
+  const isDefault = !(opts.dir || opts.host || opts.port
+    || process.env.WHITEBOARD_DIR || process.env.WHITEBOARD_HOST || process.env.WHITEBOARD_PORT);
+  return { dir, host, port, portExplicit, isDefault, stateFile: path.join(dir, '.whiteboard-server.json') };
 }
 
 function readState(cfg) {
@@ -321,6 +331,30 @@ async function waitForState(cfg, ms) {
   return null;
 }
 
+// Runs `systemctl --user ARGS...` and reports success. Fails closed (FALSE) when there is no
+// user manager, e.g. in a container or a sandbox without a session bus.
+function systemctlUser(...args) {
+  try {
+    execFileSync('systemctl', ['--user', ...args], { stdio: 'ignore', timeout: 15000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The unit serves the manager's ~/.whiteboard; a different HOME (tests, sandboxes) must not drive it.
+function usesSystemdUnit(cfg) {
+  if (!cfg.isDefault || process.platform !== 'linux') return false;
+  let env = '';
+  try {
+    env = execFileSync('systemctl', ['--user', 'show-environment'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000 });
+  } catch {
+    return false;
+  }
+  const home = env.split('\n').find(l => l.startsWith('HOME='))?.slice(5);
+  return home === os.homedir() && systemctlUser('cat', SYSTEMD_UNIT);
+}
+
 async function start(cfg) {
   const running = readState(cfg);
   // Always succeed when a server is up, so agents never fight over it.
@@ -333,6 +367,14 @@ async function start(cfg) {
     return;
   }
   fs.mkdirSync(cfg.dir, { recursive: true });
+  if (usesSystemdUnit(cfg)) {
+    if (!systemctlUser('start', SYSTEMD_UNIT)) die(`systemctl --user start ${SYSTEMD_UNIT} failed; see journalctl --user -u ${SYSTEMD_UNIT}`);
+    // The unit may spend up to its --wait-tailscale budget looking for the Tailscale address.
+    const s = await waitForState(cfg, 70000);
+    if (!s) die(`server did not start; see journalctl --user -u ${SYSTEMD_UNIT}`);
+    console.log(`started (pid ${s.pid}, ${SYSTEMD_UNIT}) serving ${s.dir}\n${allUrls(s).join('\n')}`);
+    return;
+  }
   const log = fs.openSync(path.join(cfg.dir, '.whiteboard-server.log'), 'a');
   const args = [SELF, 'serve', '--dir', cfg.dir, '--host', cfg.host];
   if (cfg.portExplicit) args.push('--port', String(cfg.port));
@@ -505,7 +547,16 @@ async function main() {
   if (opts.help || !cmd || cmd === 'help') return process.stdout.write(HELP);
   const cfg = config(opts);
   switch (cmd) {
-    case 'serve': return serve(cfg);
+    case 'serve': {
+      // At boot the service can start before tailscaled has an address; wait rather than bind 127.0.0.1.
+      const wait = Number(opts['wait-tailscale'] || 0);
+      if (wait > 0 && !opts.host && !process.env.WHITEBOARD_HOST && !tailscaleAddress()) {
+        const end = Date.now() + wait * 1000;
+        while (!tailscaleAddress() && Date.now() < end) await new Promise(r => setTimeout(r, 1000));
+        cfg.host = tailscaleAddress() || cfg.host;
+      }
+      return serve(cfg);
+    }
     case 'start': return start(cfg);
     case 'new': return newBoard(cfg, opts);
     case 'publish': return publish(cfg, opts);
@@ -527,6 +578,11 @@ async function main() {
     case 'stop': {
       const s = readState(cfg);
       if (!s) return console.log('not running');
+      // One server per DIR (lock file), so an active unit on the default DIR owns the running server.
+      if (usesSystemdUnit(cfg) && systemctlUser('is-active', '--quiet', SYSTEMD_UNIT)) {
+        if (!systemctlUser('stop', SYSTEMD_UNIT)) die(`systemctl --user stop ${SYSTEMD_UNIT} failed`);
+        return console.log(`stopped (pid ${s.pid}, ${SYSTEMD_UNIT})`);
+      }
       process.kill(s.pid, 'SIGTERM');
       return console.log(`stopped (pid ${s.pid})`);
     }

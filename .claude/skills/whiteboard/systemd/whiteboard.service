@@ -1,0 +1,19 @@
+[Unit]
+Description=Whiteboard live-reload board server (~/.whiteboard)
+Documentation=file://%h/.agents/skills/whiteboard/SKILL.md
+# tailscaled runs as a user unit on some hosts (Homebrew); order after it when present.
+After=homebrew.tailscale.service
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+# The script's shebang is `env node`; the user manager's PATH lacks Homebrew and ~/.local/bin.
+Environment=PATH=%h/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/whiteboard serve --wait-tailscale 60
+# `whiteboard stop` and SIGTERM exit 0, so only crashes restart.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
