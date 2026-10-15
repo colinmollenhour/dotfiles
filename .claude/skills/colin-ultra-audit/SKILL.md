@@ -1,5 +1,6 @@
 ---
 name: colin-ultra-audit
+slash: true
 disable-model-invocation: true
 allowed-tools: Bash(ls:*), Bash(cat:*), Bash(find:*), Bash(wc:*), Bash(git *), Bash(rg:*), Bash(grep:*), Bash(jq:*), Read
 description: Multi-role ultra production-readiness audit — N models × 3 focused roles (hardening / operability / stewardship) on the current repo state

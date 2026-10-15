@@ -1,5 +1,6 @@
 ---
 name: colin-commit-and-push
+slash: true
 disable-model-invocation: true
 description: Commit, push, and open/update a Github PR or GitLab MR (unless otherwise specified)
 allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git remote:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr comment:*), Bash(gh pr edit:*), Bash(glab mr create:*), Bash(glab mr note:*), Bash(glab mr update:*), Bash(gh pr view:*), Bash(glab mr view:*), Bash(head), Bash(git rev-parse:*), Bash(gh pr status:*), Bash(bun *), Bash(which *)

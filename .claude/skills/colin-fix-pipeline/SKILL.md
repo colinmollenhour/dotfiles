@@ -1,5 +1,6 @@
 ---
 name: colin-fix-pipeline
+slash: true
 disable-model-invocation: true
 description: Fix failing CI pipeline (GitHub Actions or GitLab CI) for the current branch
 ---
