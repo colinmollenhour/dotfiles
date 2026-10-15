@@ -230,39 +230,10 @@ At a high level, it:
 
 Use `megamind` for long-running work where the desired output is not just code, but a completed branch, review item, local gate results, and CI status. Use `--dry-run` to have it write the execution outline without launching agents or changing code, pass `--roborev` to opt into Roborev detection and review drains for an already enrolled repo, include `skip human review` to have it make the best call autonomously after a split MBOD result, or pass `--evidence` to attach the final artifact archive.
 
-```mermaid
-flowchart TD
-    Request["User request: objective, spec, issue, or plan"] --> Intake["Resolve source and create .tmp/megamind run directory"]
-    Intake --> Context["Capture repo context, dirty state, base branch, and local gates"]
-    Context --> Critique["MBOT critique: contradictions, gaps, naming, and design risks"]
-    Critique --> Plan["Planner writes second draft and readiness status"]
-    Plan --> Decision{"Unresolved decisions?"}
-    Decision -->|"Yes"| MBOD["MBOD debate chooses direction"]
-    MBOD --> ReviewGate{"MBOD unanimous?"}
-    ReviewGate -->|"No, unless skipped"| Human["Ask one human review question"]
-    ReviewGate -->|"Yes"| FinalPlan["Write final implementation plan"]
-    Human --> FinalPlan
-    Decision -->|"No"| FinalPlan
-    FinalPlan --> Split["Split into one to three disjoint work packages"]
-    Split --> Branch["Create feature branch"]
-    Branch --> Agents["Delegated coding agents implement assigned scopes"]
-    Agents --> Integrate["Commit work packages and run integration checks"]
-    Integrate --> RoboChoice{"--roborev active?"}
-    RoboChoice -->|"Yes"| RoboDrain["Drain Roborev commit reviews"]
-    RoboChoice -->|"No"| UltraReview["Ultra review: state, contracts, failure, integration"]
-    RoboDrain --> UltraReview
-    UltraReview --> Fixes{"Validated findings?"}
-    Fixes -->|"Yes"| Fix["Fix agents; commit fix round and optionally drain Roborev"]
-    Fix --> UltraReview
-    Fixes -->|"No"| Gates["Run final local gates"]
-    Gates --> Delivery["Optional Roborev drain, push milestone commits, open or update PR/MR"]
-    Delivery --> Education["Generate and validate educational brief"]
-    Education --> CI["Monitor CI, fix minor failures, optionally drain Roborev"]
-    CI --> Evidence{"Evidence requested?"}
-    Evidence -->|"Yes"| Archive["Package and attach evidence ZIP"]
-    Evidence -->|"No"| Done{"Green CI or documented blocker"}
-    Archive --> Done
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/megamind-flow-dark.svg">
+  <img alt="Megamind flow: plan with MBOT critique and MBOD decisions, build with coding agents, ultra review with fix loop, then deliver PR/MR, educational brief, and CI" src="docs/images/megamind-flow.svg">
+</picture>
 
 ### Multi-Harness Integration & Platform Support
 
@@ -330,41 +301,10 @@ Primary files are bucketed by behavior and data flow, targeting roughly 800–1,
 
 Buckets may run sequentially to bound load. Within a bucket, the three lenses invoke MBOT in parallel, and each MBOT call fans out to N models. Candidate findings then feed a full-participant integration pass and independent validation. Unique findings are retained unless source evidence disproves them.
 
-```mermaid
-flowchart TD
-    User([User: /colin-ultra-review])
-    Resolve[Resolve exact base/head, intent, and history]
-    Index[Build change index<br/>primary targets + context-only artifacts]
-    Buckets[Bucket by behavior and data flow]
-
-    subgraph Discovery["Per-bucket discovery"]
-        direction LR
-        State["MBOT: state"]
-        Contracts["MBOT: contracts"]
-        Failure["MBOT: failure"]
-    end
-
-    Integrate["Whole-change MBOT integration pass"]
-    Validate["Independent evidence validation<br/>confirmed · rejected · unresolved"]
-    NewIssues{"New confirmed issues?"}
-    Cap{"Round cap reached?"}
-    Fresh["Fresh full-state integration round"]
-    Summary["Model, role, and round summary"]
-    Post["Post confirmed findings only"]
-    Label["Apply :Reviewed-By-AI-Ultra"]
-
-    User --> Resolve --> Index --> Buckets --> Discovery --> Integrate --> Validate --> NewIssues
-    NewIssues -->|"No: clean round"| Summary
-    NewIssues -->|"Yes"| Cap
-    Cap -->|"No"| Fresh --> Validate
-    Cap -->|"Yes"| Summary
-    Summary --> Post --> Label
-
-    classDef parallel fill:#dbeafe,stroke:#1e40af,color:#000
-    classDef validation fill:#dcfce7,stroke:#166534,color:#000
-    class State,Contracts,Failure parallel
-    class Integrate,Validate,Fresh validation
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ultra-review-flow-dark.svg">
+  <img alt="Ultra-review flow: resolve and bucket the change, run state/contracts/failure MBOT lenses in parallel, integrate, validate, loop fresh rounds until clean or capped, then post findings and label" src="docs/images/ultra-review-flow.svg">
+</picture>
 
 
 **`/colin-critique [target] [flags]`** — adversarial multi-model critique of a spec or plan document, not code. Flags contradictions, gaps, poor naming, and inferior design choices. **Never** suggests scope expansion or "nice-to-haves". The target is a file path, `current plan` (the in-session plan), or a ClickUp TaskID. With no target, it searches for `SPECS-*.md` then `PLAN*.md`.

@@ -1,0 +1,1140 @@
+{
+ "tldrawFileFormatVersion": 1,
+ "schema": {
+  "schemaVersion": 1,
+  "storeVersion": 4,
+  "recordVersions": {
+   "asset": {
+    "version": 1,
+    "subTypeKey": "type",
+    "subTypeVersions": {
+     "image": 2,
+     "video": 2,
+     "bookmark": 0
+    }
+   },
+   "camera": {
+    "version": 1
+   },
+   "document": {
+    "version": 2
+   },
+   "instance": {
+    "version": 17
+   },
+   "instance_page_state": {
+    "version": 3
+   },
+   "page": {
+    "version": 1
+   },
+   "shape": {
+    "version": 3,
+    "subTypeKey": "type",
+    "subTypeVersions": {
+     "group": 0,
+     "embed": 4,
+     "bookmark": 1,
+     "image": 2,
+     "text": 1,
+     "draw": 1,
+     "geo": 7,
+     "line": 0,
+     "note": 4,
+     "frame": 0,
+     "arrow": 1,
+     "highlight": 0,
+     "video": 1
+    }
+   },
+   "instance_presence": {
+    "version": 4
+   },
+   "pointer": {
+    "version": 1
+   }
+  }
+ },
+ "records": [
+  {
+   "id": "document:document",
+   "typeName": "document",
+   "gridSize": 10,
+   "name": "",
+   "meta": {}
+  },
+  {
+   "id": "page:page1",
+   "typeName": "page",
+   "name": "Page 1",
+   "index": "a1",
+   "meta": {}
+  },
+  {
+   "id": "shape:user",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a1",
+   "x": 0,
+   "y": 20,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 100,
+    "geo": "oval",
+    "color": "green",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "/colin-ultra-review",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:resolve",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a2",
+   "x": 420,
+   "y": 5,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 130,
+    "geo": "rectangle",
+    "color": "blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Resolve exact base/head,\nintent, and history",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:index",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a3",
+   "x": 840,
+   "y": 5,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 130,
+    "geo": "rectangle",
+    "color": "blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Build change index:\nprimary targets +\ncontext-only artifacts",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:buckets",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a4",
+   "x": 1300,
+   "y": 20,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Bucket by behavior\nand data flow",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:disc",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a5",
+   "x": 0,
+   "y": 230,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 1620,
+    "h": 230,
+    "geo": "rectangle",
+    "color": "grey",
+    "labelColor": "grey",
+    "fill": "none",
+    "dash": "dashed",
+    "size": "m",
+    "font": "draw",
+    "text": "Per-bucket discovery \u00b7 3 lenses in parallel \u00b7 N models each",
+    "align": "middle",
+    "verticalAlign": "start",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:state",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a6",
+   "x": 120,
+   "y": 325,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 380,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "light-blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "MBOT: state\nbehavior & lifecycle",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:contracts",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a7",
+   "x": 620,
+   "y": 325,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 380,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "light-blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "MBOT: contracts\ncallers & compatibility",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:failure",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a8",
+   "x": 1120,
+   "y": 325,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 380,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "light-blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "MBOT: failure\nerrors & security",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:integrate",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "a9",
+   "x": 0,
+   "y": 590,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "violet",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Whole-change MBOT\nintegration pass",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:validate",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "aA",
+   "x": 420,
+   "y": 575,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 130,
+    "geo": "rectangle",
+    "color": "green",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Independent evidence\nvalidation: confirmed \u00b7\nrejected \u00b7 unresolved",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:newiss",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "aB",
+   "x": 840,
+   "y": 550,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 180,
+    "geo": "diamond",
+    "color": "yellow",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "New confirmed\nissues?",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:summary",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "aC",
+   "x": 1300,
+   "y": 590,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Model, role, and\nround summary",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:cap",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "aD",
+   "x": 840,
+   "y": 810,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 180,
+    "geo": "diamond",
+    "color": "yellow",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Round cap\nreached?",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:fresh",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "aE",
+   "x": 420,
+   "y": 850,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "green",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Fresh full-state\nintegration round",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:post",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "aF",
+   "x": 1300,
+   "y": 850,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 100,
+    "geo": "rectangle",
+    "color": "blue",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Post confirmed\nfindings only",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:label",
+   "typeName": "shape",
+   "type": "geo",
+   "parentId": "page:page1",
+   "index": "aG",
+   "x": 1300,
+   "y": 1055,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "w": 320,
+    "h": 110,
+    "geo": "oval",
+    "color": "green",
+    "labelColor": "black",
+    "fill": "solid",
+    "dash": "draw",
+    "size": "m",
+    "font": "draw",
+    "text": "Apply label\n:Reviewed-By-AI-Ultra",
+    "align": "middle",
+    "verticalAlign": "middle",
+    "growY": 0,
+    "url": ""
+   }
+  },
+  {
+   "id": "shape:arr_user_resolve",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aH",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:user",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:resolve",
+     "normalizedAnchor": {
+      "x": 0,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_resolve_index",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aI",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:resolve",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:index",
+     "normalizedAnchor": {
+      "x": 0,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_index_buckets",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aJ",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:index",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:buckets",
+     "normalizedAnchor": {
+      "x": 0,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_buckets_disc",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aK",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:buckets",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 1
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:disc",
+     "normalizedAnchor": {
+      "x": 0.901,
+      "y": 0
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_disc_integrate",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aL",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:disc",
+     "normalizedAnchor": {
+      "x": 0.099,
+      "y": 1
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:integrate",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 0
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_integrate_validate",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aM",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:integrate",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:validate",
+     "normalizedAnchor": {
+      "x": 0,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_validate_newiss",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aN",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:validate",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:newiss",
+     "normalizedAnchor": {
+      "x": 0,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_newiss_summary",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aO",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:newiss",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:summary",
+     "normalizedAnchor": {
+      "x": 0,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "No: clean",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_newiss_cap",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aP",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:newiss",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 1
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:cap",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 0
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "Yes",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_cap_fresh",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aQ",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:cap",
+     "normalizedAnchor": {
+      "x": 0,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:fresh",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "No",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_fresh_validate",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aR",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:fresh",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 0
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:validate",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 1
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_cap_summary",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aS",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:cap",
+     "normalizedAnchor": {
+      "x": 1,
+      "y": 0.5
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:summary",
+     "normalizedAnchor": {
+      "x": 0.2,
+      "y": 1
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "Yes",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_summary_post",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aT",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:summary",
+     "normalizedAnchor": {
+      "x": 0.6,
+      "y": 1
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:post",
+     "normalizedAnchor": {
+      "x": 0.6,
+      "y": 0
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  },
+  {
+   "id": "shape:arr_post_label",
+   "typeName": "shape",
+   "type": "arrow",
+   "parentId": "page:page1",
+   "index": "aU",
+   "x": 0,
+   "y": 0,
+   "rotation": 0,
+   "isLocked": false,
+   "opacity": 1,
+   "meta": {},
+   "props": {
+    "dash": "draw",
+    "size": "m",
+    "fill": "none",
+    "color": "black",
+    "labelColor": "black",
+    "bend": 0,
+    "start": {
+     "type": "binding",
+     "boundShapeId": "shape:post",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 1
+     },
+     "isExact": false
+    },
+    "end": {
+     "type": "binding",
+     "boundShapeId": "shape:label",
+     "normalizedAnchor": {
+      "x": 0.5,
+      "y": 0
+     },
+     "isExact": false
+    },
+    "arrowheadStart": "none",
+    "arrowheadEnd": "arrow",
+    "text": "",
+    "font": "draw"
+   }
+  }
+ ]
+}
