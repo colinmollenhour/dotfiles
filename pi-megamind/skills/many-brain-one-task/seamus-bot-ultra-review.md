@@ -7,7 +7,7 @@ and the CodeRabbit / off-profile-model bans; they are not repeated here.
 
 ## Participants and allocation (overrides colin-ultra-review "Allocation")
 
-All at **high** effort (never `max` / `xhigh`). Opus also runs adjudication, integration, and
+All at **max** effort. Call out this effort in the final report. Opus also runs adjudication, integration, and
 summarization. Backup when a primary cannot run: **none** (retry once with the same model; if
 still down, proceed with the available primary).
 
@@ -65,8 +65,8 @@ Check your tool surface — never assume.
 
 | Participant | `model` | `agent` | `variant` |
 |---|---|---|---|
-| Opus 5.5 | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `high` |
-| GPT-6.1 Sol | `openai/gpt-6.1-sol` | `colin-mbot-gpt-sol` | `high` |
+| Opus 5.5 | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `max` |
+| GPT-6.1 Sol | `openai/gpt-6.1-sol` | `colin-mbot-gpt-sol` | `max` |
 
 - Always set `model`, `agent`, and `variant`; `mbot-run` auto-picks an agent only for GPT.
   Never `build` / `general`.
