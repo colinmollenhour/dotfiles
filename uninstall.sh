@@ -157,7 +157,7 @@ is_agent_dest() {
   if [[ "$dest" == "$HOME/.claude"* || "$dest" == "$HOME/.opencode"* || "$dest" == "$HOME/.grok"* || "$dest" == "$HOME/.agents"* ]]; then
     return 0
   fi
-  if [[ "$src" == ".claude"* || "$src" == ".opencode"* || "$src" == ".grok"* || "$src" == ".agents"* ]]; then
+  if [[ "$src" == plugins/* || "$src" == ".claude"* || "$src" == ".opencode"* || "$src" == ".grok"* || "$src" == ".agents"* ]]; then
     return 0
   fi
   return 1

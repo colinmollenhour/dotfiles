@@ -18,6 +18,7 @@ Personal dotfiles plus a batteries-included Claude Code config for shipping soft
 - [Shell helpers](#shell-helpers)
 - [VS Code dev containers](#vs-code-dev-containers)
 - [AI tools reference](#ai-tools-reference)
+  - [Plugins](#plugins)
   - [Agents](#agents)
   - [Slash commands](#slash-commands)
   - [Skills](#skills)
@@ -66,6 +67,50 @@ Subsequent runs are safe without `--force`: the script tracks which files it ins
 
 After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, and tools. The same content lives at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2).
 
+## Plugin and skills installation
+
+For Claude Code, install only the plugins you want:
+
+```text
+/plugin marketplace add colinmollenhour/dotfiles
+/plugin install whiteboard@colin-dotfiles
+/plugin install colin-shipping@colin-dotfiles
+/plugin install megamind@colin-dotfiles
+/plugin install colin-frameworks@colin-dotfiles
+/plugin install colin-visuals@colin-dotfiles
+```
+
+Megamind declares `colin-shipping` as a dependency, and shipping declares `colin-cli-bridges`.
+Claude Code installs those dependencies automatically. Whiteboard is independent: it bundles its
+Node server, template, styles, and browser scripts, and needs Node.js 20 or newer. Publishing a board
+also needs the optional `snip-upload` CLI (`./install.sh --bins`); drawing and serving boards do not.
+
+Plugin skills use a namespace: `/colin-shipping:colin-review`, `/megamind:megamind`, and
+`/whiteboard:whiteboard`. Personal skills installed by `install.sh` or the skills CLI keep their
+short names, such as `/colin-review`. Choose one route per host to avoid duplicate skills.
+
+For Codex, OpenCode, and other supported agents, use the [skills CLI](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add colinmollenhour/dotfiles --list
+npx skills add colinmollenhour/dotfiles -g --skill whiteboard
+npx skills add colinmollenhour/dotfiles -g --all
+
+# Optional: settings, native agents, and Pi/OMP integration, without skill mirrors
+./install.sh --agents --no-skills
+```
+
+The skills CLI installs skills, not Claude plugin agents or dependency manifests. When selecting
+individual skills, also select the helpers a workflow calls: Megamind uses MBOT/MBOD, the PR/MR and
+educational brief skills, and the CLI bridge skills. MBOD needs MBOT beside it for helper scripts.
+
+`install.sh --agents` remains a complete personal installation route: it copies every plugin's skills
+into `~/.claude/skills` and `~/.agents/skills`, installs native agents/settings, and sets up helper CLIs
+and the optional whiteboard user service. `--no-skills` skips the skill copies and their CLI/service
+setup; it preserves existing copies. Remove old copies with the installer that owns them before
+switching routes (`./uninstall.sh --agents` for dotfiles, or `npx skills remove` for the skills CLI).
+The dotfiles uninstaller does not remove marketplace plugins; use `/plugin uninstall` for those.
+
 ## Uninstalling
 
 Uninstalling is fast and clean. To remove installed dotfiles, agent configs, and shell/git includes:
@@ -109,7 +154,7 @@ Running `./uninstall.sh` uses this same manifest to cleanly undo installation at
 
 ### Claude Code config
 
-Skills, agents, a status line, and worktree helpers install into `~/.claude/`. The `--agents` flag also mirrors skills into the shared `~/.agents/skills/` directory used by Codex, OpenCode, and agy. Workflows that used to live in `.claude/commands/` are skills now; leftover copies under `~/.claude/commands` and `~/.opencode/commands` are deleted on install. Side-effect skills (`/colin-review`, `/megamind`, commit/push/cleanup, and similar) set `disable-model-invocation: true` so they only run when you type `/name`. Library skills (`gh-cli`, `many-brain-one-task`, ORM/docs helpers) set `user-invocable: false` so they stay off the `/` menu. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
+Skills from `plugins/*/skills/`, agents, and Claude settings install into `~/.claude/`. The `--agents` flag also mirrors skills into the shared `~/.agents/skills/` directory used by Codex, OpenCode, and agy. Workflows that used to live in `.claude/commands/` are skills now; leftover copies under `~/.claude/commands` and `~/.opencode/commands` are deleted on install. Side-effect skills (`/colin-review`, `/megamind`, commit/push/cleanup, and similar) set `disable-model-invocation: true` so they only run when you type `/name`. Library skills (`gh-cli`, `many-brain-one-task`, ORM/docs helpers) set `user-invocable: false` so they stay off the `/` menu. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
 
 ### CLIs
 
@@ -143,13 +188,28 @@ Drop this into your `settings.json` to auto-install on every dev container:
 
 # AI tools reference
 
-A reference to the shared slash commands, skills, and agents in `.claude/`. Invoke slash commands directly (`/colin-review` for Claude Code, `/colin/review` for OpenCode). Skills load automatically when relevant or you can name them in a prompt.
+A reference to the skills and agents in `plugins/` and `.opencode/agents/`. The examples below use personal skill names; Claude plugin installs prefix them with their plugin name (for example `/colin-shipping:colin-review`). Skills load automatically when relevant or you can name them in a prompt.
 
 ## Concepts
 
 - **Slash commands** (`/name`) kick off workflows. You type them.
 - **Skills** are reusable procedures Claude loads on demand, often invoked internally by commands.
 - **MBOT agents** are dedicated subagents backed by specific models. The review, critique, audit, and MBOD commands use them to gather multi-model opinions. Which models run, and through which harness, is driven by MBOT-style profile files — see [Customizing MBOT](#customizing-mbot-your-models-your-harness).
+
+## Plugins
+
+| Plugin | Contents | Plugin dependencies |
+|---|---|---|
+| `colin-shipping` | Review and shipping workflows, MBOT/MBOD, GitHub/GitLab helpers, docs, audits, and skill authoring | `colin-cli-bridges` |
+| `colin-frameworks` | Nuxt UI/Content, Drizzle ORM, VoltAgent, Playwright E2E | — |
+| `colin-cli-bridges` | Claude, Codex, and Grok CLI routing | — |
+| `colin-visuals` | Animated visualizations, infographic prompts, Nano Banana image generation | — |
+| `megamind` | Autonomous delivery skill and dedicated Claude agent | `colin-shipping` |
+| `whiteboard` | Live HTML whiteboard skill, Node CLI/server, and all browser assets | — |
+
+The plugin directories are the canonical skill sources. Marketplace entries use paths relative to the
+repository root, such as `./plugins/whiteboard`. Each plugin can be copied on its own; its scripts and
+assets stay inside that directory. MBOT and MBOD share one plugin because MBOD calls sibling MBOT helpers.
 
 ## Agents
 
@@ -208,7 +268,7 @@ flowchart TD
 
 Megamind supports native integration across 5 AI development platforms:
 
-- **Claude Code**: Native agent at `.claude/agents/megamind.md` and skill at `.claude/skills/megamind/SKILL.md` (`disable-model-invocation: true`). Invoke via `/megamind <task>` or `/agent megamind`.
+- **Claude Code**: Native agent at `plugins/megamind/agents/megamind.md` and skill at `plugins/megamind/skills/megamind/SKILL.md` (`disable-model-invocation: true`). Invoke via `/megamind <task>` or `/agent megamind`.
 - **OpenCode Pi**: Native agent at `.opencode/agents/megamind.md` (installed to `~/.opencode/agents/megamind.md`) configured with `mode: primary` and tool declarations. Invoke via `/megamind <task>` or agent selection in OpenCode TUI.
 - **Oh My Pi (omp) & Pi**: Installable npm package at `pi-megamind/`. Supports `omp install ./pi-megamind` and `pi install ./pi-megamind` with slash command `/megamind <task>` and `mode: main` execution.
 - **Grok CLI**: Installed to `~/.grok/agents/megamind.md`. Supports headless batch fan-out via `grok --prompt-file` with `--always-approve` and `--disallowed-tools Agent`.
@@ -224,7 +284,7 @@ The OMP route defaults MBOT/MBOD delegation to native `task` batches. The Pi rou
 
 ## Slash commands
 
-These are skills under `.claude/skills/<name>/SKILL.md`. Typing `/colin-review` still works; Claude Code, OpenCode, and Codex load them from the installed skill directories. Skills that post, push, delete, or run Megamind are user-invoked only.
+These are skills under `plugins/<plugin>/skills/<name>/SKILL.md`. Typing `/colin-review` still works; Claude Code, OpenCode, and Codex load them from the installed skill directories. Skills that post, push, delete, or run Megamind are user-invoked only.
 
 ### `colin-*` — day-to-day dev workflow (name-spaced to avoid conflicts)
 
@@ -403,7 +463,7 @@ Use many-brain-one-decision to propose a solution to this scaling problem: [fact
 
 Harness routing follows MBOT's rules with one cost-sensitive exception: Claude-backed debaters use native Claude agents or the `claude` CLI first so usage stays on the Claude Max plan. Use `colin-mbot-opus` or `colin-mbot-sonnet` only when the CLI does not work or the user explicitly requests OpenCode-routed Claude. Claude-hosted runs drive OpenCode-backed debaters through sibling `mbot-run.ts`.
 
-Profiles live in `~/.claude/skills/many-brain-one-decision/` and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill falls back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities:
+Profiles live beside the installed `many-brain-one-decision/SKILL.md` and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill falls back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities:
 
 ```markdown
 Use the following:
@@ -425,7 +485,7 @@ When MBOT starts, it resolves exactly one profile:
 3. Anything else loads `defaults.md`.
 4. If the chosen file is missing, MBOT falls back to `defaults.md`; if that is also missing, it uses hardcoded defaults.
 
-Profile names are exact: `--profile foo` loads `foo.md` and nothing else. The repo ships `defaults.md` and `code-review.md` beside `SKILL.md`; `install.sh --agents` copies them to each supported agent home.
+Profile names are exact: `--profile foo` loads `foo.md` and nothing else. The repo ships `defaults.md` and `code-review.md` beside `SKILL.md`; `install.sh --agents`, the skills CLI, and Claude plugin installs include them. Plugin updates can replace cached profile files; keep backups of personal customizations and reapply them after updating.
 
 Before launch, MBOT records the resolved profile path plus every participant's display name, exact model/provider ID, harness, reasoning effort, and backup in `.tmp/<run-id>/participants.json`. Every raw result and metadata record is persisted under `.tmp/<run-id>/results/`, including native subagent output.
 

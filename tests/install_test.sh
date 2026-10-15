@@ -186,21 +186,21 @@ assert_file_missing "$agents_home/.opencode"
 assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
 
 output="$(run_install "$agents_home" --agents --no-input --quiet)"
-assert_files_equal "$ROOT_DIR/.claude/agents/megamind.md" \
+assert_files_equal "$ROOT_DIR/plugins/megamind/agents/megamind.md" \
   "$agents_home/.claude/agents/megamind.md"
 assert_files_equal "$ROOT_DIR/.opencode/agents/megamind.md" \
   "$agents_home/.opencode/agents/megamind.md"
-assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/defaults.md" \
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/many-brain-one-task/defaults.md" \
   "$agents_home/.claude/skills/many-brain-one-task/defaults.md"
-assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/many-brain-one-task/code-review.md" \
   "$agents_home/.claude/skills/many-brain-one-task/code-review.md"
-assert_files_equal "$ROOT_DIR/.claude/skills/many-brain-one-task/code-review.md" \
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/many-brain-one-task/code-review.md" \
   "$agents_home/.agents/skills/many-brain-one-task/code-review.md"
-assert_files_equal "$ROOT_DIR/.claude/skills/megamind/SKILL.md" \
+assert_files_equal "$ROOT_DIR/plugins/megamind/skills/megamind/SKILL.md" \
   "$agents_home/.agents/skills/megamind/SKILL.md"
-assert_files_equal "$ROOT_DIR/.claude/skills/colin-review/SKILL.md" \
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/colin-review/SKILL.md" \
   "$agents_home/.agents/skills/colin-review/SKILL.md"
-assert_files_equal "$ROOT_DIR/.claude/skills/colin-review/SKILL.md" \
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/colin-review/SKILL.md" \
   "$agents_home/.claude/skills/colin-review/SKILL.md"
 assert_file_missing "$agents_home/.claude/commands"
 assert_file_missing "$agents_home/.opencode/commands"
@@ -220,7 +220,7 @@ output="$(run_install "$agents_home" --agents --no-input --quiet)"
 assert_not_contains "$output" "$agents_home/.agents/skills/megamind/SKILL.md"
 assert_not_contains "$output" "$agents_home/.claude/settings.json"
 assert_not_contains "$output" "$agents_home/.claude/settings.local.json"
-assert_files_equal "$ROOT_DIR/.claude/skills/megamind/SKILL.md" \
+assert_files_equal "$ROOT_DIR/plugins/megamind/skills/megamind/SKILL.md" \
   "$agents_home/.agents/skills/megamind/SKILL.md"
 assert_file_missing "$agents_home/.claude/commands"
 assert_file_missing "$agents_home/.opencode/commands"
@@ -248,9 +248,54 @@ output="$(run_install "$opus_home" --with-opus --agents --no-input --quiet)"
 assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-opus.md" \
   "$opus_home/.opencode/agents/colin-mbot-opus.md"
 
+# --no-skills supports a clean marketplace install without duplicate skill mirrors.
+no_skills_home="$TEST_ROOT/no-skills-home"
+mkdir -p "$no_skills_home/.config/opencode/skills/third-party"
+printf 'skills CLI owns this file\n' > "$no_skills_home/.config/opencode/skills/third-party/SKILL.md"
+output="$(run_install "$no_skills_home" --agents --no-skills --no-input --quiet)"
+assert_contains "$(<"$no_skills_home/.config/opencode/skills/third-party/SKILL.md")" "skills CLI owns this file"
+assert_file_missing "$no_skills_home/.claude/skills"
+assert_file_missing "$no_skills_home/.agents/skills/whiteboard"
+assert_file_missing "$no_skills_home/.local/bin/whiteboard"
+assert_file_missing "$no_skills_home/.local/bin/git-cleanup-scan"
+assert_files_equal "$ROOT_DIR/plugins/megamind/agents/megamind.md" \
+  "$no_skills_home/.grok/agents/megamind.md"
+assert_files_equal "$ROOT_DIR/.opencode/agents/megamind.md" \
+  "$no_skills_home/.opencode/agents/megamind.md"
+
+# An old manifest must survive a dotfiles-only update before skills are refreshed.
+migration_home="$TEST_ROOT/migration-home"
+legacy_skill="$migration_home/.agents/skills/gh-cli/SKILL.md"
+legacy_agent="$migration_home/.claude/agents/megamind.md"
+legacy_manifest="$migration_home/.local/share/colin-dotfiles/manifest"
+mkdir -p "$(dirname "$legacy_skill")" "$(dirname "$legacy_agent")" "$(dirname "$legacy_manifest")"
+printf 'old skill content\n' > "$legacy_skill"
+printf 'old agent content\n' > "$legacy_agent"
+printf '%s\t%s\t%s\n' "$(sha256sum "$legacy_skill" | cut -d' ' -f1)" \
+  ".claude/skills/gh-cli/SKILL.md" "$legacy_skill" > "$legacy_manifest"
+printf '%s\t%s\t%s\n' "$(sha256sum "$legacy_agent" | cut -d' ' -f1)" \
+  ".claude/agents/megamind.md" "$legacy_agent" >> "$legacy_manifest"
+output="$(run_install "$migration_home" --dotfiles --no-input --dry-run --quiet)"
+assert_contains "$(<"$legacy_manifest")" ".claude/skills/gh-cli/SKILL.md"
+output="$(run_install "$migration_home" --dotfiles --no-input --quiet)"
+assert_contains "$(<"$legacy_skill")" "old skill content"
+assert_contains "$(<"$legacy_agent")" "old agent content"
+assert_contains "$(<"$legacy_manifest")" "plugins/colin-shipping/skills/gh-cli/SKILL.md"
+assert_contains "$(<"$legacy_manifest")" "plugins/megamind/agents/megamind.md"
+output="$(run_install "$migration_home" --agents --no-skills --no-input --quiet)"
+assert_contains "$(<"$legacy_skill")" "old skill content"
+output="$(run_install "$migration_home" --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/gh-cli/SKILL.md" "$legacy_skill"
+assert_files_equal "$ROOT_DIR/plugins/megamind/agents/megamind.md" "$legacy_agent"
+assert_files_equal "$ROOT_DIR/plugins/whiteboard/skills/whiteboard/assets/board.css" \
+  "$migration_home/.agents/skills/whiteboard/assets/board.css"
+assert_files_equal "$ROOT_DIR/plugins/whiteboard/skills/whiteboard/package.json" \
+  "$migration_home/.agents/skills/whiteboard/package.json"
+
 # --- Test uninstall agents ---
 output="$(run_uninstall "$agents_home" --agents --no-input --quiet)"
 assert_file_missing "$agents_home/.opencode/agents/megamind.md"
+assert_file_missing "$agents_home/.local/bin/git-cleanup-scan"
 assert_file_missing "$agents_home/.agents"
 assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
 

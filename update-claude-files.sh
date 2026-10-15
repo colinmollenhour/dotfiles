@@ -1,5 +1,5 @@
 #!/bin/bash
 
 set -ex
-mkdir -p .claude/skills/skill-writer/
-curl -sSL -o .claude/skills/skill-writer/SKILL.md https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/.claude/skills/skill-writer/SKILL.md
+mkdir -p plugins/colin-shipping/skills/skill-writer/
+curl -sSL -o plugins/colin-shipping/skills/skill-writer/SKILL.md https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/plugins/colin-shipping/skills/skill-writer/SKILL.md

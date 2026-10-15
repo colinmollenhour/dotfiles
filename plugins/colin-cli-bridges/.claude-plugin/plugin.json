@@ -1,0 +1,11 @@
+{
+  "name": "colin-cli-bridges",
+  "version": "0.1.0",
+  "description": "Route work through the Claude, Codex, and Grok CLIs",
+  "author": {
+    "name": "Colin Mollenhour"
+  },
+  "homepage": "https://github.com/colinmollenhour/dotfiles",
+  "repository": "https://github.com/colinmollenhour/dotfiles",
+  "license": "MIT"
+}

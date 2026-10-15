@@ -4,16 +4,16 @@ This directory packages Megamind for both OMP and Pi while preserving the origin
 
 ## Copied sources
 
-- `.claude/agents/megamind.md` → `skills/megamind/SKILL.md`
-- `.claude/skills/many-brain-one-task/` → `skills/many-brain-one-task/`
-- `.claude/skills/many-brain-one-decision/` → `skills/many-brain-one-decision/`
-- `.claude/skills/educational-brief/` → `skills/educational-brief/`
-- `.claude/skills/colin-mr-description/` → `skills/colin-mr-description/`
-- `.claude/skills/gh-cli/` → `skills/gh-cli/`
-- `.claude/skills/glab-cli/` → `skills/glab-cli/`
-- `.claude/skills/claude-cli/` → `skills/claude-cli/`
-- `.claude/skills/codex-cli/` → `skills/codex-cli/`
-- `.claude/skills/grok-cli/` → `skills/grok-cli/`
+- `plugins/megamind/skills/megamind/SKILL.md` → `skills/megamind/SKILL.md`
+- `plugins/colin-shipping/skills/many-brain-one-task/` → `skills/many-brain-one-task/`
+- `plugins/colin-shipping/skills/many-brain-one-decision/` → `skills/many-brain-one-decision/`
+- `plugins/colin-shipping/skills/educational-brief/` → `skills/educational-brief/`
+- `plugins/colin-shipping/skills/colin-mr-description/` → `skills/colin-mr-description/`
+- `plugins/colin-shipping/skills/gh-cli/` → `skills/gh-cli/`
+- `plugins/colin-shipping/skills/glab-cli/` → `skills/glab-cli/`
+- `plugins/colin-cli-bridges/skills/claude-cli/` → `skills/claude-cli/`
+- `plugins/colin-cli-bridges/skills/codex-cli/` → `skills/codex-cli/`
+- `plugins/colin-cli-bridges/skills/grok-cli/` → `skills/grok-cli/`
 
 ## Host-specific behavior
 

@@ -1,0 +1,14 @@
+{
+  "name": "colin-shipping",
+  "version": "0.1.0",
+  "description": "Review, merge, MBOT/MBOD, platform CLIs, documentation, and shipping workflows",
+  "author": {
+    "name": "Colin Mollenhour"
+  },
+  "homepage": "https://github.com/colinmollenhour/dotfiles",
+  "repository": "https://github.com/colinmollenhour/dotfiles",
+  "license": "MIT",
+  "dependencies": [
+    "colin-cli-bridges"
+  ]
+}

@@ -71,7 +71,7 @@ Include a brief by default. Skip it only for trivial changes: a small single-fil
 
 Create:
 
-- GitLab: `bun "${HOME}/.agents/skills/glab-cli/ship-mr.ts" --title "<title>" --description-file /abs/body.md` (fall back to `~/.claude/skills/glab-cli/ship-mr.ts`).
+- GitLab: `bun "${CLAUDE_SKILL_DIR}/../glab-cli/ship-mr.ts" --title "<title>" --description-file /abs/body.md`.
 - GitHub: `gh pr create --title "<title>" --body-file /abs/body.md`.
 
 Update an existing description:

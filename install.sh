@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2026.07.14"
+VERSION="2026.10.15"
 
 DOTFILES=(
   ".bashrc.colin"
@@ -33,6 +33,7 @@ DO_GITCONFIG=false
 DO_AGENTS=false
 DO_BINS=false
 NO_BINS=false
+NO_SKILLS=false
 DO_INTERACTIVE=false
 DO_ALL=false
 DRY_RUN=false
@@ -695,6 +696,7 @@ OPTIONS
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
   -f, --force        Overwrite conflicting files without prompting
+      --no-skills    Skip skill mirrors and their CLI/service setup (for marketplace/skills CLI users)
       --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (implied if the file already exists)
       --no-input     Disable prompts and keep conflicts; requires an install option
   -q, --quiet        Suppress progress messages (the final write summary remains)
@@ -843,44 +845,32 @@ update_gitconfig() {
   fi
 }
 
-# True/false from YAML frontmatter only (not the skill body).
-frontmatter_flag() {
-  local file="$1" key="$2"
-  awk -v key="$key" '
-    BEGIN { fm = 0 }
-    NR == 1 && $0 == "---" { fm = 1; next }
-    fm && $0 == "---" { exit }
-    fm {
-      if ($0 ~ "^" key ":[[:space:]]*(true|yes|on|1)[[:space:]]*$") { print "true"; exit }
-      if ($0 ~ "^" key ":[[:space:]]*(false|no|off|0)[[:space:]]*$") { print "false"; exit }
-    }
-  ' "$file"
+# Preserve source tracking when updating an install made before the plugin layout.
+migrate_plugin_sources() {
+  local dest src name rest candidate
+  for dest in "${!MANIFEST_SRC[@]}"; do
+    src="${MANIFEST_SRC[$dest]}"
+    if [[ "$src" == .claude/skills/* ]]; then
+      rest="${src#.claude/skills/}"
+      name="${rest%%/*}"
+      for candidate in plugins/*/skills/"$name"/"${rest#*/}"; do
+        [[ -f "$candidate" ]] || continue
+        MANIFEST_SRC["$dest"]="$candidate"
+        break
+      done
+    elif [[ "$src" == .claude/agents/megamind.md ]]; then
+      MANIFEST_SRC["$dest"]="plugins/megamind/agents/megamind.md"
+    fi
+  done
 }
 
-# Codex/OpenAI: disable implicit invocation for skills that set
-# disable-model-invocation (reviews, commits, deletes, autonomous delivery).
-install_codex_invocation_guards() {
-  local skills_src=".claude/skills"
-  local skills_dir="${1:-$HOME/.agents/skills}"
-  local skill_md name dest tmp count=0
-
-  [[ -d "$skills_src" ]] || return 0
-
-  while IFS= read -r skill_md; do
-    [[ "$(frontmatter_flag "$skill_md" disable-model-invocation)" == "true" ]] || continue
-    name="$(basename "$(dirname "$skill_md")")"
-    dest="$skills_dir/$name/agents/openai.yaml"
-    count=$((count + 1))
-    tmp="$(mktemp)"
-    printf 'policy:\n  allow_implicit_invocation: false\n' > "$tmp"
-    install_rendered "${skill_md#$SCRIPT_DIR/}" "$tmp" "$dest"
-  done < <(find "$skills_src" -mindepth 2 -maxdepth 2 -type f -name 'SKILL.md' | sort)
-
-  if [[ "$DRY_RUN" == true ]]; then
-    log "Would install $count Codex implicit-invocation guards in $skills_dir"
-  else
-    log "Installed $count Codex implicit-invocation guards in $skills_dir"
-  fi
+install_plugin_skills() {
+  local skills_dir
+  for skills_dir in plugins/*/skills; do
+    [[ -d "$skills_dir" ]] || continue
+    copy_dir_contents "$skills_dir" "$HOME/.claude/skills"
+    copy_dir_contents "$skills_dir" "$HOME/.agents/skills"
+  done
 }
 
 # .claude/commands is gone. Delete leftover slash-command copies; cleanup_deleted
@@ -994,6 +984,7 @@ install_agents() {
   )
   local orphan
   for orphan in "${orphaned_dirs[@]}"; do
+    [[ "$NO_SKILLS" == true && "$orphan" == */skill* ]] && continue
     if [[ -d "$orphan" ]]; then
       if [[ "$DRY_RUN" == true ]]; then
         dry_run_msg "remove orphaned directory $orphan"
@@ -1012,59 +1003,65 @@ install_agents() {
              "$HOME/.agents/skills"
   fi
 
-  copy_dir_contents ".claude/skills" "$HOME/.agents/skills"
-  install_codex_invocation_guards "$HOME/.agents/skills"
+  install_file "plugins/megamind/agents/megamind.md" "$SCRIPT_DIR/plugins/megamind/agents/megamind.md" "$HOME/.claude/agents/megamind.md"
+  if [[ "$NO_SKILLS" == false ]]; then
+    install_plugin_skills
+  else
+    log "Skipping skill mirrors; install skills via the Claude marketplace or skills CLI."
+  fi
   cleanup_legacy_command_locations
   cleanup_legacy_namespaced_agent_dirs
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
   install_file ".opencode/agents/megamind.md" "$SCRIPT_DIR/.opencode/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
-  install_file ".claude/agents/megamind.md" "$SCRIPT_DIR/.claude/agents/megamind.md" "$HOME/.grok/agents/megamind.md"
+  install_file "plugins/megamind/agents/megamind.md" "$SCRIPT_DIR/plugins/megamind/agents/megamind.md" "$HOME/.grok/agents/megamind.md"
 
-  # Helper CLIs used by skills (git-cleanup-scan, etc.)
-  local scan_src=".claude/skills/colin-git-cleanup/scripts/git-cleanup-scan"
-  if [[ -f "$SCRIPT_DIR/$scan_src" ]]; then
-    install_file "$scan_src" "$SCRIPT_DIR/$scan_src" "$HOME/.local/bin/git-cleanup-scan"
-    if [[ "$DRY_RUN" == false && -f "$HOME/.local/bin/git-cleanup-scan" ]]; then
-      chmod +x "$HOME/.local/bin/git-cleanup-scan"
-    fi
-  fi
-
-  # Symlink (not copy) so the script still finds its ../assets next to the installed skill.
-  local wb_dest="$HOME/.local/bin/whiteboard"
-  local wb_target="$HOME/.agents/skills/whiteboard/scripts/whiteboard"
-  if [[ -f "$SCRIPT_DIR/.claude/skills/whiteboard/scripts/whiteboard" ]]; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "link $wb_dest -> $wb_target"
-    elif [[ ! -e "$wb_dest" || -L "$wb_dest" ]]; then
-      mkdir -p "$HOME/.local/bin"
-      chmod +x "$wb_target"
-      ln -sfn "$wb_target" "$wb_dest"
-    else
-      warn "$wb_dest exists and is not a symlink; leaving it alone"
-    fi
-  fi
-
-  # Run the board server under the user manager so it survives the agent or shell that started it.
-  local wb_unit_src=".claude/skills/whiteboard/systemd/whiteboard.service"
-  local wb_unit_dest="$HOME/.config/systemd/user/whiteboard.service"
-  # systemctl --user reaches the session's manager whatever $HOME is, so skip it when $HOME is not that
-  # manager's home (tests and sandboxes install into a temporary HOME).
-  if [[ -f "$SCRIPT_DIR/$wb_unit_src" ]] && command -v systemctl >/dev/null 2>&1 \
-    && [[ "$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HOME=//p')" == "$HOME" ]]; then
-    install_file "$wb_unit_src" "$SCRIPT_DIR/$wb_unit_src" "$wb_unit_dest"
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "systemctl --user enable + restart whiteboard.service"
-    elif [[ -f "$wb_unit_dest" ]]; then
-      systemctl --user daemon-reload
-      # A detached server from `whiteboard start` holds the port and lock; hand it over to the unit.
-      if ! systemctl --user is-active --quiet whiteboard.service; then
-        "$wb_dest" stop >/dev/null 2>&1 || true
+  if [[ "$NO_SKILLS" == false ]]; then
+    # Helper CLIs used by skills (git-cleanup-scan, etc.)
+    local scan_src="plugins/colin-shipping/skills/colin-git-cleanup/scripts/git-cleanup-scan"
+    if [[ -f "$SCRIPT_DIR/$scan_src" ]]; then
+      install_file "$scan_src" "$SCRIPT_DIR/$scan_src" "$HOME/.local/bin/git-cleanup-scan"
+      if [[ "$DRY_RUN" == false && -f "$HOME/.local/bin/git-cleanup-scan" ]]; then
+        chmod +x "$HOME/.local/bin/git-cleanup-scan"
       fi
-      # Restart rather than start so an updated script takes effect; open boards reconnect on their own.
-      { systemctl --user enable whiteboard.service && systemctl --user restart whiteboard.service; } >/dev/null 2>&1 \
-        || warn "could not start whiteboard.service; see journalctl --user -u whiteboard.service"
-      if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]]; then
-        warn "user lingering is off; whiteboard.service starts at login, not boot (loginctl enable-linger $USER)"
+    fi
+
+    # Symlink (not copy) so the script still finds its ../assets next to the installed skill.
+    local wb_dest="$HOME/.local/bin/whiteboard"
+    local wb_target="$HOME/.agents/skills/whiteboard/scripts/whiteboard"
+    if [[ -f "$SCRIPT_DIR/plugins/whiteboard/skills/whiteboard/scripts/whiteboard" ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "link $wb_dest -> $wb_target"
+      elif [[ ! -e "$wb_dest" || -L "$wb_dest" ]]; then
+        mkdir -p "$HOME/.local/bin"
+        chmod +x "$wb_target"
+        ln -sfn "$wb_target" "$wb_dest"
+      else
+        warn "$wb_dest exists and is not a symlink; leaving it alone"
+      fi
+    fi
+
+    # Run the board server under the user manager so it survives the agent or shell that started it.
+    local wb_unit_src="plugins/whiteboard/skills/whiteboard/systemd/whiteboard.service"
+    local wb_unit_dest="$HOME/.config/systemd/user/whiteboard.service"
+    # systemctl --user reaches the session's manager whatever $HOME is, so skip it when $HOME is not that
+    # manager's home (tests and sandboxes install into a temporary HOME).
+    if [[ -f "$SCRIPT_DIR/$wb_unit_src" ]] && command -v systemctl >/dev/null 2>&1 \
+      && [[ "$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HOME=//p')" == "$HOME" ]]; then
+      install_file "$wb_unit_src" "$SCRIPT_DIR/$wb_unit_src" "$wb_unit_dest"
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "systemctl --user enable + restart whiteboard.service"
+      elif [[ -f "$wb_unit_dest" ]]; then
+        systemctl --user daemon-reload
+        # A detached server from `whiteboard start` holds the port and lock; hand it over to the unit.
+        if ! systemctl --user is-active --quiet whiteboard.service; then
+          "$wb_dest" stop >/dev/null 2>&1 || true
+        fi
+        # Restart rather than start so an updated script takes effect; open boards reconnect on their own.
+        { systemctl --user enable whiteboard.service && systemctl --user restart whiteboard.service; } >/dev/null 2>&1 \
+          || warn "could not start whiteboard.service; see journalctl --user -u whiteboard.service"
+        if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]]; then
+          warn "user lingering is off; whiteboard.service starts at login, not boot (loginctl enable-linger $USER)"
+        fi
       fi
     fi
   fi
@@ -1224,6 +1221,10 @@ parse_args() {
         NO_BINS=true
         shift
         ;;
+      --no-skills)
+        NO_SKILLS=true
+        shift
+        ;;
       --with-opus)
         WITH_OPUS=true
         shift
@@ -1310,6 +1311,7 @@ run_install() {
 main() {
   parse_args "$@"
   load_manifest
+  migrate_plugin_sources
   run_install
   cleanup_deleted
   save_manifest

@@ -1,0 +1,11 @@
+{
+  "name": "whiteboard",
+  "version": "0.1.0",
+  "description": "Live HTML whiteboards with a Node server, live reload, and optional publishing",
+  "author": {
+    "name": "Colin Mollenhour"
+  },
+  "homepage": "https://github.com/colinmollenhour/dotfiles",
+  "repository": "https://github.com/colinmollenhour/dotfiles",
+  "license": "MIT"
+}

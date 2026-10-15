@@ -1,0 +1,14 @@
+{
+  "name": "megamind",
+  "version": "0.1.0",
+  "description": "Autonomous delivery agent and skill with multi-model planning and review",
+  "author": {
+    "name": "Colin Mollenhour"
+  },
+  "homepage": "https://github.com/colinmollenhour/dotfiles",
+  "repository": "https://github.com/colinmollenhour/dotfiles",
+  "license": "MIT",
+  "dependencies": [
+    "colin-shipping"
+  ]
+}
