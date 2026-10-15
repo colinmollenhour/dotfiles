@@ -1,5 +1,6 @@
 ---
 name: claude-cli
+user-invocable: false
 description: 'Shell out to claude CLI.'
 allowed-tools: Bash(claude *)
 ---
@@ -46,10 +47,10 @@ claude --model opus --print --output-format text \
 ## Agent Selection
 
 ```bash
-claude --agent general --model opus --print --output-format text -- "Prompt"
+claude --agent general-purpose --model opus --print --output-format text -- "Prompt"
 ```
 
-- `--agent general` — uses the general-purpose agent profile with tool access. Omit for a plain completion with no tools.
+- `--agent general-purpose` — uses Claude Code's built-in general-purpose agent profile with tool access. `general` is not a valid alias. Omit for a plain completion with no tools.
 
 ## Capture Output
 
@@ -63,7 +64,7 @@ Redirect to a file for consumption by aggregation steps. Capturing both stdout a
 
 | Flag value | Model |
 |---|---|
-| `opus` | Claude Opus 4.7 — strongest reasoning |
+| `opus` | Claude Opus 5.5 — strongest reasoning |
 | `sonnet` | Claude Sonnet 4.6 — balanced speed and quality |
 | `haiku` | Claude Haiku 4.5 — fastest, cheapest |
 

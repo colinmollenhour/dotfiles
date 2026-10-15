@@ -1,7 +1,7 @@
 ---
 name: coolify
+description: Generate a project template for Coolify
 allowed-tools: WebFetch(domain:raw.githubusercontent.com)
-description: Build Coolify-compatible docker-compose and service definitions from Coolify docs.
 ---
 
 I want to build a `docker-compose.yml` file for this project that is compatible with Coolify. First read these docs:

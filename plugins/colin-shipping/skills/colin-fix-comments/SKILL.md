@@ -1,5 +1,7 @@
 ---
 name: colin-fix-comments
+slash: true
+disable-model-invocation: true
 description: Address open comments on a Pull Request or Merge Request related to the current branch
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: grok-cli
+user-invocable: false
 description: 'Shell out to grok CLI (Grok Build TUI) for headless xAI Grok runs.'
 allowed-tools: Bash(grok *)
 ---
@@ -14,7 +15,7 @@ Use the `grok` CLI (Grok Build TUI) to send prompts to xAI Grok models from shel
 
 ```bash
 grok version            # e.g. "grok 0.2.x …"
-grok models             # lists available models; default is usually grok-4.5
+grok models             # lists available models; default is usually grok-4.7
 ```
 
 If auth fails, ask the user to run `grok login`.
@@ -37,7 +38,7 @@ Key flags:
 | --- | --- |
 | `--prompt-file <path>` | Single-turn prompt from a file (headless). Prefer this over inlining. |
 | `-p, --single <PROMPT>` | Single-turn prompt from argv (short prompts only). |
-| `-m, --model <MODEL>` | Model id (default from config; often `grok-4.5`). Resolve with `grok models`. |
+| `-m, --model <MODEL>` | Model id (default from config; often `grok-4.7`). Resolve with `grok models`. |
 | `--reasoning-effort` / `--effort` | Thinking budget: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`/`max`. |
 | `--always-approve` | Auto-approve all tool executions (unattended batch). Alias path: `--permission-mode bypassPermissions`. |
 | `--permission-mode <MODE>` | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan`. |
@@ -74,7 +75,7 @@ Resolve live ids with `grok models`. Common values:
 
 | Flag value | Notes |
 | --- | --- |
-| `grok-4.5` | Default strong coding / reasoning model |
+| `grok-4.7` | Default strong coding / reasoning model |
 | `grok-composer-2.5-fast` | Faster / lighter when listed |
 
 Do not invent model strings; prefer the exact id printed by `grok models`.
@@ -91,7 +92,7 @@ Do not invent model strings; prefer the exact id printed by `grok models`.
 2. Use `--always-approve` (or `bypassPermissions`) so headless runs never block on tool approval.
 3. For pure debate / critique / opinion tasks that should not spawn nested work, add `--disallowed-tools Agent` or `--no-subagents`.
 4. Cap runaway loops with `--max-turns` when the task is expected to be short (e.g. schema-only repairs).
-5. Prefer `--output-format plain` for aggregation. Use `json` only when you need `sessionId` / usage fields.
+5. Prefer `--output-format json` when you need `sessionId` / `total_cost_usd` (MBOT `mbot-run` does this and writes `text` to `--out`). Use `plain` only when you do not need session or cost metadata.
 6. Launch independent Grok participants in parallel Bash calls; each invocation is its own process/session.
 7. Keep `.tmp/` **inside the project root** so any file tools the agent uses resolve correctly.
 

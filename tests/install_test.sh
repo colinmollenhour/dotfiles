@@ -30,36 +30,54 @@ assert_file_missing() {
   fi
 }
 
+assert_files_equal() {
+  local expected="$1" actual="$2"
+  if ! cmp -s "$expected" "$actual"; then
+    printf 'Expected installed file to match source:\n  source: %s\n  installed: %s\n' "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+
 run_install() {
   local home="$1"
   shift
   HOME="$home" XDG_DATA_HOME="$home/.local/share" "$INSTALLER" "$@" 2>&1
 }
 
+UNINSTALLER="$ROOT_DIR/uninstall.sh"
+
+run_uninstall() {
+  local home="$1"
+  shift
+  HOME="$home" XDG_DATA_HOME="$home/.local/share" "$UNINSTALLER" "$@" 2>&1
+}
+
 home="$TEST_ROOT/dotfiles-home"
 mkdir -p "$home"
 
 output="$(run_install "$home" --dotfiles --no-input --dry-run --quiet)"
-assert_contains "$output" "Files that would be written (12):"
-assert_contains "$output" "Would create: 12"
+assert_contains "$output" "Files that would be written (13):"
+assert_contains "$output" "Would create: 13"
 assert_file_missing "$home/.bashrc.colin"
 assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
 
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
-assert_contains "$output" "Files written (12):"
-assert_contains "$output" "Created: 12"
+assert_contains "$output" "Files written (13):"
+assert_contains "$output" "Created: 13"
 assert_contains "$output" "Replaced: 0"
+assert_files_equal "$ROOT_DIR/.paseo/orchestration-preferences.json" \
+  "$home/.paseo/orchestration-preferences.json"
 
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Files written (0):"
-assert_contains "$output" "Unchanged (same hash and mtime): 12"
+assert_contains "$output" "Unchanged (same hash and mtime): 13"
 assert_contains "$output" "Replaced: 0"
 
 touch -d '2035-01-01 00:00:00 UTC' "$home/.config/starship.toml"
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Files written (1):"
 assert_contains "$output" "$home/.config/starship.toml"
-assert_contains "$output" "Unchanged (same hash and mtime): 11"
+assert_contains "$output" "Unchanged (same hash and mtime): 12"
 assert_contains "$output" "Replaced: 1"
 
 touch -d '2035-01-01 00:00:00 UTC' "$home/.config/docker-fzf.bash"
@@ -72,9 +90,89 @@ printf '\n# local customization\n' >> "$home/.config/starship.toml"
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Skipping file modified since the last install: $home/.config/starship.toml"
 assert_contains "$output" "Files written (0):"
-assert_contains "$output" "Unchanged (same hash and mtime): 11"
+assert_contains "$output" "Unchanged (same hash and mtime): 12"
 assert_contains "$output" "Replaced: 0"
 assert_contains "$(<"$home/.config/starship.toml")" "# local customization"
+
+# Source removed + dest unmodified → delete dest. Source removed + dest
+# rewritten by another installer → leave dest and drop it from the manifest.
+manifest="$home/.local/share/colin-dotfiles/manifest"
+unmod_orphan="$home/.agents/skills/gone/SKILL.md"
+mod_orphan="$home/.agents/skills/clickup/SKILL.md"
+mkdir -p "$(dirname "$unmod_orphan")" "$(dirname "$mod_orphan")"
+printf 'vanilla wrapper\n' > "$unmod_orphan"
+printf 'cup skill v1.43.0\n' > "$mod_orphan"
+printf '%s\t%s\t%s\n' "$(sha256sum "$unmod_orphan" | cut -d' ' -f1)" \
+  ".claude/skills/gone/SKILL.md" "$unmod_orphan" >> "$manifest"
+printf '%s\t%s\t%s\n' "$(printf 'old wrapper\n' | sha256sum | cut -d' ' -f1)" \
+  ".claude/skills/clickup/SKILL.md" "$mod_orphan" >> "$manifest"
+
+output="$(run_install "$home" --dotfiles --no-input --quiet)"
+assert_file_missing "$unmod_orphan"
+assert_contains "$output" "Stopped tracking $mod_orphan"
+assert_contains "$output" "1 orphaned file(s) released from tracking (source removed, local copy kept)"
+assert_contains "$(<"$mod_orphan")" "cup skill v1.43.0"
+if grep -Fq "$unmod_orphan" "$manifest"; then
+  printf 'Expected unmodified orphan to be dropped from the manifest: %s\n' "$unmod_orphan" >&2
+  exit 1
+fi
+if grep -Fq "$mod_orphan" "$manifest"; then
+  printf 'Expected modified orphan to be dropped from the manifest: %s\n' "$mod_orphan" >&2
+  exit 1
+fi
+
+output="$(run_install "$home" --dotfiles --no-input --quiet)"
+assert_not_contains "$output" "$mod_orphan"
+assert_not_contains "$output" "Stopped tracking"
+assert_contains "$(<"$mod_orphan")" "cup skill v1.43.0"
+
+# --- Test uninstall dotfiles ---
+output="$(run_install "$home" --bashrc --gitconfig --no-input --quiet)"
+assert_contains "$(<"$home/.bashrc")" "source ~/.bashrc.colin"
+assert_contains "$(<"$home/.gitconfig")" "path = ~/.gitconfig.colin"
+
+output="$(run_uninstall "$home" --dotfiles --bashrc --gitconfig --force --no-input --quiet)"
+assert_contains "$output" "Files removed ("
+assert_file_missing "$home/.bashrc.colin"
+assert_file_missing "$home/.gitconfig.colin"
+assert_file_missing "$home/.paseo/orchestration-preferences.json"
+assert_file_missing "$home/.bashrc"
+assert_file_missing "$home/.gitconfig"
+assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
+
+# --- Test that a stale install stamp (commit/date) alone is not a conflict ---
+stamp_home="$TEST_ROOT/stamp-home"
+mkdir -p "$stamp_home"
+run_install "$stamp_home" --dotfiles --no-input --quiet >/dev/null
+old_sha="0123456789abcdef0123456789abcdef01234567"
+sed -i -E "s/\([0-9a-f]{40}\)/($old_sha)/; s/(Revision committed on ).*/\1Wed, 16 Sep 2026 15:04:13 +0000/" \
+  "$stamp_home/.bashrc.colin"
+output="$(run_install "$stamp_home" --dotfiles --no-input)"
+assert_not_contains "$output" "Skipping"
+assert_not_contains "$(<"$stamp_home/.bashrc.colin")" "$old_sha"
+
+echo "# local edit" >> "$stamp_home/.bashrc.colin"
+output="$(run_install "$stamp_home" --dotfiles --no-input)"
+assert_contains "$output" "Skipping file modified since the last install: $stamp_home/.bashrc.colin"
+
+# --- Test --bins install and uninstall ---
+bins_home="$TEST_ROOT/bins-home"
+mkdir -p "$bins_home"
+output="$(run_install "$bins_home" --bins --no-input)"
+assert_files_equal "$ROOT_DIR/bin/snip-upload.ts" "$bins_home/.local/bin/snip-upload"
+[[ -x "$bins_home/.local/bin/snip-upload" ]] || { echo "snip-upload is not executable" >&2; exit 1; }
+assert_contains "$output" "snip-upload auth"
+
+output="$(run_install "$bins_home" --all --no-bins --no-input --dry-run --quiet)"
+assert_not_contains "$output" ".local/bin/snip-upload"
+
+if run_install "$bins_home" --bins --no-bins --no-input >/dev/null; then
+  echo "--bins with --no-bins should fail" >&2
+  exit 1
+fi
+
+output="$(run_uninstall "$bins_home" --bins --no-input --quiet)"
+assert_file_missing "$bins_home/.local/bin/snip-upload"
 
 agents_home="$TEST_ROOT/agents-home"
 mkdir -p "$agents_home/.claude"
@@ -88,10 +186,139 @@ assert_file_missing "$agents_home/.opencode"
 assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
 
 output="$(run_install "$agents_home" --agents --no-input --quiet)"
-assert_contains "$output" "Unchanged (same hash and mtime): 1"
+assert_files_equal "$ROOT_DIR/plugins/megamind/agents/megamind.md" \
+  "$agents_home/.claude/agents/megamind.md"
+assert_files_equal "$ROOT_DIR/.opencode/agents/megamind.md" \
+  "$agents_home/.opencode/agents/megamind.md"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/many-brain-one-task/defaults.md" \
+  "$agents_home/.claude/skills/many-brain-one-task/defaults.md"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/many-brain-one-task/code-review.md" \
+  "$agents_home/.claude/skills/many-brain-one-task/code-review.md"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/many-brain-one-task/code-review.md" \
+  "$agents_home/.agents/skills/many-brain-one-task/code-review.md"
+assert_files_equal "$ROOT_DIR/plugins/megamind/skills/megamind/SKILL.md" \
+  "$agents_home/.agents/skills/megamind/SKILL.md"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/colin-review/SKILL.md" \
+  "$agents_home/.agents/skills/colin-review/SKILL.md"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/colin-review/SKILL.md" \
+  "$agents_home/.claude/skills/colin-review/SKILL.md"
+assert_file_missing "$agents_home/.claude/commands"
+assert_file_missing "$agents_home/.opencode/commands"
+assert_file_missing "$agents_home/.opencode/agents/colin-mbot-opus.md"
+assert_file_missing "$agents_home/.claude/agents/colin-mbot-opus.md"
+assert_contains "$(<"$agents_home/.agents/skills/colin-review/agents/openai.yaml")" \
+  "allow_implicit_invocation: false"
+assert_file_missing "$agents_home/.agents/skills/gh-cli/agents/openai.yaml"
+assert_file_missing "$agents_home/.gemini"
+assert_contains "$output" "Unchanged (same hash and mtime): 2"
+
+mkdir -p "$agents_home/.claude/commands" "$agents_home/.opencode/commands"
+printf 'stale slash command\n' > "$agents_home/.claude/commands/colin-review.md"
+printf 'stale slash command\n' > "$agents_home/.opencode/commands/colin-review.md"
+
+output="$(run_install "$agents_home" --agents --no-input --quiet)"
+assert_not_contains "$output" "$agents_home/.agents/skills/megamind/SKILL.md"
+assert_not_contains "$output" "$agents_home/.claude/settings.json"
+assert_not_contains "$output" "$agents_home/.claude/settings.local.json"
+assert_files_equal "$ROOT_DIR/plugins/megamind/skills/megamind/SKILL.md" \
+  "$agents_home/.agents/skills/megamind/SKILL.md"
+assert_file_missing "$agents_home/.claude/commands"
+assert_file_missing "$agents_home/.opencode/commands"
 if [[ "$(stat -c '%z' "$agents_home/.claude/settings.json.bak")" != "$backup_ctime" ]]; then
   printf 'Expected current settings backup not to be rewritten\n' >&2
   exit 1
 fi
 
-printf 'install.sh regression tests passed\n'
+# Existing opus is refreshed even without --with-opus (presence implies opt-in).
+opus_home="$TEST_ROOT/opus-home"
+mkdir -p "$opus_home/.opencode/agents" "$opus_home/.local/share/colin-dotfiles"
+stale_opus="$opus_home/.opencode/agents/colin-mbot-opus.md"
+printf 'stale opus\n' > "$stale_opus"
+printf '%s\t%s\t%s\n' "$(sha256sum "$stale_opus" | cut -d' ' -f1)" \
+  ".opencode/agents/colin-mbot-opus.md" "$stale_opus" \
+  > "$opus_home/.local/share/colin-dotfiles/manifest"
+output="$(run_install "$opus_home" --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-opus.md" "$stale_opus"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-fable.md" \
+  "$opus_home/.opencode/agents/colin-mbot-fable.md"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-sonnet.md" \
+  "$opus_home/.opencode/agents/colin-mbot-sonnet.md"
+
+output="$(run_install "$opus_home" --with-opus --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-opus.md" \
+  "$opus_home/.opencode/agents/colin-mbot-opus.md"
+
+# --no-skills supports a clean marketplace install without duplicate skill mirrors.
+no_skills_home="$TEST_ROOT/no-skills-home"
+mkdir -p "$no_skills_home/.config/opencode/skills/third-party"
+printf 'skills CLI owns this file\n' > "$no_skills_home/.config/opencode/skills/third-party/SKILL.md"
+output="$(run_install "$no_skills_home" --agents --no-skills --no-input --quiet)"
+assert_contains "$(<"$no_skills_home/.config/opencode/skills/third-party/SKILL.md")" "skills CLI owns this file"
+assert_file_missing "$no_skills_home/.claude/skills"
+assert_file_missing "$no_skills_home/.agents/skills/whiteboard"
+assert_file_missing "$no_skills_home/.local/bin/whiteboard"
+assert_file_missing "$no_skills_home/.local/bin/git-cleanup-scan"
+assert_files_equal "$ROOT_DIR/plugins/megamind/agents/megamind.md" \
+  "$no_skills_home/.grok/agents/megamind.md"
+assert_files_equal "$ROOT_DIR/.opencode/agents/megamind.md" \
+  "$no_skills_home/.opencode/agents/megamind.md"
+
+# An old manifest must survive a dotfiles-only update before skills are refreshed.
+migration_home="$TEST_ROOT/migration-home"
+legacy_skill="$migration_home/.agents/skills/gh-cli/SKILL.md"
+legacy_agent="$migration_home/.claude/agents/megamind.md"
+legacy_manifest="$migration_home/.local/share/colin-dotfiles/manifest"
+mkdir -p "$(dirname "$legacy_skill")" "$(dirname "$legacy_agent")" "$(dirname "$legacy_manifest")"
+printf 'old skill content\n' > "$legacy_skill"
+printf 'old agent content\n' > "$legacy_agent"
+printf '%s\t%s\t%s\n' "$(sha256sum "$legacy_skill" | cut -d' ' -f1)" \
+  ".claude/skills/gh-cli/SKILL.md" "$legacy_skill" > "$legacy_manifest"
+printf '%s\t%s\t%s\n' "$(sha256sum "$legacy_agent" | cut -d' ' -f1)" \
+  ".claude/agents/megamind.md" "$legacy_agent" >> "$legacy_manifest"
+output="$(run_install "$migration_home" --dotfiles --no-input --dry-run --quiet)"
+assert_contains "$(<"$legacy_manifest")" ".claude/skills/gh-cli/SKILL.md"
+output="$(run_install "$migration_home" --dotfiles --no-input --quiet)"
+assert_contains "$(<"$legacy_skill")" "old skill content"
+assert_contains "$(<"$legacy_agent")" "old agent content"
+assert_contains "$(<"$legacy_manifest")" "plugins/colin-shipping/skills/gh-cli/SKILL.md"
+assert_contains "$(<"$legacy_manifest")" "plugins/megamind/agents/megamind.md"
+output="$(run_install "$migration_home" --agents --no-skills --no-input --quiet)"
+assert_contains "$(<"$legacy_skill")" "old skill content"
+output="$(run_install "$migration_home" --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/gh-cli/SKILL.md" "$legacy_skill"
+assert_files_equal "$ROOT_DIR/plugins/megamind/agents/megamind.md" "$legacy_agent"
+assert_files_equal "$ROOT_DIR/plugins/whiteboard/skills/whiteboard/assets/board.css" \
+  "$migration_home/.agents/skills/whiteboard/assets/board.css"
+assert_files_equal "$ROOT_DIR/plugins/whiteboard/skills/whiteboard/package.json" \
+  "$migration_home/.agents/skills/whiteboard/package.json"
+
+# --- Test uninstall agents ---
+output="$(run_uninstall "$agents_home" --agents --no-input --quiet)"
+assert_file_missing "$agents_home/.opencode/agents/megamind.md"
+assert_file_missing "$agents_home/.local/bin/git-cleanup-scan"
+assert_file_missing "$agents_home/.agents"
+assert_file_missing "$agents_home/.local/share/colin-dotfiles/manifest"
+
+# --- Test uninstall --all and modified files ---
+all_home="$TEST_ROOT/all-home"
+mkdir -p "$all_home"
+output="$(run_install "$all_home" --all --no-input --quiet)"
+
+output="$(run_uninstall "$all_home" --all --dry-run --no-input --quiet)"
+assert_contains "$output" "Files that would be removed ("
+
+printf '\n# modified\n' >> "$all_home/.tmux.conf"
+output="$(run_uninstall "$all_home" --all --no-input --quiet)"
+assert_contains "$output" "Skipping file modified since installation: $all_home/.tmux.conf"
+if [[ ! -f "$all_home/.tmux.conf" ]]; then
+  printf 'Expected modified file to be skipped without --force\n' >&2
+  exit 1
+fi
+
+output="$(run_uninstall "$all_home" --all --force --no-input --quiet)"
+assert_file_missing "$all_home/.tmux.conf"
+assert_file_missing "$all_home/.bashrc.colin"
+assert_file_missing "$all_home/.opencode"
+assert_file_missing "$all_home/.local/share/colin-dotfiles/manifest"
+
+printf 'install.sh and uninstall.sh regression tests passed\n'

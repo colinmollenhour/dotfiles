@@ -1,0 +1,29 @@
+[keys]
+prefix = "ctrl+a"
+detach = "prefix+d"
+reload_config = "prefix+shift+i"
+close_tab = "prefix+ctrl+k"
+focus_pane_left = "prefix+left"
+focus_pane_down = "prefix+down"
+focus_pane_up = "prefix+up"
+focus_pane_right = "prefix+right"
+last_pane = "prefix+tab"
+split_vertical = "prefix+|"
+split_horizontal = "prefix+minus"
+zoom = "prefix+z"
+
+[ui]
+agent_panel_sort = "spaces"
+
+[experimental]
+pane_history = false
+
+[[keys.command]]
+key = "prefix+ctrl+g"
+type = "plugin_action"
+command = "herdr-lazygit.open"
+
+[[keys.command]]
+key = "prefix+shift+g"
+type = "plugin_action"
+command = "herdr-lazygit.open-tab"

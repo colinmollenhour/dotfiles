@@ -1,11 +1,20 @@
-# Local MBOT/MBOD profiles (keep SKILL.md tracked)
+# Profile / reference markdown under MBOT — track needed files explicitly
 plugins/colin-shipping/skills/many-brain-one-task/*.md
 !plugins/colin-shipping/skills/many-brain-one-task/SKILL.md
+!plugins/colin-shipping/skills/many-brain-one-task/reference.md
+!plugins/colin-shipping/skills/many-brain-one-task/defaults.md
+!plugins/colin-shipping/skills/many-brain-one-task/code-review.md
+!plugins/colin-shipping/skills/many-brain-one-task/seamus-bot-ultra-review.md
+!plugins/colin-shipping/skills/many-brain-one-task/roles/
+
 plugins/colin-shipping/skills/many-brain-one-decision/*.md
 !plugins/colin-shipping/skills/many-brain-one-decision/SKILL.md
+!plugins/colin-shipping/skills/many-brain-one-decision/defaults.md
 
-# Legacy paths (if anything reappears)
-.claude/skills/many-brain-one-task/*.md
-!.claude/skills/many-brain-one-task/SKILL.md
-.claude/skills/many-brain-one-decision/*.md
-!.claude/skills/many-brain-one-decision/SKILL.md
+pi-megamind/skills/many-brain-one-task/*.md
+!pi-megamind/skills/many-brain-one-task/SKILL.md
+!pi-megamind/skills/many-brain-one-task/reference.md
+!pi-megamind/skills/many-brain-one-task/defaults.md
+!pi-megamind/skills/many-brain-one-task/code-review.md
+!pi-megamind/skills/many-brain-one-task/seamus-bot-ultra-review.md
+!pi-megamind/skills/many-brain-one-task/roles/

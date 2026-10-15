@@ -1,0 +1,119 @@
+/* Whiteboard base styles. Boards link this and use the wb-* / plain classes below. */
+:root {
+  --bg: #f7f6f2; --dot: #d9d6cc; --fg: #1f2328; --muted: #6a6f76; --line: #d8d4c8;
+  --card: #ffffff; --accent: #2f6fde; --accent-soft: #e6eefc;
+  --add: #1a7f37; --add-bg: #dafbe1; --del: #cf222e; --del-bg: #ffebe9;
+  --yellow: #fff4a8; --pink: #ffd6e7; --blue: #d4e8ff; --green: #d6f5d6; --orange: #ffe0bf;
+  --sticky-fg: #2b2b2b;
+  --radius: 10px; --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 4px 14px rgb(0 0 0 / .06);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --hand: "Comic Neue", "Segoe Print", "Bradley Hand", ui-rounded, var(--font);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c; --dot: #2c3037; --fg: #e6e8eb; --muted: #9098a3; --line: #343a42;
+    --card: #1f2227; --accent: #6ea3ff; --accent-soft: #1d2a40;
+    --add: #56d364; --add-bg: #12301b; --del: #ff7b72; --del-bg: #3a1618;
+    --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 4px 14px rgb(0 0 0 / .3);
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 var(--font);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 22px 22px;
+}
+a { color: var(--accent); }
+code, pre, kbd { font-family: var(--mono); font-size: .9em; }
+:not(pre) > code { background: var(--accent-soft); padding: .1em .35em; border-radius: 4px; }
+pre { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; line-height: 1.45; }
+pre code.hljs { background: transparent; padding: 0; }
+h1, h2, h3 { line-height: 1.2; margin: 1.4em 0 .5em; }
+h1 { font-size: 2rem; margin-top: 0; }
+h2 { font-size: 1.4rem; padding-bottom: .25em; border-bottom: 2px solid var(--line); }
+table { border-collapse: collapse; width: 100%; background: var(--card); border-radius: var(--radius); overflow: hidden; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+img, svg { max-width: 100%; }
+
+/* Layout */
+.wb-page { max-width: 1200px; margin: 0 auto; padding: 32px 20px 96px; }
+.wb-page.wide { max-width: none; }
+.subtitle, .wb-muted { color: var(--muted); }
+.subtitle { margin-top: -.4em; font-size: 1.05rem; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cols { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+section { margin-bottom: 40px; }
+
+/* Cards */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+.card > :first-child { margin-top: 0; }
+.card > :last-child { margin-bottom: 0; }
+.card h3 { font-size: 1.05rem; margin: 0 0 .5em; }
+.card.focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+
+/* Stickies: <div class="sticky">, add pink|blue|green|orange */
+.sticky {
+  background: var(--yellow); color: var(--sticky-fg); font-family: var(--hand); padding: 16px 18px 20px;
+  border-radius: 2px 2px 14px 2px; box-shadow: 2px 4px 10px rgb(0 0 0 / .15); transform: rotate(-.8deg);
+}
+.sticky:nth-child(even) { transform: rotate(.7deg); }
+.sticky.pink { background: var(--pink); } .sticky.blue { background: var(--blue); }
+.sticky.green { background: var(--green); } .sticky.orange { background: var(--orange); }
+.sticky > :first-child { margin-top: 0; } .sticky > :last-child { margin-bottom: 0; }
+.sticky code { background: rgb(0 0 0 / .07); }
+
+/* Callouts: <div class="callout warn">; kinds: info (default), warn, danger, ok */
+.callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0; margin: 16px 0; }
+.callout.warn { border-color: #d4a72c; background: color-mix(in srgb, #d4a72c 14%, var(--card)); }
+.callout.danger { border-color: var(--del); background: var(--del-bg); }
+.callout.ok { border-color: var(--add); background: var(--add-bg); }
+.callout > :first-child { margin-top: 0; } .callout > :last-child { margin-bottom: 0; }
+
+/* Tags: <span class="tag add">new</span> */
+.tag { display: inline-block; font-size: .75rem; font-weight: 600; padding: .1em .55em; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: middle; }
+.tag.add { background: var(--add-bg); color: var(--add); } .tag.del { background: var(--del-bg); color: var(--del); }
+.tag.muted { background: var(--line); color: var(--muted); }
+
+/* Diffs: <pre class="diff"><span class="add">+ x</span>\n<span class="del">- y</span></pre> */
+pre.diff span { display: block; margin: 0 -14px; padding: 0 14px; }
+pre.diff .add { background: var(--add-bg); color: var(--add); }
+pre.diff .del { background: var(--del-bg); color: var(--del); }
+pre.diff .hunk { color: var(--muted); }
+
+/* Steps: <ol class="steps"><li>...</li></ol> */
+ol.steps { list-style: none; counter-reset: s; padding: 0; }
+ol.steps > li { counter-increment: s; position: relative; padding: 0 0 18px 44px; border-left: 2px solid var(--line); margin-left: 14px; }
+ol.steps > li:last-child { border-color: transparent; }
+ol.steps > li::before {
+  content: counter(s); position: absolute; left: -15px; top: -2px; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 700; font-size: .85rem; display: grid; place-items: center;
+}
+
+/* Flow: <div class="flow"><div class="card">A</div><div class="card">B</div></div> — arrows between items */
+.flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 36px; }
+.flow > * { position: relative; flex: 1 1 160px; }
+.flow > *:not(:last-child)::after {
+  content: "→"; position: absolute; right: -28px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 1.3rem;
+}
+
+/* Mermaid: <pre class="mermaid">graph LR; A-->B</pre> (needs /_wb/board.js) */
+.mermaid { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; text-align: center; overflow-x: auto; }
+.mermaid:not([data-processed]) { color: transparent; min-height: 80px; }
+.wb-error { color: var(--del) !important; background: var(--del-bg); white-space: pre-wrap; text-align: left; }
+
+/* Index */
+.wb-index { list-style: none; padding: 0; display: grid; gap: 10px; }
+.wb-index li { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.wb-index a { font-weight: 600; text-decoration: none; }
+
+@media (max-width: 600px) {
+  .wb-page { padding: 20px 16px 64px; }
+  h1 { font-size: 1.6rem; }
+  .flow { flex-direction: column; gap: 28px; }
+  .flow > *:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -26px; transform: translateX(-50%); }
+}

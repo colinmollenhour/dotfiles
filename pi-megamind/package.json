@@ -1,12 +1,13 @@
 {
   "name": "pi-megamind",
   "version": "0.1.0",
-  "description": "Pi package for Megamind autonomous delivery workflow and supporting multi-agent skills.",
+  "description": "Megamind autonomous delivery workflow for OMP and Pi with supporting multi-agent skills.",
   "private": true,
   "keywords": [
     "pi-package",
     "pi",
     "megamind",
+    "omp",
     "agent-skills",
     "multi-agent"
   ],

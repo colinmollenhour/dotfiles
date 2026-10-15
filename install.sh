@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2026.07.15"
+VERSION="2026.10.15"
 
 DOTFILES=(
   ".bashrc.colin"
@@ -18,12 +18,22 @@ DOTFILES=(
   ".config/delta/themes.gitconfig"
   ".config/tmux-powerline/config.sh"
   ".config/tmux-powerline/themes/colin.sh"
+  ".paseo/orchestration-preferences.json"
 )
+
+# Standalone CLIs installed to ~/.local/bin by --bins, as "source:name:runtime".
+BINS=(
+  "bin/snip-upload.ts:snip-upload:bun"
+)
+SNIPS_CONFIG="$HOME/.local/colin/snips.json"
 
 DO_DOTFILES=false
 DO_BASHRC=false
 DO_GITCONFIG=false
 DO_AGENTS=false
+DO_BINS=false
+NO_BINS=false
+NO_SKILLS=false
 DO_INTERACTIVE=false
 DO_ALL=false
 DRY_RUN=false
@@ -335,13 +345,28 @@ install_file() {
   fi
 }
 
+# Hash a rendered dotfile with its install stamp ($INSTALL_REPO_HEAD / $INSTALL_DATE) masked,
+# so files that differ only in the stamped commit and date compare equal.
+stamp_normalized_hash() {
+  sed -E \
+    -e 's/(Revision committed on ).*/\1<date>/' \
+    -e "s/^(.{0,3}# Colin's .*\()([0-9a-f]{40}|unknown)\)\$/\1<sha>)/" \
+    "$1" | sha256sum | cut -d' ' -f1
+}
+
+# A rendered dest that differs from the incoming render only by its stamp is not a user edit.
+only_stamp_differs() {
+  local dest="$1" tmpfile="$2"
+  [[ -f "$dest" ]] && [[ "$(stamp_normalized_hash "$dest")" == "$(stamp_normalized_hash "$tmpfile")" ]]
+}
+
 # Move a pre-rendered tmpfile → dest, recording src_rel in the manifest; always removes tmpfile
 install_rendered() {
   local src_rel="$1" tmpfile="$2" dest="$3"
   local existed=false mtime_source="$SCRIPT_DIR/$src_rel"
   ACTIVE_DESTS["$dest"]=1
   if [[ "$DRY_RUN" == true ]]; then
-    if can_overwrite "$dest" "$tmpfile" "$mtime_source"; then
+    if only_stamp_differs "$dest" "$tmpfile" || can_overwrite "$dest" "$tmpfile" "$mtime_source"; then
       if same_hash_and_mtime "$dest" "$tmpfile" "$mtime_source"; then
         record_unchanged "$dest"
       elif [[ -f "$dest" ]]; then
@@ -355,7 +380,7 @@ install_rendered() {
     rm -f "$tmpfile"
     return 0
   fi
-  if ! can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel"; then
+  if ! only_stamp_differs "$dest" "$tmpfile" && ! can_overwrite "$dest" "$tmpfile" "$SCRIPT_DIR/$src_rel"; then
     rm -f "$tmpfile"
     return 0
   fi
@@ -423,6 +448,13 @@ merge_settings_json() {
         | (if ($repo.sandbox.network.allowedDomains or $live.sandbox.network.allowedDomains)
              then .sandbox.network.allowedDomains = ((($repo.sandbox.network.allowedDomains // []) + ($live.sandbox.network.allowedDomains // [])) | ou) else . end)
       ' "$src_abs" "$dest" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+    if same_hash "$dest" "$tmp"; then
+      rm -f "$tmp"
+      MANIFEST_HASH["$dest"]="$(file_hash "$dest")"
+      MANIFEST_SRC["$dest"]="$src_rel"
+      record_unchanged "$dest"
+      return
+    fi
     if [[ "$DRY_RUN" == true ]]; then
       rm -f "$tmp"
       record_written "$dest" replaced
@@ -486,9 +518,12 @@ install_dir_files() {
   shopt -u nullglob
 }
 
-# Delete installed files whose source was removed from the repo (if still unmodified)
+# Delete installed files whose source was removed from the repo (if still unmodified).
+# A dest that no longer matches the last-install hash is owned by the user or by
+# another installer (e.g. `cup skill`). Leave it, drop it from the manifest, and
+# do not warn about it on later runs.
 cleanup_deleted() {
-  local dest src_path current_hash n_removed=0 n_modified=0
+  local dest src_path current_hash n_removed=0 n_released=0
   for dest in "${!MANIFEST_HASH[@]}"; do
     [[ -v ACTIVE_DESTS[$dest] ]] && continue
     src_path="${MANIFEST_SRC[$dest]:-}"
@@ -508,13 +543,17 @@ cleanup_deleted() {
       fi
       n_removed=$((n_removed + 1))
     else
-      warn "Not deleting manually modified orphan: $dest"
-      warn "  Its source ($src_path) was removed from dotfiles. Delete manually if no longer needed."
-      n_modified=$((n_modified + 1))
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "stop tracking $dest (source removed, file modified)"
+      else
+        warn "Stopped tracking $dest (source $src_path was removed; leaving local file)"
+        unset "MANIFEST_HASH[$dest]" "MANIFEST_SRC[$dest]"
+      fi
+      n_released=$((n_released + 1))
     fi
   done
   [[ $n_removed -gt 0 ]] && log "Deleted $n_removed orphaned file(s) whose sources were removed"
-  [[ $n_modified -gt 0 ]] && warn "$n_modified orphaned file(s) skipped (manually modified)"
+  [[ $n_released -gt 0 ]] && warn "$n_released orphaned file(s) released from tracking (source removed, local copy kept)"
   return 0
 }
 
@@ -539,9 +578,37 @@ copy_agent_files() {
   shopt -s nullglob
   for item in "$src"/*; do
     base="$(basename "$item")"
-    [[ "$WITH_OPUS" == false && "$base" == "colin-mbot-opus.md" ]] && continue
+    # Skip creating opus unless opted in, but refresh it if a previous install
+    # already left the destination in place.
+    [[ "$WITH_OPUS" == false && "$base" == "colin-mbot-opus.md" && ! -f "$dest/$base" ]] && continue
     src_rel="$item"  # already relative to SCRIPT_DIR
     install_file "$src_rel" "$SCRIPT_DIR/$item" "$dest/$base"
+  done
+  shopt -u nullglob
+}
+
+copy_claude_home() {
+  local src=".claude" dest="$HOME/.claude"
+  local item base
+  if [[ ! -d "$src" ]]; then
+    warn "Skipping missing directory: $src"
+    return
+  fi
+  shopt -s nullglob
+  for item in "$src"/*; do
+    base="$(basename "$item")"
+    [[ "$base" == "worktrees" || "$base" == "commands" ]] && continue
+    if [[ "$base" == "agents" ]]; then
+      copy_agent_files "$item" "$dest/agents"
+    elif [[ -d "$item" ]]; then
+      install_dir_files "$SCRIPT_DIR/$item" "$dest/$base"
+    elif [[ -f "$item" ]]; then
+      if [[ "$base" == "settings.json" || "$base" == "settings.local.json" ]]; then
+        merge_settings_json "$item" "$SCRIPT_DIR/$item" "$dest/$base"
+      else
+        install_file "$item" "$SCRIPT_DIR/$item" "$dest/$base"
+      fi
+    fi
   done
   shopt -u nullglob
 }
@@ -606,10 +673,7 @@ gitconfig_includes_colin() {
 
 show_help() {
   cat << EOF
-Install Colin's dotfiles and non-skill AI agent files.
-
-Skills, former slash-command workflows, and multi-agent procedures install via
-the Vercel skills CLI or Claude plugin marketplace — not this script. See README.
+Install Colin's dotfiles and AI agent configuration.
 
 USAGE
   $SCRIPT_NAME [OPTIONS]
@@ -621,32 +685,36 @@ EXAMPLES
   $SCRIPT_NAME --dry-run --all
   $SCRIPT_NAME --interactive
 
-  # Skills (separate from this script):
-  npx skills add colinmollenhour/dotfiles -g --all
-
 OPTIONS
-  -a, --all          Install everything: dotfiles, shell/git hooks, and agents
+  -a, --all          Install everything: dotfiles, shell/git hooks, agents, and bins
       --dotfiles     Install dotfiles into \$HOME
       --bashrc       Update ~/.bashrc to source ~/.bashrc.colin
       --gitconfig    Update ~/.gitconfig to include ~/.gitconfig.colin
-      --agents       Install agent definitions + Claude settings (not skills)
+      --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
+      --bins         Install standalone CLIs (snip-upload) to ~/.local/bin
+      --no-bins      Skip the CLIs when using --all
   -i, --interactive  Choose components interactively (default when run in a TTY)
   -n, --dry-run      Show what would change without writing files
   -f, --force        Overwrite conflicting files without prompting
-      --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (no to avoid accidental usage)
+      --no-skills    Skip skill mirrors and their CLI/service setup (for marketplace/skills CLI users)
+      --with-opus    Include colin-mbot-opus.md when installing OpenCode agents (implied if the file already exists)
       --no-input     Disable prompts and keep conflicts; requires an install option
   -q, --quiet        Suppress progress messages (the final write summary remains)
   -h, --help         Show this help message
       --version      Show version and exit
 
---agents installs only what the skills CLI cannot:
-  - Claude settings merge (~/.claude/settings.json)
-  - MBOT persona agents (~/.claude/agents, ~/.opencode/agents)
-  - Megamind agent (~/.claude/agents/megamind.md) for Claude Code and grok --agent megamind
+CONFLICTS
+  In a TTY, choose per file: keep, overwrite, back up, show a diff, keep all,
+  or overwrite all. Non-interactive runs keep conflicts unless --force is used.
 
 DOTFILES
 EOF
   printf '  %s\n' "${DOTFILES[@]}"
+  printf '\nBINS\n'
+  local spec
+  for spec in "${BINS[@]}"; do
+    printf '  %s -> ~/.local/bin/%s\n' "${spec%%:*}" "$(cut -d: -f2 <<<"$spec")"
+  done
 }
 
 show_version() {
@@ -777,33 +845,65 @@ update_gitconfig() {
   fi
 }
 
-# Resolve a path that may be a symlink (for plugin agent files that point at skills).
-resolve_src() {
-  local path="$1"
-  if command -v realpath >/dev/null 2>&1; then
-    realpath -e "$path" 2>/dev/null || realpath "$path" 2>/dev/null || printf '%s' "$path"
-  elif command -v readlink >/dev/null 2>&1; then
-    readlink -f "$path" 2>/dev/null || printf '%s' "$path"
-  else
-    printf '%s' "$path"
-  fi
+# Preserve source tracking when updating an install made before the plugin layout.
+migrate_plugin_sources() {
+  local dest src name rest candidate
+  for dest in "${!MANIFEST_SRC[@]}"; do
+    src="${MANIFEST_SRC[$dest]}"
+    if [[ "$src" == .claude/skills/* ]]; then
+      rest="${src#.claude/skills/}"
+      name="${rest%%/*}"
+      for candidate in plugins/*/skills/"$name"/"${rest#*/}"; do
+        [[ -f "$candidate" ]] || continue
+        MANIFEST_SRC["$dest"]="$candidate"
+        break
+      done
+    elif [[ "$src" == .claude/agents/megamind.md ]]; then
+      MANIFEST_SRC["$dest"]="plugins/megamind/agents/megamind.md"
+    fi
+  done
 }
 
-install_agent_file() {
-  # src_rel is the repo-relative path used for manifest tracking (the agent path).
-  # Content is read through symlinks so megamind.md → SKILL.md installs as a real file.
-  local src_rel="$1"
-  local dest="$2"
-  local src_abs resolved
-  src_abs="$SCRIPT_DIR/$src_rel"
-  ensure_repo_file "$src_rel"
-  resolved="$(resolve_src "$src_abs")"
-  install_file "$src_rel" "$resolved" "$dest"
+install_plugin_skills() {
+  local skills_dir
+  for skills_dir in plugins/*/skills; do
+    [[ -d "$skills_dir" ]] || continue
+    copy_dir_contents "$skills_dir" "$HOME/.claude/skills"
+    copy_dir_contents "$skills_dir" "$HOME/.agents/skills"
+  done
 }
 
-cleanup_legacy_skill_and_command_mirrors() {
-  # Skills and former slash commands are no longer installed by this script.
-  # Offer to remove old mirrored paths that previous installs created.
+# .claude/commands is gone. Delete leftover slash-command copies; cleanup_deleted
+# drops them from the manifest once the files are missing.
+cleanup_legacy_command_locations() {
+  local dest dir n=0
+  shopt -s nullglob
+  for dest in "$HOME/.claude/commands"/*.md "$HOME/.opencode/commands"/*.md; do
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "delete leftover command $dest"
+    else
+      rm -f -- "$dest"
+      log "Deleted leftover command $dest"
+    fi
+    n=$((n + 1))
+  done
+  shopt -u nullglob
+  [[ $n -gt 0 ]] && log "Removed $n leftover command file(s)"
+
+  for dir in "$HOME/.claude/commands" "$HOME/.opencode/commands"; do
+    [[ -d "$dir" ]] || continue
+    if [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "remove empty directory $dir"
+      else
+        rmdir -- "$dir" 2>/dev/null || true
+        log "Removed empty directory $dir"
+      fi
+    fi
+  done
+}
+
+cleanup_legacy_namespaced_agent_dirs() {
   local legacy_dirs=(
     "$HOME/.agents/skills/colin"
     "$HOME/.claude/commands/colin"
@@ -836,11 +936,9 @@ cleanup_legacy_skill_and_command_mirrors() {
 }
 
 install_agents() {
-  section "Installing agent definitions and Claude settings"
-  log "Skills are not installed here. Use: npx skills add colinmollenhour/dotfiles -g --all"
+  section "Installing AI agent files"
 
   local claude_settings="$HOME/.claude/settings.json"
-  local megamind_agent="plugins/megamind/agents/megamind.md"
 
   if [[ -f "$claude_settings" ]] && [[ "$(cat "$claude_settings")" != "{}" ]]; then
     local backup_existed=false
@@ -868,61 +966,160 @@ install_agents() {
     fi
   fi
 
-  # settings.json is merged (not overwritten) so any statusLine set by the
-  # simple-statusline plugin is preserved. Configure the statusline with
-  # `/simple-statusline:setup` (see
+  # settings.json is merged (not overwritten) by copy_claude_home so any
+  # statusLine set by the simple-statusline plugin is preserved. Configure the
+  # statusline itself with `/simple-statusline:setup` (see
   # https://github.com/Postmodum37/simple-claude-code-statusline).
-  if [[ -f ".claude/settings.json" ]]; then
-    merge_settings_json ".claude/settings.json" "$SCRIPT_DIR/.claude/settings.json" "$HOME/.claude/settings.json"
-  fi
-  if [[ -f ".claude/settings.local.json" ]]; then
-    merge_settings_json ".claude/settings.local.json" "$SCRIPT_DIR/.claude/settings.local.json" "$HOME/.claude/settings.local.json"
-  fi
+  copy_claude_home
 
-  # MBOT persona agents for Claude Code (and hosts that read ~/.claude/agents,
-  # including grok --agent <name>).
+  local orphaned_dirs=(
+    "$HOME/.config/opencode/agents"
+    "$HOME/.config/opencode/commands"
+    "$HOME/.config/opencode/skills"
+    "$HOME/.config/opencode/agent"
+    "$HOME/.config/opencode/command"
+    "$HOME/.config/opencode/skill"
+    "$HOME/.config/grok/agents"
+    "$HOME/.gemini/antigravity-cli/skills"
+  )
+  local orphan
+  for orphan in "${orphaned_dirs[@]}"; do
+    [[ "$NO_SKILLS" == true && "$orphan" == */skill* ]] && continue
+    if [[ -d "$orphan" ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "remove orphaned directory $orphan"
+      else
+        rm -rf "$orphan"
+        log "Removed orphaned directory: $orphan"
+      fi
+    fi
+  done
+
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.claude/agents"
+    dry_run_msg "create $HOME/.opencode/agents, $HOME/.grok/agents, and $HOME/.agents/skills"
   else
-    mkdir -p "$HOME/.claude/agents"
+    mkdir -p "$HOME/.opencode/agents" \
+             "$HOME/.grok/agents" \
+             "$HOME/.agents/skills"
   fi
-  copy_agent_files ".claude/agents" "$HOME/.claude/agents"
-  install_agent_file "$megamind_agent" "$HOME/.claude/agents/megamind.md"
 
-  # OpenCode agents: full MBOT persona set + megamind
-  if [[ -d "$HOME/.config/opencode/command/colin" ]] || [[ -d "$HOME/.config/opencode/agent" ]]; then
+  install_file "plugins/megamind/agents/megamind.md" "$SCRIPT_DIR/plugins/megamind/agents/megamind.md" "$HOME/.claude/agents/megamind.md"
+  if [[ "$NO_SKILLS" == false ]]; then
+    install_plugin_skills
+  else
+    log "Skipping skill mirrors; install skills via the Claude marketplace or skills CLI."
+  fi
+  cleanup_legacy_command_locations
+  cleanup_legacy_namespaced_agent_dirs
+  copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
+  install_file ".opencode/agents/megamind.md" "$SCRIPT_DIR/.opencode/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
+  install_file "plugins/megamind/agents/megamind.md" "$SCRIPT_DIR/plugins/megamind/agents/megamind.md" "$HOME/.grok/agents/megamind.md"
+
+  if [[ "$NO_SKILLS" == false ]]; then
+    # Helper CLIs used by skills (git-cleanup-scan, etc.)
+    local scan_src="plugins/colin-shipping/skills/colin-git-cleanup/scripts/git-cleanup-scan"
+    if [[ -f "$SCRIPT_DIR/$scan_src" ]]; then
+      install_file "$scan_src" "$SCRIPT_DIR/$scan_src" "$HOME/.local/bin/git-cleanup-scan"
+      if [[ "$DRY_RUN" == false && -f "$HOME/.local/bin/git-cleanup-scan" ]]; then
+        chmod +x "$HOME/.local/bin/git-cleanup-scan"
+      fi
+    fi
+
+    # Symlink (not copy) so the script still finds its ../assets next to the installed skill.
+    local wb_dest="$HOME/.local/bin/whiteboard"
+    local wb_target="$HOME/.agents/skills/whiteboard/scripts/whiteboard"
+    if [[ -f "$SCRIPT_DIR/plugins/whiteboard/skills/whiteboard/scripts/whiteboard" ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "link $wb_dest -> $wb_target"
+      elif [[ ! -e "$wb_dest" || -L "$wb_dest" ]]; then
+        mkdir -p "$HOME/.local/bin"
+        chmod +x "$wb_target"
+        ln -sfn "$wb_target" "$wb_dest"
+      else
+        warn "$wb_dest exists and is not a symlink; leaving it alone"
+      fi
+    fi
+
+    # Run the board server under the user manager so it survives the agent or shell that started it.
+    local wb_unit_src="plugins/whiteboard/skills/whiteboard/systemd/whiteboard.service"
+    local wb_unit_dest="$HOME/.config/systemd/user/whiteboard.service"
+    # systemctl --user reaches the session's manager whatever $HOME is, so skip it when $HOME is not that
+    # manager's home (tests and sandboxes install into a temporary HOME).
+    if [[ -f "$SCRIPT_DIR/$wb_unit_src" ]] && command -v systemctl >/dev/null 2>&1 \
+      && [[ "$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HOME=//p')" == "$HOME" ]]; then
+      install_file "$wb_unit_src" "$SCRIPT_DIR/$wb_unit_src" "$wb_unit_dest"
+      if [[ "$DRY_RUN" == true ]]; then
+        dry_run_msg "systemctl --user enable + restart whiteboard.service"
+      elif [[ -f "$wb_unit_dest" ]]; then
+        systemctl --user daemon-reload
+        # A detached server from `whiteboard start` holds the port and lock; hand it over to the unit.
+        if ! systemctl --user is-active --quiet whiteboard.service; then
+          "$wb_dest" stop >/dev/null 2>&1 || true
+        fi
+        # Restart rather than start so an updated script takes effect; open boards reconnect on their own.
+        { systemctl --user enable whiteboard.service && systemctl --user restart whiteboard.service; } >/dev/null 2>&1 \
+          || warn "could not start whiteboard.service; see journalctl --user -u whiteboard.service"
+        if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]]; then
+          warn "user lingering is off; whiteboard.service starts at login, not boot (loginctl enable-linger $USER)"
+        fi
+      fi
+    fi
+  fi
+
+  if command -v omp >/dev/null 2>&1; then
     if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "remove legacy OpenCode directories under $HOME/.config/opencode"
+      dry_run_msg "omp install $SCRIPT_DIR/pi-megamind"
     else
-      rm -rf "$HOME/.config/opencode/command" "$HOME/.config/opencode/skill" "$HOME/.config/opencode/agent"
-      log "Removed legacy OpenCode directories from ~/.config/opencode"
+      omp install "$SCRIPT_DIR/pi-megamind" >/dev/null 2>&1 || log "OMP package installation linked"
+    fi
+  fi
+
+  if command -v pi >/dev/null 2>&1; then
+    if [[ "$DRY_RUN" == true ]]; then
+      dry_run_msg "pi install $SCRIPT_DIR/pi-megamind"
+    else
+      pi install "$SCRIPT_DIR/pi-megamind" >/dev/null 2>&1 || log "Pi package installation linked"
     fi
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    dry_run_msg "create $HOME/.opencode/agents"
+    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, ~/.grok, and OMP/Pi"
   else
-    mkdir -p "$HOME/.opencode/agents"
-  fi
-  copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
-  install_agent_file "$megamind_agent" "$HOME/.opencode/agents/megamind.md"
-
-  cleanup_legacy_skill_and_command_mirrors
-
-  if [[ "$DRY_RUN" == true ]]; then
-    log "Would install agent definitions to ~/.claude/agents and ~/.opencode/agents"
-  else
-    log "Installed agent definitions to ~/.claude/agents and ~/.opencode/agents"
+    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, ~/.grok, and OMP/Pi"
   fi
 
   suggest_statusline_if_missing
-  log ""
-  log "Install skills separately (all plugins / all agents):"
-  log "  npx skills add colinmollenhour/dotfiles -g --all"
-  log "Claude plugin marketplace (optional):"
-  log "  /plugin marketplace add colinmollenhour/dotfiles"
-  log "  /plugin install colin-shipping@colin-dotfiles"
-  log "  /plugin install megamind@colin-dotfiles"
+}
+
+install_bin() {
+  local src name runtime
+  IFS=: read -r src name runtime <<<"$1"
+  local dest="$HOME/.local/bin/$name"
+  install_file "$src" "$SCRIPT_DIR/$src" "$dest"
+  if [[ "$DRY_RUN" == false && -f "$dest" ]]; then
+    chmod +x "$dest"
+  fi
+  if [[ -n "$runtime" ]] && ! command -v "$runtime" >/dev/null 2>&1; then
+    warn "$name needs $runtime on PATH; install it first (bun: curl -fsSL https://bun.sh/install | bash)"
+  fi
+}
+
+snips_setup_hint() {
+  [[ -f "$SNIPS_CONFIG" ]] && return 0
+  log "snip-upload has no bucket configured yet. Run 'snip-upload auth' to connect a Tigris bucket."
+}
+
+install_bins() {
+  section "Installing CLIs to ~/.local/bin"
+  local spec
+  for spec in "${BINS[@]}"; do
+    install_bin "$spec"
+  done
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) warn "~/.local/bin is not on PATH; add it to use these CLIs" ;;
+  esac
+  snips_setup_hint
 }
 
 prompt_yes_no() {
@@ -959,9 +1156,21 @@ interactive_install() {
     update_gitconfig
   fi
 
-  if prompt_yes_no "Install agent definitions and Claude settings (not skills — use npx skills for those)"; then
+  if prompt_yes_no "Install Claude/OpenCode/Gemini/OpenAI agent files"; then
     install_agents
   fi
+
+  local spec name
+  for spec in "${BINS[@]}"; do
+    name="$(cut -d: -f2 <<<"$spec")"
+    prompt_yes_no "Install the $name CLI to ~/.local/bin" || continue
+    install_bin "$spec"
+    if [[ "$name" == snip-upload && "$DRY_RUN" == false && ! -f "$SNIPS_CONFIG" ]] \
+      && command -v bun >/dev/null 2>&1 \
+      && prompt_yes_no "Set up snip-upload now (Tigris bucket and access key)"; then
+      "$HOME/.local/bin/snip-upload" auth || warn "snip-upload setup did not finish; run 'snip-upload auth' later"
+    fi
+  done
 }
 
 parse_args() {
@@ -1002,6 +1211,18 @@ parse_args() {
         ;;
       --agents)
         DO_AGENTS=true
+        shift
+        ;;
+      --bins)
+        DO_BINS=true
+        shift
+        ;;
+      --no-bins)
+        NO_BINS=true
+        shift
+        ;;
+      --no-skills)
+        NO_SKILLS=true
         shift
         ;;
       --with-opus)
@@ -1055,7 +1276,9 @@ run_install() {
     DO_BASHRC=true
     DO_GITCONFIG=true
     DO_AGENTS=true
+    [[ "$NO_BINS" == true ]] || DO_BINS=true
   fi
+  [[ "$NO_BINS" == true && "$DO_BINS" == true ]] && die "--bins and --no-bins conflict"
 
   if [[ "$DO_DOTFILES" == true ]]; then
     install_dotfiles
@@ -1077,12 +1300,18 @@ run_install() {
     ran=true
   fi
 
+  if [[ "$DO_BINS" == true ]]; then
+    install_bins
+    ran=true
+  fi
+
   [[ "$ran" == true ]] || die "No install target selected"
 }
 
 main() {
   parse_args "$@"
   load_manifest
+  migrate_plugin_sources
   run_install
   cleanup_deleted
   save_manifest

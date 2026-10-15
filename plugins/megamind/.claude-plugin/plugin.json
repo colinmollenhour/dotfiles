@@ -1,11 +1,14 @@
 {
   "name": "megamind",
-  "description": "Autonomous large-task delivery agent and skill. Install colin-shipping as well (MBOT/MBOD dependencies).",
+  "version": "0.1.0",
+  "description": "Autonomous delivery agent and skill with multi-model planning and review",
   "author": {
     "name": "Colin Mollenhour"
   },
   "homepage": "https://github.com/colinmollenhour/dotfiles",
   "repository": "https://github.com/colinmollenhour/dotfiles",
   "license": "MIT",
-  "keywords": ["megamind", "autonomous", "multi-agent", "delivery"]
+  "dependencies": [
+    "colin-shipping"
+  ]
 }

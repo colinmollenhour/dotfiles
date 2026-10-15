@@ -1,33 +1,41 @@
 ---
 name: colin-fix-pipeline
+slash: true
+disable-model-invocation: true
 description: Fix failing CI pipeline (GitHub Actions or GitLab CI) for the current branch
 ---
 
 Fix the failing CI pipeline for the current branch.
 
-Determine the hosting platform first, then load `gh-cli` for GitHub Actions or `glab-cli` for GitLab CI. Use those skills for the exact hosted-CLI commands. The branch-scoped status commands in the context block below are the preferred starting point and are mirrored in those skills.
+Determine the hosting platform first, then load `gh-cli` for GitHub Actions or `glab-cli` for GitLab CI. Use those skills for the exact hosted-CLI commands. The branch-scoped status commands below are the preferred starting point and are mirrored in those skills.
 
 ## Context
 
-- **Remotes:** !`git remote -v`
-- **Current branch:** !`git branch --show-current`
-- **GitHub pipeline status:** !`gh run list --limit 10 --json databaseId,displayTitle,conclusion,status,headBranch 2>/dev/null || echo "Not a GitHub repo or not authenticated"`
-- **GitLab pipeline status:** !`glab ci list --per-page 10 --output json 2>/dev/null || echo "Not a GitLab repo or not authenticated"`
+Gather the current state first. Run these in a single tool-turn batch:
+
+```bash
+git remote -v
+git branch --show-current
+gh run list --limit 10 --json databaseId,displayTitle,conclusion,status,headBranch 2>/dev/null || echo "Not a GitHub repo or not authenticated"
+glab ci list --per-page 10 --output json 2>/dev/null || echo "Not a GitLab repo or not authenticated"
+```
 
 ## Step 1: Assess Context
 
 1. **Identify platform** — determine GitHub or GitLab from the remote URLs and load the matching CLI skill (`gh-cli` or `glab-cli`)
-2. **Filter the listed runs to the current branch** — the context block above lists the most recent runs across all branches; match `headBranch` (GitHub) or `ref` (GitLab) against the **Current branch** value above. If nothing in the listed runs matches, re-query with the platform CLI scoped to that branch.
+2. **Filter the listed runs to the current branch** — the run list covers all branches; match `headBranch` (GitHub) or `ref` (GitLab) against the current branch. If nothing in the listed runs matches, re-query with the platform CLI scoped to that branch.
 3. **If all pipelines passed** → report success and exit early
 4. **If pipelines are still running** → report status and provide the matching watch/live command from the loaded skill, then exit early
 5. **If a pipeline has failed** → continue to Step 2
 
 ## Step 2: Get Failure Logs
 
-Use the loaded platform CLI skill for the exact failure-log command. Prefer the failing job's log/trace over broad pipeline output.
+Prefer a single gather script so logs land on disk without chat spam:
 
-- GitHub: the preferred command is `gh run view <run-id> --log-failed`
-- GitLab: the preferred command is `glab ci trace <job-id> --branch <branch>`
+- **GitLab:** `bun "${CLAUDE_SKILL_DIR}/../glab-cli/ci-fail.ts" --project <G/R> --branch <branch> --out-dir .tmp/ci-fail` then Read only the relevant `traces/*.log` tails
+- **GitHub:** `gh run view <run-id> --log-failed` (or `gh run list --branch …` then view)
+
+Fall back to the platform CLI skill only when the script is insufficient.
 
 ## Step 3: Analyze and Fix
 

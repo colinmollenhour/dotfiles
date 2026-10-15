@@ -1,347 +1,291 @@
 ---
 name: colin-ultra-review
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which opencode:*), Bash(ls:*), mcp__github_inline_comment__create_inline_comment
-description: Multi-role ultra code review — N models × 3 focused roles (bugs / runtime / craft) per PR/MR or diff
-argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [--re-review] [--no-post] [--no-summary]"
+slash: true
+disable-model-invocation: true
+allowed-tools: Read, Write, Glob, Grep, Agent, Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which *), Bash(mkdir *), Bash(cp *), Bash(wc *), Bash(bun *), Bash(occtl *), Bash(botctl *), Bash(claude *), Bash(grok *), Bash(codex *), Bash(agentsview *), Bash(timeout *), mcp__github_inline_comment__create_inline_comment
+description: Multi-model, repository-aware bug review with focused discovery, evidence validation, and convergence rounds
+argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [--re-review] [--max-rounds=N] [--no-post] [--no-summary]"
 ---
 
 # Ultra Code Review
 
-Review a GitHub pull request, GitLab merge request, or arbitrary git diff using **multiple models × three focused roles**. Each role is a consolidated reviewer persona — `bugs` (correctness + security), `runtime` (performance + deps + deploy safety), and `craft` (quality + simplification + tests). All three roles run by default; each role runs against every model. All findings are merged and deduplicated at the end.
+Current version: **Ultra Review 0.8**. Identity lives in `many-brain-one-task/ultra-review-version.json` and is frozen by `mbot-run init` into `STATE.json` as `ultra_review`. Use `ultra_review.header` / `ultra_review.label` verbatim on every published comment and on `prepared-summary.md`. Do not invent, omit, or bump the version in the parent session. Bump the JSON when the control plane, roles, validation contract, or publication format changes.
 
-This is the "ultra" variant of `/colin-review`. It is expected to be more expensive than regular review — budget accordingly.
+Multi-model bug review. Discovery is recall-oriented; an independent evidence pass protects publication precision. **Parent is a thin control plane** — disk under `.tmp/ultra-<id>/` is durable memory.
 
-For GitHub reviews, load the `gh-cli` skill after resolving the platform. For GitLab reviews, load the `glab-cli` skill. Use those skills for PR/MR resolution, API fallbacks, inline comment posting, labels, and platform-specific link details.
+Default lenses: `state`, `contracts`, `failure`, `craft`, `merits` (+ whole-change `integration`). More expensive than `/colin-review`.
 
-## Input Resolution
+## Token discipline (hard)
 
-If no argument is provided:
-1. Check `git remote get-url origin`
-2. If it points to GitHub, resolve the open PR for the current branch
-3. If it points to GitLab, resolve the open MR for the current branch
-4. Otherwise stop and ask what should be reviewed and where results should go
+1. **Do not invent** `launch-*.ts` / `harvest.ts` / `batch.ts` under the run dir. Use bundled drivers.
+2. **Never paste** full participant `.out` bodies into chat. Harvest via `mbot-run` / `jq` / `rg '^VERDICT:'`.
+3. Role prose lives in files participants read — not in parent chat. See MBOT `roles/`.
+4. Load platform CLI skills only for mutations (inline comments, labels). Prefer gather scripts for reads.
 
-If an argument is provided, resolve it as follows:
+## Drivers (use these)
 
-| Pattern | Mode | Resolution |
-|---|---|---|
-| `github.com/.../pull/123` | GitHub PR | Extract PR number |
-| `gitlab.*/.../merge_requests/123` | GitLab MR | Extract MR IID |
-| `https://github.com/OWNER/REPO` | GitHub PR | Resolve PR from current branch |
-| Numeric only | Platform from origin | Use as PR/MR ID |
-| `last N commits` | Git diff | `git diff HEAD~N..HEAD` |
-| `whole repo` or `entire codebase` | Git diff | Review all tracked files |
-| `branch NAME` | Git diff | `git diff main...NAME` or default branch |
-| `SHA..SHA` or `SHA...SHA` | Git diff | Use directly |
-| Any other text | Git diff | Interpret as git rev spec |
+Resolve `CLAUDE_SKILL_DIR` to the directory containing this `SKILL.md`, whether installed as a personal skill or inside a plugin cache.
 
-Resolve current-branch reviews using the appropriate platform CLI skill.
+| Step | Command |
+|---|---|
+| GitLab MR gather | `bun …/glab-cli/mr-context.ts --project G/R --mr N --out-dir .tmp/ultra-N/mr-context` |
+| GitHub PR gather | `bun …/gh-cli/pr-context.ts --repo O/R --pr N --out-dir .tmp/ultra-N/pr-context` |
+| Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` — prints and freezes `ultra_review` (`label`: `Ultra Review 0.8`) |
+| Skill version | `bun …/mbot-run.ts version` |
+| Assemble prompts | `bun …/many-brain-one-task/assemble-prompts.ts --append context/bucket.md --out-dir prompts role.md:slot.full.md …` |
+| Build merits | `bun …/many-brain-one-task/build-merits.ts --run-dir .tmp/ultra-N` (joins roles/merits.md + context without auto issue-form) |
+| OpenCode preflight | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.1-sol` (HTTP/binary probe, no model call; `--deep` for a real round trip. Launch also probes; omit `--attach` when `OPENCODE_SERVER_HOST`/`PORT` are already set) |
+| Launch batch | `bun …/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (Claude Code). **OpenCode host:** add `--detach`, then barrier. Further phase plans (`plan-integration.json`) merge into `plan.json`; they do not replace it. |
+| Fail-closed wait | `bun …/mbot-run.ts barrier --run-dir .tmp/ultra-N` — **never** `sleep N`, **never** `until test -s empty.out` |
+| Harvest | `bun …/mbot-run.ts harvest --run-dir .tmp/ultra-N` |
+| Candidate index | `bun …/mbot-run.ts candidates --run-dir .tmp/ultra-N` — writes `candidates.json` + `candidate-index.md`. Do not invent `extract-issues.ts`. |
+| Prepare notes | `bun …/many-brain-one-task/prepare-notes.ts --summary .tmp/ultra-N/prepared-summary.md` (or `--batch`) — safe JSON payloads for glab api |
+| Usage (wall + cost) | `bun …/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) |
 
-## Review Agents
+OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills occtl children. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt-sol`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
 
-Use the **Many Brain One Task (MBOT)** skill with task type `code-review`.
+Load **many-brain-one-task** for plan schema, delivery contracts, profiles. Role templates: `many-brain-one-task/roles/{state,contracts,failure,craft,merits,integration}.md`.
 
-- If the user names models, pass them through
-- Otherwise use MBOT defaults
-- Use MBOT display names in summaries and posted comments
+## Input resolution
 
-## Role Library
+No args → open PR/MR for current branch via origin host.  
+URL / numeric id / `last N commits` / `branch NAME` / `SHA..SHA` / other git rev as in the table:
 
-Three consolidated reviewer personas. Each role bundles related concerns so that three parallel role passes cover the full space of what a good code review checks. All roles review ONLY the changed code (not the full codebase) and follow the same "high-signal only" bar as regular `/colin-review`.
+| Pattern | Mode |
+|---|---|
+| `github.com/.../pull/123` | GitHub PR |
+| `gitlab…/merge_requests/123` | GitLab MR |
+| Numeric only | Platform from origin |
+| `last N commits` / `whole repo` / `branch NAME` / revspec | Git diff (always `--no-post`) |
 
-### `bugs` — correctness + security
+## Review agents (MBOT)
 
-What will break at runtime, including under adversarial input. Security is treated as correctness-under-attack, not a separate axis.
+Task type `code-review`. Profile: user `--profile X`, else `code-review.md`; Seamus hosts prefer `seamus-bot-ultra-review`. Do **not** add experimental models or raise effort to max/xhigh unless asked. Default OpenCode effort **high**. Claude discovery/validation/integration children: effort **high**. Parent stays host default.
 
-- Runtime bugs: off-by-one, null/undefined handling, race conditions, incorrect control flow, misuse of APIs, wrong types, broken invariants, unhandled edge cases
-- Security: injection risks (SQL, command, template, prototype pollution), auth/authz gaps, missing validation on untrusted input, secrets in code, unsafe deserialization, XSS/SSRF/CSRF, permissive CORS, errors that leak internals
+### Allocation
 
-### `runtime` — performance + dependencies + deployment safety
+- `state` / `contracts` / `failure`: full participants × each bucket  
+- `craft`: one participant (Grok slot; else Claude/Opus slot, else profile backup) per bucket — Grok carries the fewest discovery threads in the default lineup and is fast enough that the extra per-bucket thread does not extend wall-clock. **Grok slots are capped at 8 minutes**; if Grok times out or returns empty output, fail over immediately to Opus 5.5 rather than retrying on Grok or waiting 20 minutes.
+- `merits`: full participants, **once**, whole-change (no prior review comments in input)  
+- `integration`: full participants, whole-change  
+- Thread budget: `((3 × participants) + 1) × buckets` + merits fan-out + integration fan-out  
 
-What will hurt the system in production beyond pure correctness.
+A `failure` thread with no scale/cost assessment is incomplete — one retry under MBOT policy.
 
-- Performance: N+1 queries, blocking I/O on hot paths, unbounded loops over user input, O(n²) over growable collections, missing indexes, memory leaks, unnecessary allocations in hot loops, missing caching for expensive repeat calls
-- Dependencies: new deps (justification, maintenance, license), version bumps with breaking changes
-- Deployment / migration safety: lockstep-deploy hazards, rollback path, data compatibility, observability gaps for new code paths
+### Size tier (scale the fleet to the diff)
 
-### `craft` — quality + simplification + test quality
+Count **reviewable lines** = added + deleted lines in primary artifacts (`git diff --numstat <base>...<head>`, excluding the context-only artifacts from triage: lockfiles, generated code, snapshots, vendored files). Pick the tier before writing `plan.json`:
 
-Is this code maintainable and is it verifying the right things?
+| Tier | Reviewable lines | Discovery | Merits | Integration | `--max-rounds` |
+|---|---|---|---|---|---|
+| `small` | ≤ 150 | one **combined-lens** thread per participant (state + contracts + failure + craft in one prompt) | one participant | none — the single thread already saw the whole change | 1 |
+| `medium` | 151–600 | full role grid, one bucket | one participant | round 2 only, and only if round 1 confirmed a medium-or-higher issue | 2 |
+| `standard` | > 600, or more than one bucket | Allocation above | Allocation above | Allocation above | 3 (early exit to 1 if round 1 confirms 0 high/critical) |
 
-- Quality: complexity, duplication, dead code, adherence to applicable instruction files (`AGENTS.md` / `CLAUDE.md`) and surrounding conventions
-- Simplification: premature abstraction, speculative generality, over-engineered configuration, changes that bundle unrelated work, refactors that expand scope beyond their stated goal
-- Test quality: coverage ROI for changed behavior, tests asserting implementation instead of behavior, flakiness risks (timing, ordering, shared state), missing failure-path tests, mocks that diverge from real behavior
+- Move `small` up to `medium` when the diff touches a migration or schema, an auth/permission check, money, or locking/concurrency. Record the reason.
+- Combined-lens prompt: `assemble-prompts --append roles/contracts.md --append roles/failure.md --append roles/craft.md --append context/bucket.md --out-dir prompts roles/state.md:small.full.md`. It must still carry the `failure` scale/cost requirement, and each candidate names the lens it came from.
+- Validation, pre-publication gate, summary tables and posting are unchanged in every tier. Skip validation/adjudication when there are no candidates.
+- `--full` or an explicit `--roles` / agent list / `--max-rounds` overrides the tier. A profile may override the tier table's participants but not its thresholds.
+- Record `size_tier`, `reviewable_lines` and any bump reason in the triage line and in `run-summary.json`.
 
-## Role Selection
+### plan.json slots
 
-Default behavior: run **all three roles** (`bugs`, `runtime`, `craft`). Three roles × N agents = the full ultra-review matrix.
+Harness-owned rows: `harness: "opencode"|"occtl"|"grok"`. Native Agent rows: `harness: "external"` (you launch Agent; mbot-run harvest still scores `.out`). Prefer slot-keyed paths `results/<slot>.out` + `*.meta.json` with `planned_model` / `actual_model`.
 
-Skip a role only if the diff genuinely has zero signal for it. This is a narrow escape hatch — prefer running all three unless confident:
+Seamus OpenCode titles:
 
-- Skip `runtime` only for pure docs/comment/test-fixture diffs with no production code changes
-- Skip `craft` only for purely generated or machine-authored changes (e.g. schema regen)
-- `bugs` always runs — every code change can introduce a bug
+```text
+ultra|{gitlabProjectPath}|!{mrIid}|{bucketOr-}|{role}|{modelShort}|retry{N}
+```
 
-When skipping a role, record the reason in the triage output.
+## Role selection
 
-If `--roles=<csv>` is provided, use exactly those roles from `{bugs, runtime, craft}`. Error on unknown names.
+Default all five: `state`, `contracts`, `failure`, `craft`, `merits`.  
+Skip only when genuinely N/A (prose-only → skip state; no interface change → skip contracts; etc.). Record skip reasons.  
+`--roles=csv` exact subset. `integration` is not selectable (always the whole-change pass).
 
-## Re-review Mode
+**Role definitions for participants** — attach from disk, do not inline:
 
-If `--re-review` is active, review only the new changes since the last ultra-review.
+- `roles/state.md` — lifecycle / data / backfill windows  
+- `roles/contracts.md` — callers, schema, deploy compatibility  
+- `roles/failure.md` — adversarial + **scale/cost** (both required)  
+- `roles/craft.md` — dead code, duplication, false comments, coverage  
+- `roles/merits.md` — design worth; verdict vocabulary: `sound` \| `sound with reservations` \| `questionable` \| `should not land as designed`  
+- `roles/integration.md` — cross-bucket E2E  
 
-- Skip the normal "already commented" stop condition
-- Gather prior review comments and extract the last reviewed commit SHA from the most recent **`**AI Ultra Review**`** header (format: `· Commit: <sha>`). Do NOT parse `**AI Code Review**` headers — ultra-review keeps its own history independent from `/colin-review`.
-- If no prior ultra-review header with a SHA is found, fall back to the earliest reviewed version/SHA available from the platform
-- Compute the incremental diff between the last reviewed SHA and the current HEAD of the PR/MR branch
-- Re-run role selection against the incremental diff (roles may differ from the first ultra-review)
-- Give agents the incremental diff as primary input, and the full diff as background only
-- Do not re-flag issues already covered by prior comments unless they remain unresolved and are still relevant
-- If no new issues are found, use a re-review summary comment that says no new issues were found in the latest changes
+## Re-review and convergence
+
+`--max-rounds=N` default `3`. Clean round = that round produced **no new confirmed** issues after validation.
+
+- **Early exit rule (hard efficiency requirement):**
+  - If Round 1 confirms **0 high or critical severity issues** (i.e. only low-severity findings, or clean), **stop immediately at Round 1** — do not run Round 2 or Round 3. Additional convergence rounds on diffs with only low-severity findings produce diminishing returns and waste hours/tokens.
+  - If Round 1 confirmed high/critical issues, proceed to Round 2 (integration pass). If Round 2 confirms no new high/critical issues, **stop at Round 2**; do not run Round 3 unless an unconfirmed high/critical or major cross-cutting defect was confirmed in Round 2.
+- Round 1: role × bucket grid + merits + integration  
+- Later rounds: **integration-only** unless new subsystem enters scope  
+- Do **not** skip rounds 2–N because HEAD was unchanged — the SHA publication gate is a separate check at the end of a round, not a substitute for convergence. Stop when a later round adds no new confirmed issue, or the cap is hit.
+- `--re-review`: delta-first (`last-reviewed-sha...head` from latest `**AI Ultra Review` header, version optional) + one full-state integration; `--full` forces full grid  
 
 ## Process
 
-### Step 1: Pre-flight Checks
+### 1. Pre-flight
 
-For PR/MR reviews, fetch state, draft status, title, author, and the latest commit SHA on the PR/MR branch using the loaded platform CLI skill. Record the SHA — it must be included in every `**AI Ultra Review**` header posted during this run so later re-reviews can diff against it.
+Gather via **mr-context** / **pr-context** (not five serial glab/gh calls). Require base+head SHAs present locally (`git cat-file -e <sha>^{commit}`). **Do not `git fetch`.** If a SHA is missing, stop and tell the user. Stop if closed/merged/draft/trivial/already ultra-reviewed (unless `--re-review`). Git-diff mode skips pre-flight.
 
-Also capture the base SHA from the platform:
-- GitHub: `gh pr view <N> --json headRefOid,baseRefOid | jq -r '.headRefOid, .baseRefOid'`
-- GitLab: `glab mr view <IID> --output json | jq -r '.diff_refs.head_sha, .diff_refs.base_sha'`
-
-Both SHAs are a **precondition**: they must already be present in the local repository. Verify each with `git cat-file -e <sha>^{commit}`. If either is missing, stop and ask the user to fetch the branch locally (e.g. `gh pr checkout <N>`, `glab mr checkout <IID>`, or `git fetch origin <branch>`) before re-running. Do not auto-fetch. The rest of this command uses local `git diff <base>...<head>` against these SHAs instead of reading a consolidated PR/MR diff blob.
-
-Stop if:
-- The PR/MR is closed or merged
-- The PR/MR is draft/WIP
-- The change clearly does not need code review, such as trivial automation
-- You have already posted an ultra-review on it (check for any `**AI Ultra Review**` header), unless `--re-review` is active
-
-For git diff mode, skip pre-flight entirely.
-
-### Step 2: Triage, Filter, and Bucket
-
-Generate the file list and per-file changed-line counts **locally** using:
+### 2–3. Change index + buckets
 
 ```bash
 git diff --stat <base>...<head>
+git diff --name-status <base>...<head>
+git log --format='%H %s' <base>..<head>
 ```
 
-Do not read the full diff yet.
+Primary vs context-only artifacts. Bucket by behavior (~800–1500 changed lines), not only top-level dirs. Embed bucket diff only if ≤1200 lines **and** ≤100KB; else index + tool-driven inspection.
 
-**Exclusions.** Remove the following before bucketing:
-- Generated files
-- Vendored or dependency directories: `vendor/`, `node_modules/`, `.yarn/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.venv/`, `third_party/`
-- Lock files and built artifacts: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `go.sum`, `composer.lock`, `Gemfile.lock`, `Cargo.lock`, `poetry.lock`, `*.min.js`, `*.min.css`, `*.map`
-- Test fixture data dumps and other large non-code blobs: `sample_data.sql`, `*_fixture.sql`, `*.dump`, `*.ndjson`, `*.parquet`, `*.tar`, `*.tar.gz`, `*.zip`, `*.bin`; also any `*.sql` file that is clearly a data dump rather than a migration
-- Any single-file change larger than `5000` lines (fallback catch for anything the patterns above missed)
+### 4. Report triage
 
-**Bucketing.** Let `T` be the total changed-line count across the filtered file set.
+```text
+Triage: <N primary>, <M context-only>, <L> reviewable lines · Tier: <small|medium|standard> (<bump reason>)
+Roles / Skipped / Buckets / Rounds / Allocation / Thread budget
+```
 
-- If `T ≤ 5000`: one bucket containing all filtered files. A single bucket can run up to 5000 lines without splitting.
-- Otherwise, split into `K = ⌈T / 4000⌉` buckets, targeting ~`T/K` lines each (roughly 3000–4000 per bucket). Worked examples: 7000 → 2 buckets of ~3500; 10000 → 3 buckets of ~3333; 13000 → 4 buckets of ~3250. **Minimize `K`** — do not over-split.
+### 5. Context pack
 
-When splitting, use directory-aware packing:
-  1. Group files by top-level directory (first path segment, e.g. `apps/web/`, `packages/core/`, `migrations/`). Keeping related files together preserves cross-file context for each reviewer.
-  2. If a group exceeds the per-bucket cap, subdivide it by second-level directory first; only split a single directory across buckets as a last resort.
-  3. Pack groups greedily, starting a new bucket only when the next group would push the current bucket past ~`T/K` lines.
-  4. Keep the computed `K` unless a single file exceeds the per-bucket cap — in that rare case, it gets its own bucket and `K` grows by one.
+Write under `context/`: instruction files, PR/MR description, prior ultra findings (not for merits), callers/schemas/tests. Merits context file **omits** prior review comments.
 
-**Materialize per-bucket diffs locally** — only after bucketing, and only for files in a bucket:
+### 6. Discovery
+
+For each bucket × role, prompts = role file + bucket index (assemble-prompts). Discovery contract:
+
+> Scope is behavior introduced/changed by this diff. Inspect unchanged callers/callees/schemas/migrations/tests when needed. Optimize for candidate recall. Each candidate: agent, role, file+anchor, severity, confidence, invariant, path+trigger, harm, evidence, fix.
+
+Launch harness slots with `mbot-run launch`. Launch external Agent slots in parallel with Write-to-path + ≤500-char return.
+
+### 7. Integration
+
+Whole-change `roles/integration.md` + candidate index paths (not embedded blobs). Fresh sessions each convergence round.
+
+### 8. Validate + dedupe
+
+Build the candidate index with `mbot-run candidates` (not an ad-hoc `extract-issues.ts`). Independent validator (prefer a different model than the raiser). Status exactly one of: `confirmed` | `rejected` | `unresolved`.  
+Never reject for single-model or lack of consensus. Do not invent a clustering/dual-validator pipeline unless the user asks — one validator pass is the default. Slot-keyed validator outs; rewrite paths on backup.
+
+**Pre-publication gate** (after dedupe, before summary):
+
+1. Re-fetch head SHA; drop/fix findings if head moved  
+2. Dedup peer `**AI Ultra Review` threads (any version, including unversioned) by **root cause**, any resolution state  
+3. Report: `Gate: <N> commits landed · <A> confirmed · <B> fixed · <C> withdrawn · <D> suppressed · <E> posted`
+
+### 9. Summary artifacts
+
+Skip if `--no-summary`. Before declaring complete, write both artifacts under the run dir and make them agree with `results/*.out` + `*.meta.json`:
+
+1. `prepared-summary.md` — full summary body (every comparison/severity table + Merits / Rejected / Open questions / Gate). First line starts with `**AI Ultra Review <version>**` using `STATE.json` → `ultra_review.header`. In `--no-post`, display this body; do not replace it with a narrative-only recap.
+2. `run-summary.json` — machine-readable accounting (see fields below). Must include `ultra_review` copied from `STATE.json` (version, label, header).
+
+Recompute every tally from disk (`rg '^VERDICT:'` / task markers + `meta.actual_model`). Never trust hand-carried chat tallies. Attribute via `meta.actual_model` (planned→actual reassignments are scored to the actual performer).
+
+#### Required comparison tables (verbatim section titles)
+
+**## Model comparison** (per `actual_model` / display name; one row per participant):
+
+| Column | Definition |
+|---|---|
+| Candidates | Distinct candidates emitted |
+| Confirmed | Candidates confirmed by validation |
+| Rejected | Candidates disproved |
+| Unresolved | Candidates lacking enough evidence |
+| Unique confirmed | Confirmed issues found only by this agent |
+| Shared confirmed | Confirmed issues also found by another agent |
+| Precision | `confirmed / (confirmed + rejected)`, or `—` when denominator is 0 |
+| Wall time | Sum of slot durations for this agent (`ended_at − started_at` from meta; see wall-time rules) |
+| Cost | Sum of agentsview session costs for this agent’s slots (USD); `—` when unavailable |
+| Peak ctx (max / avg) | Max and mean `peak_context_tokens` across that agent’s matched sessions (from agentsview) |
+| Compactions | Sum of `compaction_count` (and note mid-task if non-zero) across matched sessions |
+
+Also include **## Role comparison** (candidates / confirmed / rejected / unresolved / unique-to-role) and **## Per-round** (new candidates / new confirmed / rejected / unresolved). Add **Posted findings by severity** when posting.
+
+Publication headings (verbatim, no numeric prefixes; merits verdict on the `## Merits — …` line):
+
+```text
+## Merits — <verdict>
+## Rejected on validation — recorded so they are not re-raised
+## Open questions
+```
+
+Merits: ≤3 items, one paragraph each; on split verdicts use the least favourable and report the split. Rejected register: ≤12 rows, only re-raise-worthy claims with concrete refutation; call out invented symbols/lines. Open questions: one line per unresolved candidate that needs a missing instrument.
+
+#### Wall time
+
+- Prefer `meta.started_at` / `meta.ended_at` (or `completed_at`) per slot. Duration = end − start.
+- If meta lacks times, use agentsview `started_at` / `ended_at` for the matched session.
+- Report **per-agent wall** (sum of that agent’s slot durations — concurrent slots sum; this is agent-minutes, not calendar span) and **run wall** (calendar: earliest slot start → latest slot end).
+- Also note threads that hit the profile wall-clock / exit 124 separately (timeouts ≠ wall column).
+
+#### Cost + wall via agentsview (required when the CLI is available)
+
+Do **not** hand-roll jq loops or trust OpenCode UI `$0.0000` session.cost. Use the bundled helper (meta + `.session` sidecars + title rediscovery + optional Claude children):
 
 ```bash
-git diff <base>...<head> -- <files-in-bucket>
+bun …/many-brain-one-task/mbot-run.ts usage --run-dir .tmp/ultra-N
+# optional: --title-prefix 'ultra|shipstream/server|!2783' --since 14d --include-claude-children
+# writes .tmp/ultra-N/agentsview-usage.json and prints the same JSON on stdout
 ```
 
-Do not read files that are not in any bucket.
+The helper resolves session ids from `results/*.meta.json` / `*.out.session`, normalizes `ses_…` → `opencode:ses_…`, calls `agentsview session usage` + `session get` (or `GET /api/v1/sessions/{id}/usage` on `AGENTSVIEW_URL` when the CLI is missing), rediscovers OpenCode sessions whose `first_message` starts with the structured title prefix, and rolls up per-slot / per-model **wall, cost, peak context, and compactions**. Fold `totals` and `by_model` into `run-summary.json` (`cost.*`, `wall.*`, `peak_context_*`, `compaction_*`). Mark unmatched slots explicitly rather than inventing zeros. If agentsview is missing and `AGENTSVIEW_URL` is unset, pass `--no-agentsview` (wall from meta only) or accept `cost_source: unavailable` — do not block publication solely on cost.
 
-### Step 3: Role Selection
+Context signals (from agentsview when matched) — **always separate parent vs slice** (same model family can be both the orchestrator and a participant):
 
-Apply the [Role Selection](#role-selection) rules to the filtered diff. Record:
-- Which roles are running (default: all three)
-- Any role skipped and a one-line reason
-- Whether role set came from `--roles` or default
+- `by_role.parent` — orchestrator session(s): peak context + compaction counts answer “did the parent drown in context?”
+- `by_role.slice` — participant threads only: peak min/avg/max answer “are slices too big or too small?”
+- `by_model_slices` — per-model rollup with parents excluded (so Opus parent does not inflate Opus slice peaks)
+- `parents[]` / `slices[]` — raw rows
 
-### Step 4: Report Triage, Roles, and Buckets
+Call out under run accounting:
+
+1. **Parent:** if `compaction_count`/`mid_task_compaction_count` > 0 or peak ≥ ~200k — control plane is context-stressed; trust disk artifacts over chat memory.  
+2. **Slices:** peak max ≥ ~250k → packs too large; peak avg < ~40k and max < ~60k → possibly under-fed; mid-range → size OK.
+
+#### Run accounting (in prepared-summary + run-summary.json)
+
+- Resolved model IDs, providers, harnesses, reasoning variants (planned → actual when reassigned)
+- Threads: planned primary slots / completed / retried / timed out (exit 124) / never started / backups used
+- Wall: run calendar span + per-agent agent-minutes
+- Cost: total USD + per-model + session match rate (agentsview)
+- Peak context: run max/avg + per-model max/avg; flag models that compacted mid-task
+- Compactions: total + mid-task counts per model (from agentsview `session get`)
+- Distinct `--out` paths and any clobber/recovery/remap events
+
+`run-summary.json` must also record: `ultra_review` (from `STATE.json`), `size_tier`, `reviewable_lines`, `buckets`, `participants`, `bucket_slots` (`buckets × ((3 × participants) + 1)` in `medium`/`standard`, `participants` in `small`), `merits_slots`, `integration_slots`, `planned_primary_slots`, with retries/timeouts/incomplete/auxiliary slots counted separately so they do not inflate the planned primary total.
+
+**Scoring hygiene:** exit 124 with a complete `.out` = completed; re-stat before marking incomplete; retry + original both score if both rich; self-duplicates of an already-posted finding affect thread counts only, not Unique/Shared.
+
+When posting the summary comment, include the Model comparison table (with wall + cost columns) and a short run-accounting note under it — not a prose-only recap.
+
+### 10. Post or display
+
+Git-diff / `--no-post`: display only.  
+No confirmed: single summary comment with `**AI Ultra Review <version>**` header.  
+Issues: one inline per unique issue; severity order critical→low; cap **8 low** posted.  
+
+Header on every inline (`<version>` from `STATE.json` `ultra_review.version`, currently `0.8`):
 
 ```text
-Triage: <N> files, <M> excluded (<reasons>), reviewing <N-M> files (<L> diff lines)
-Roles: <csv of running roles> (default | from --roles)
-Skipped: <role: reason> (omit when no role skipped)
-Buckets: <K> (single bucket up to 5000 lines; otherwise ~3000 per bucket via K=⌈T/4000⌉)
-  1. <file count> files, <line count> lines — <top-level dirs>
-  ...  (list per-bucket breakdown only when K > 1)
+> **AI Ultra Review 0.8** · Commit: <sha> · Severity: <…> · Role: <…> · Flagged by: <…>
 ```
 
-### Step 5: Gather Context
+Severities: `critical` | `high` | `medium` | `low`. Merits has no severity / no inline.  
+Suggestion blocks: follow platform skill line-range rules (GitLab multi-line needs `suggestion:-N+M`).  
+GitHub inline: MCP tool preferred; else gh-cli. GitLab: glab discussions API + DiffNote check.
 
-Launch context gathering in parallel:
-1. Find all relevant instruction files:
-   - The repo-root `AGENTS.md` or `CLAUDE.md`, if present
-   - Any `AGENTS.md` or `CLAUDE.md` in directories containing reviewed files or their parents
-   - De-duplicate instruction files before adding them to prompts. Resolve each candidate's real path when possible, compare device/inode when available, and fall back to a content hash. If `AGENTS.md` and `CLAUDE.md` are the same file through a symlink, hardlink, copied path alias, or identical file contents, include exactly one copy and mention the aliases in that copy's heading.
-2. Summarize the diff/PR/MR
-3. If `--re-review`, gather prior comments and the incremental diff
-4. Gather external context from URLs in the title, description, or linked tasks/issues when the matching MCP is available
+### 11. Label
 
-Supported external context:
-- `clickup.com/t/<task_id>` via `mcp__clickup__*`
-- `app.intercom.com/*/conversation/<id>` via `mcp__Intercom__get_conversation`
-- `*.sentry.io/issues/<issue_id>` via `mcp__Sentry__get_issue_details`
-
-Pass external summaries to review agents, but do not post them as comments.
-
-### Step 6: Review the Changes (N × 3 threads per bucket)
-
-Run one **review pass** per bucket. Bucket passes execute **sequentially** to bound total cost; within a pass, per-role MBOT invocations run in parallel.
-
-For each bucket, for each running role (`bugs`, `runtime`, `craft` unless one was skipped), invoke MBOT **once** with the role-specific focus prompt. Launch all per-role MBOT invocations for that bucket **in parallel** — they are independent.
-
-Each per-role MBOT invocation runs the full agent list (e.g. 3 agents), so threads per bucket = `agents × 3` by default (e.g. 9 threads per bucket for the standard 3-agent MBOT config).
-
-Give each agent in each role:
-- **Only the current bucket's diff** as the primary review target
-- A one-line summary of the other buckets' scopes (top-level dirs + line counts) so agents know what they are *not* seeing in this pass — instruct them not to flag issues that would require cross-bucket context they don't have
-- Relevant de-duplicated instruction-file context (`AGENTS.md` / `CLAUDE.md`, for files in the current bucket and their parents)
-- Any external context
-- The role's focus prompt from the [Role Library](#role-library) as the primary directive
-- Instruction: "Tag each issue with both your agent name AND the role name (e.g. `agent=Opus 4.6, role=security`)"
-- Instruction: "If you propose a literal patch as the fix, format it per the loaded platform skill's Committable Suggestion Blocks rules — the body's line count MUST equal the lines being replaced at the comment's anchor. On GitLab, multi-line replacements REQUIRE the explicit `` ```suggestion:-N+M `` range modifier. If you cannot be precise about the replacement range, return a prose description with a fenced ` ``` ` example block instead of a `` ```suggestion `` block."
-- In re-review mode: prior comments plus incremental diff as primary context
-
-Review focus across all roles:
-- Only the changed code (not unrelated files)
-- Instruction-file compliance for applicable paths only
-
-Only flag high-signal issues:
-- Objective runtime bugs or regressions
-- Clear security issues
-- Exact instruction-file violations you can quote directly
-- Role-specific issues with concrete, demonstrable impact
-
-Do not flag:
-- Style preferences or subjective suggestions
-- Hypothetical issues without strong evidence
-- Anything that depends on interpretation or guesswork
-
-If confidence is low, do not flag the issue.
-
-### Step 7: Validate and Deduplicate
-
-For each issue across **all (agent × role × bucket) threads**, run a validation agent and keep only issues confirmed with high confidence.
-
-- Merge duplicate issues across agents, roles, AND buckets (same file:line and same root cause = one issue). Cross-bucket duplicates are rare but possible when the same underlying bug surfaces via touchpoints in different directories.
-- Preserve every (agent, role) attribution on merged issues
-- Keep full per-(agent, role) validation results for the summary unless `--no-summary` is active
-- For any issue whose proposed fix includes a `` ```suggestion `` block, verify the block satisfies the platform skill's Committable Suggestion Blocks rules (line counts match the anchor range; on GitLab the `:-N+M` modifier is present when the replacement spans more than one line). If the block is malformed and cannot be corrected with high confidence, downgrade the fix to a prose description before posting.
-
-### Step 8: Model & Role Comparison Summary
-
-Skip this step if `--no-summary` is active.
-
-Produce **two** tables. Both aggregate across all buckets.
-
-**Per-agent table** (aggregated across all roles for each agent):
-
-| Metric | Definition |
-|---|---|
-| Found | Total issues flagged by this agent across all its roles |
-| Validated | Issues surviving validation |
-| False Positives | Found minus Validated |
-| Unique Finds | Validated issues found only by this agent (across all roles and across all other agents) |
-| Shared Finds | Validated issues also found by at least one other agent |
-| Accuracy | `validated / found`, or `—` when `found = 0` |
-| Composite Score | `(2 × unique) + shared - (2 × false positives)` |
-
-Use MBOT display names. Report best and worst agent by composite score. If no agent found any issue, state that there was no differentiation in this review.
-
-**Per-role table** (aggregated across all agents for each role):
-
-| Metric | Definition |
-|---|---|
-| Found | Total issues flagged under this role across all agents |
-| Validated | Issues surviving validation |
-| Unique-to-role | Validated issues flagged only under this role (no other role caught them) |
-| Accuracy | `validated / found`, or `—` when `found = 0` |
-
-Report which roles produced the most validated signal. Flag any role that produced zero validated issues — useful signal for whether it was worth running on this diff.
-
-### Step 9: Post or Display Results
-
-#### Git Diff Mode
-
-Always behave as if `--no-post` is active.
-
-- Display each issue with file, line or range, agent + role attribution, and full comment body
-- Do not post anywhere
-- Do not apply labels
-
-#### `--no-post` Mode
-
-Display the prepared comments and stop for user instructions.
-
-Supported follow-ups:
-- `post`
-- `drop issue 3`
-- `edit issue 2 to say ...`
-- `cancel`
-
-#### No Issues Found
-
-Post a single summary comment:
-
-```text
-> **AI Ultra Review** · Commit: <sha> · Roles: <csv> · Models: <csv>
-
-No issues found. Checked for bugs and instruction-file compliance across <N> role(s): <csv>.
-```
-
-In re-review mode, say `No new issues found in the latest changes.` instead. Keep the `Commit: <sha>` segment in the header so the next re-review can diff from this point.
-
-#### Issues Found
-
-Post one inline comment per unique issue using the loaded platform CLI skill.
-
-- GitHub: prefer `mcp__github_inline_comment__create_inline_comment`; otherwise follow `gh-cli` for `gh api` inline comment posting
-- GitLab: follow `glab-cli` for discussions API posting, MR version SHAs, and `"type": "DiffNote"` verification
-
-Comment rules:
-- Every inline comment starts with:
-
-```text
-> **AI Ultra Review** · Commit: <sha> · Role: <role(s)> · Flagged by: <agent-name(s)>
-
-<issue description>
-```
-
-- `<sha>` is the full PR/MR head commit SHA captured in Step 1. Use the same SHA for every comment posted in this run, including the summary comment.
-- `<role(s)>` is the comma-separated list of roles under which this issue was flagged (e.g. `security, correctness` when the same issue surfaced under two roles).
-- `<agent-name(s)>` lists every agent that flagged this issue (deduplicated across roles).
-
-- Use exactly one comment per unique issue
-- Include links or citations when referring to source material such as `AGENTS.md` or `CLAUDE.md`
-- For self-contained fixes of up to 5 lines, include a committable suggestion block following the loaded platform skill's Committable Suggestion Blocks rules. The block's line count MUST equal the lines being replaced at the comment's anchor — on GitLab, multi-line replacements REQUIRE the explicit `` ```suggestion:-N+M `` modifier (a bare `` ```suggestion `` only ever replaces one line, regardless of body size). Do not emit a suggestion block if the replacement range cannot be determined precisely.
-- If the fix is not self-contained, or the suggestion-block rules above can't be satisfied, describe the fix and include a copyable prompt instead of a suggestion block
-
-Unless `--no-summary` is active, post the model & role comparison summary as a single additional comment after all inline comments. The summary comment header uses:
-
-```text
-> **AI Ultra Review** · Commit: <sha> · Roles: <csv> · Models: <csv>
-```
-
-### Step 10: Apply Review Label
-
-Skip this step in git diff mode.
-
-After comments are posted, or after the user confirms posting from `--no-post` mode, apply the `:Reviewed-By-AI-Ultra` label (distinct from the `:Reviewed-By-AI` label used by `/colin-review`).
-
-Use the loaded platform CLI skill for the exact label command.
-
-If the user cancels in `--no-post` mode, do not apply the label.
+Apply `:Reviewed-By-AI-Ultra` after post (not in git-diff / cancel).
 
 ## Notes
 
-- Dependencies: `gh`, `glab`, `jq`, `git`
-- Create a todo list before starting
-- When linking to code, use the canonical URL and line-range rules from the loaded platform CLI skill
-- Ultra-review and `/colin-review` maintain independent comment histories on the same PR/MR — running both is supported and produces two distinct comment streams
+- Dependencies: `gh` or `glab`, `jq`, `git`, `bun`; optional `agentsview` CLI or `AGENTSVIEW_URL` (HTTP, e.g. `http://100.110.251.42:4092`) for per-session cost/wall
+- Create a todo list before starting  
+- Ultra and `/colin-review` are independent comment streams  
+- Benchmark with pinned base/head snapshots; never claim improvement from unvalidated finding count alone  
+- Structured OpenCode `--title` (`ultra|…`) is required so agentsview can re-find sessions when meta.session_id is missing  
+

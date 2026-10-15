@@ -1,7 +1,7 @@
 ---
 name: Opus worker for MBOT
-description: Many brain, one task with Claude Opus 4.7
-model: sonnet
+description: Many brain, one task with Claude Opus 5.5
+model: opus
 background: true
 isolation: false
 ---

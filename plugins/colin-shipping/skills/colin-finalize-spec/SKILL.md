@@ -1,5 +1,6 @@
 ---
 name: colin-finalize-spec
+slash: true
 description: Augment the current plan with thorough software development planning to create a thorough spec.
 argument-hint: Additional context if needed (e.g. "Skip implementation order")
 allowed-tools: Read

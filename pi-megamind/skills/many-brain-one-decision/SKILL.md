@@ -1,7 +1,8 @@
 ---
 name: many-brain-one-decision
+user-invocable: false
 description: 'Run a multi-agent debate to compare options and converge on a decision.'
-allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *), Bash(pi *), Bash(grok *), Bash(codex *)
+allowed-tools: Read, Write, Glob, Grep, Task, Bash(bun *), Bash(claude *), Bash(pi *), Bash(grok *), Bash(codex *), Bash(botctl *), Bash(command -v *), Bash(curl *), Bash(jq *)
 ---
 
 # Many Brain One Decision
@@ -38,182 +39,100 @@ Keep a `NO_DECISION` or `NONE_OF_THE_ABOVE` option only when rejecting all candi
 
 ### Step 2: Select Agents
 
-Use the same model/profile style as `many-brain-one-task`, but load it for this Skill.
+Exact CLI flags live in sibling MBOT [reference.md](../many-brain-one-task/reference.md). Load that file for argv, not another copy of this table.
 
-Profile precedence:
+**Who** — first match wins:
 
-- If the user specifies `--profile X`, use profile `X`.
-- If the user specifies agents/models directly, honor those first and use the profile only for missing details.
-- Otherwise use `defaults.md` from this Skill directory.
-- If a requested profile is missing here, try the sibling `../many-brain-one-task/` directory for agent selection only.
-- If no profile can be loaded, use the defaults listed below.
+1. `--profile X` → `X.md` here, else sibling `../many-brain-one-task/X.md` (agent selection only).
+2. User-named agents/models; a profile fills only missing details.
+3. [defaults.md](defaults.md).
 
-Default agents:
+**Family** — classify each resolved debater as `claude` | `grok` | `pi` | `other`:
 
-- Opus, preferably with max thinking, when a Claude agent/harness is available.
-- GPT via OpenCode, preferably `colin-mbot-gpt`.
-- Gemini Pro via OpenCode, preferably `colin-mbot-gemini-pro`.
-- Grok via Grok CLI when `grok` is installed; otherwise OpenCode `colin-mbot-grok`.
-- Qwen via OpenCode, preferably `colin-mbot-qwen`.
-- Backups: Kimi, GLM, MiMo; Grok CLI preferred over OpenCode for Grok.
+- Opus / Sonnet / Haiku / Fable → `claude`
+- `grok` / `Grok CLI` / `xAI Grok` → `grok`, unless the line says OpenCode / `colin-mbot-grok`
+- `pi` / `Pi agent` → `pi`. The Pi package defaults every unnamed debater to `pi`
+- GPT, GLM, Qwen, Gemini, and the rest → `other`
 
-### Harness Routing
+**Route** — depends on the *host harness*, then first working mechanism. A profile may pin a specific CLI. Both Claude Code and OpenCode are valid hosts; establish which one you are before planning. Tell them apart by your own tool surface: the Claude parent has the native `Agent` tool, the OpenCode parent has the OpenCode `task` tool and no `Agent`.
 
-Route debaters according to the current host harness. From a non-OpenCode host (e.g. Claude Code), prefer `occtl run` to drive OpenCode-backed debaters; the sibling MBOT `run-opencode.ts` helper is the fallback when occtl is unavailable.
-
-If the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, select a Pi-backed debater. In the Pi package, Pi-backed debaters are the default unless the user or profile names specific non-Pi agents.
-
-If the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.5`, select a Grok-CLI-backed debater unless the line explicitly says OpenCode / `colin-mbot-grok`.
-
-| Current host | Selected debater | Preferred route |
+| Family | Claude Code host | OpenCode host |
 |---|---|---|
-| Pi | Pi-backed debater | Prefer the `pi-fast-subagent` package `subagent` tool when available; otherwise run `pi --print < prompt.md` and save stdout as that debater's result. |
-| Pi | Other debater | Follow the selected profile route. If unspecified in the Pi package, use Pi-backed debaters by default. |
-| OpenCode | OpenCode-backed MBOT agent | Use the `Task` tool with the matching `colin-mbot-*` `subagent_type`. |
-| OpenCode | Claude-backed debater | Use the `claude` CLI first so usage can stay on the Claude Max plan. Use `colin-mbot-opus` / `colin-mbot-sonnet` only if the CLI does not work or the user explicitly requests OpenCode-routed Claude. |
-| OpenCode | Grok-backed debater | Use the `grok` CLI first so usage stays on the xAI plan. Use `colin-mbot-grok` only if the CLI does not work or the user explicitly requests OpenCode-routed Grok. |
-| Claude Code | Claude-backed debater | Use Claude Code's native Agent tool when available with `run_in_background: true`; fallback to the `claude` CLI. |
-| Claude Code | Grok-backed debater | Use the `grok` CLI when available; fallback to OpenCode only if `grok` is missing/unauthenticated or the profile forces OpenCode. |
-| Claude Code | OpenCode-backed MBOT agent | Use **`occtl run`** when the preflight succeeds; otherwise fall back to the sibling MBOT `run-opencode.ts` helper. Claude Code does not expose `colin-mbot-*` subagents directly. |
-| Grok CLI | Grok-backed debater | Prefer native `spawn_subagent`; fallback to the `grok` CLI. |
-| Grok CLI | Other debater | Follow the selected profile route (`claude`, `occtl run` / `run-opencode.ts`, `pi`, etc.). |
+| `claude` | Native Agent (`run_in_background: true`) → **botctl prompt** → `claude` CLI | `mbot-run` slot + `colin-mbot-opus` / `-sonnet` / `-fable` |
+| `grok` | `grok` CLI (`grok version` once per run) → `colin-mbot-grok` | `mbot-run` slot + `colin-mbot-grok` |
+| `pi` | `pi --print < prompt.md` | `pi --print < prompt.md` (only if `pi` is installed) |
+| `other` | Sibling `mbot-run.ts` | `mbot-run` slot + `colin-mbot-<family>` |
 
+Grok CLI host: native `spawn_subagent`. Pi host with `pi-fast-subagent`: its `subagent` tool.
 
-#### Pi debaters
+**On an OpenCode host, keep every debater inside OpenCode.** Run all of them through `mbot-run` with a `colin-mbot-*` agent — Claude models included — rather than shelling out to `claude` / `botctl` / `grok`. One harness means one attach, one concurrency cap, one harvest path, and uniform cost accounting. Do **not** use the OpenCode `task` tool for debater slots: it skips `--out` harvest and timeout salvage. Shell out only when the profile pins a CLI, or the `colin-mbot-*` agent file is missing from `~/.opencode/agents/`. A containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — `command -v` before planning a CLI route.
 
-Preferred path, when the `pi-fast-subagent` package is installed in the current Pi session: use its `subagent` tool to launch each debater as a focused child Pi agent. Give each child the round prompt file, fixed personality, and instruction to return the required `BEGIN_MBOD_JSON` block. Use foreground or background/parallel runs according to the package's available tool surface, but save each final result under the round's `results/` directory.
+Do not call `occtl` or `run-opencode.ts` from this skill.
 
-Fallback path, when `pi-fast-subagent` is not installed or no `subagent` tool is available: invoke Pi print mode with the round prompt on stdin.
+**Launch notes:**
 
-```bash
-pi --print < .tmp/many-brain-one-decision/<slug>/round-1/pi-pragmatic-operator.md \
-  > .tmp/many-brain-one-decision/<slug>/round-1/results/pi-pragmatic-operator.out
+- Prompts and results stay under `.tmp/many-brain-one-decision/<slug>/round-N/` inside the project root.
+- Debate rounds must not spawn nested agents (`--disallowed-tools Agent` / `--no-subagents` where the CLI supports it). The `colin-mbot-*` agents already set `task: deny`, so OpenCode slots need no extra flag.
+- Unique `--session-id` per parallel `botctl` / Claude debater.
+- Require a parseable `BEGIN_MBOD_JSON` block, or the normal schema-repair path.
+- **OpenCode host:** `launch --detach` then `barrier` — a blocking launch dies with its occtl children when the 120s bash-tool timeout fires. **Claude Code host:** blocking `launch` is fine.
+- OpenCode slots: one-round `plan.json`, then `mbot-run launch` / `harvest`:
+
+```json
+{
+  "run_dir": ".tmp/many-brain-one-decision/<slug>/round-N",
+  "project_dir": ".",
+  "attach": "http://127.0.0.1:4096",
+  "concurrency": 3,
+  "timeout_ms": 1200000,
+  "slots": [
+    {
+      "slot": "gpt-tech-bro",
+      "planned_model": "openai/gpt-6.1-sol",
+      "model": "openai/gpt-6.1-sol",
+      "agent": "colin-mbot-gpt-sol",
+      "variant": "high",
+      "harness": "opencode",
+      "prompt": "gpt-tech-bro.md",
+      "out": "results/gpt-tech-bro.out"
+    },
+    {
+      "slot": "opus-bean-counter",
+      "planned_model": "anthropic/claude-opus-5-5",
+      "model": "anthropic/claude-opus-5-5",
+      "agent": "colin-mbot-opus",
+      "variant": "high",
+      "harness": "opencode",
+      "prompt": "opus-bean-counter.md",
+      "out": "results/opus-bean-counter.out"
+    }
+  ]
+}
 ```
 
-If the profile pins a model or thinking level, pass it through to `pi`:
+`mbot-run` auto-picks an agent only for GPT/OpenAI models. Every other family must set `"agent"` and `"model"` on the slot:
+
+| Family | slot `agent` | typical slot `model` |
+|---|---|---|
+| Opus | `colin-mbot-opus` | `anthropic/claude-opus-5-5` |
+| Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
+| Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
+| GPT | `colin-mbot-gpt-sol` | `openai/gpt-6.1-sol` |
+| Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
+| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from attach `/config/providers` |
+
+Never `--agent build` / `general`, and never omit `"variant"`. Do not use `claude-code/*` models for debater slots — that provider is the parent harness's, not a fan-out target.
 
 ```bash
-pi --print --model anthropic/claude-sonnet-4:high < .tmp/many-brain-one-decision/<slug>/round-1/pi-pragmatic-operator.md \
-  > .tmp/many-brain-one-decision/<slug>/round-1/results/pi-sonnet-pragmatic-operator.out
+bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/mbot-run.ts" launch \
+  --plan .tmp/many-brain-one-decision/<slug>/round-N/plan.json
+bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/mbot-run.ts" harvest \
+  --run-dir .tmp/many-brain-one-decision/<slug>/round-N
 ```
 
-A Pi-backed debater is successful when the command exits `0`, produces non-empty output, and the final block is parseable or repairable by the normal MBOD schema-repair path.
+**OpenCode server selection.** `mbot-run` reads `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`, and already-set env wins over the plan's `"attach"`. Put the matching URL on the plan anyway so it stays in attach mode and never `--spawn`s.
 
-When a Pi-backed debater profile names a model but not an exact id, resolve it with `pi --list-models <specific-query>`. Keep the query narrow: use `pi --list-models gpt-5.5` for "GPT 5.5" instead of broad `gpt`, and `pi --list-models glm-5.1` for "GLM 5.1". Prefer exact provider/model ids and coding-plan or first-party routes over generic OpenRouter unless explicitly requested.
-
-#### Preflight: prefer `occtl run` over `run-opencode.ts`
-
-Before launching any OpenCode-backed debater from a non-OpenCode host, decide the invocation method once and reuse it for every round (cache as `OPENCODE_VIA=occtl` or `OPENCODE_VIA=run-opencode-ts`):
-
-```bash
-occtl --version            # must print >= 1.2.0 (occtl run was added in 1.2.0)
-occtl ping                 # must exit 0 and print "OK <url>"
-```
-
-Treat occtl as available only when **both** checks pass and the version is ≥ `1.2.0`. If a profile has an attach directive (host / port / password), set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` before the `ping` so the check exercises the real target. Read `occtl view-skill | head -200` for the full feature surface (sessions, send, attach, worktrees).
-
-Do not use non-MBOT subagents for debaters. If the host exposes `colin-mbot-*`, prefer those over shelling out except for Claude-backed and Grok-backed debaters, where the first-party `claude` / `grok` CLIs are preferred to keep usage on Max / xAI plans.
-
-#### Preflight: Grok CLI
-
-When any debater is Grok-CLI-backed, check once per MBOD run:
-
-```bash
-grok version               # must exit 0
-```
-
-Cache as `GROK_VIA=cli` on success. On failure, set `GROK_VIA=opencode` and use `colin-mbot-grok` / OpenCode for Grok debaters. Load the `grok-cli` skill for full flag reference.
-
-#### Pre-launch Guard
-
-Before launching any debater, check the selected model family against the current host harness:
-
-- If the selected debater is Pi-backed, use the Pi debater route regardless of the current host. Prefer `pi-fast-subagent` when available in Pi; otherwise shell out with `pi --print < prompt.md`.
-- If the selected debater is Grok-backed and `GROK_VIA=cli`, use the Grok CLI route (or native `spawn_subagent` when the host is Grok CLI). Do **not** use `colin-mbot-grok` unless the CLI path failed or the profile forces OpenCode.
-- If the current host is OpenCode and the selected model is Claude-family (Opus, Sonnet, Haiku), **do not** use a `colin-mbot-*` subagent. Shell out through the `claude` CLI instead.
-- If the current host is OpenCode and the selected model is non-Claude and non-Grok-CLI, use the matching `colin-mbot-*` subagent.
-- If the current host is Claude Code and the selected model is Claude-family, use Claude Code's native Agent tool when available with `run_in_background: true`; fallback to the `claude` CLI.
-- If the current host is Claude Code and the selected model is non-Claude/OpenCode-backed (and not Grok-CLI), drive OpenCode with `occtl run` when available; fallback to the sibling MBOT `run-opencode.ts` helper.
-- If the current host is Grok CLI and the selected model is Grok-family, prefer native `spawn_subagent`; fallback to the `grok` CLI.
-
-This guard overrides any generic `colin-mbot-*` mapping. In particular, never invoke Opus/Sonnet/Haiku as `colin-mbot-opus`, `colin-mbot-sonnet`, or similar from an OpenCode host unless the user explicitly requests OpenCode-routed Claude. Prefer `grok` over `colin-mbot-grok` whenever the Grok CLI preflight succeeds.
-
-Common mappings:
-
-| Requested model | Subagent type / CLI |
-|---|---|
-| GPT | `colin-mbot-gpt` |
-| GPT Codex | `colin-mbot-gpt-codex` |
-| Gemini Pro | `colin-mbot-gemini-pro` |
-| Gemini Pro Zen | `colin-mbot-gemini-pro-zen` |
-| GLM | `colin-mbot-glm` |
-| Grok | **`grok` CLI** first; `colin-mbot-grok` only as OpenCode fallback |
-| Kimi | `colin-mbot-kimi` |
-| MiMo | `colin-mbot-mimo` |
-| MiniMax | `colin-mbot-minimax` |
-| Qwen | `colin-mbot-qwen` |
-
-#### Grok debaters (`grok` CLI)
-
-When `GROK_VIA=cli` (or the host is Grok CLI and you are shelling out), write the round prompt and launch:
-
-```bash
-grok --prompt-file .tmp/many-brain-one-decision/<slug>/round-1/grok-tech-bro.md \
-  --always-approve \
-  --output-format plain \
-  --reasoning-effort high \
-  --disallowed-tools Agent \
-  > .tmp/many-brain-one-decision/<slug>/round-1/results/grok-tech-bro.out \
-  2> .tmp/many-brain-one-decision/<slug>/round-1/results/grok-tech-bro.err
-```
-
-- Prefer `--prompt-file` so the full decision brief, personality, and `BEGIN_MBOD_JSON` schema are in the file.
-- Use `--disallowed-tools Agent` (or `--no-subagents`) for debate rounds so the debater cannot spawn nested agents.
-- Map `"max"` / `xhigh` effort to `--reasoning-effort max`; default debate effort to `high` when unspecified.
-- Parse stdout for the `BEGIN_MBOD_JSON` … `END_MBOD_JSON` block as usual. On empty output or non-zero exit, apply the normal schema-repair / backup rules.
-- If the host is Grok CLI, prefer native `spawn_subagent` with the same prompt content and still require the JSON block in the final report.
-
-When the host is Claude Code and the selected debater is OpenCode-backed, prefer `occtl run` (with attach details supplied via env vars — `occtl` has no `--attach` flag):
-
-```bash
-OPENCODE_SERVER_HOST=seamus OPENCODE_SERVER_PORT=4095 OPENCODE_SERVER_PASSWORD=$OPENCODE_SERVER_PASSWORD \
-  occtl run \
-  --model openai/gpt-5.5 \
-  --variant high \
-  --title "MBOD round 1 gpt tech-bro" \
-  --file .tmp/many-brain-one-decision/<slug>/round-1/gpt-tech-bro.md \
-  --timeout 540000 \
-  --out .tmp/many-brain-one-decision/<slug>/round-1/results/gpt-tech-bro.out \
-  -- "Participate in the decision debate exactly as instructed."
-```
-
-If the preflight failed and `OPENCODE_VIA=run-opencode-ts`, fall back to the sibling MBOT helper script:
-
-```bash
-bun /absolute/path/to/pi-megamind/skills/many-brain-one-task/run-opencode.ts \
-  --model openai/gpt-5.5 \
-  --variant high \
-  --title "MBOD round 1 gpt tech-bro" \
-  --file .tmp/many-brain-one-decision/<slug>/round-1/gpt-tech-bro.md \
-  --attach http://seamus:4095 \
-  --timeout-ms 540000 \
-  --out .tmp/many-brain-one-decision/<slug>/round-1/results/gpt-tech-bro.out \
-  -- "Participate in the decision debate exactly as instructed."
-```
-
-When the host is OpenCode and the selected debater is Claude-backed, use the `claude` CLI first (load the `claude-cli` skill for complete flag reference):
-
-```bash
-claude --agent general \
-  --model opus \
-  --print \
-  --output-format text \
-  --name "MBOD round 1 opus pragmatic-operator" \
-  --effort max \
-  "Participate in the decision debate exactly as instructed."
-```
-
-Keep all `.tmp/` prompt and result files inside the project root, following the MBOT caveats.
+Inside the **Seamus podman container** that env already points at the in-container bot serve, `127.0.0.1:4096`. Do not retarget to the operator's personal server (port `4095`, host `100.110.251.42`, hostname `seamus`) — Seamus rewrites it back and bot work must not land there. The image ships `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, `occtl`, `opencode`; it does **not** ship `grok`, `botctl`, `cr`, `pi`, `gemini`, or the `agentsview` CLI, so every debater there is an OpenCode slot. `AGENTSVIEW_URL` is injected — run `mbot-run usage` without `--no-agentsview`.
 
 ### Step 3: Assign Personalities
 

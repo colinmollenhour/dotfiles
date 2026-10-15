@@ -1,5 +1,6 @@
 ---
 name: drizzle-orm
+user-invocable: false
 description: 'Use Drizzle ORM for TypeScript schemas, queries, migrations, relations, and transactions.'
 ---
 
