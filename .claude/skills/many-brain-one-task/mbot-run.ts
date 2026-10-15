@@ -78,6 +78,7 @@ const MIN_OCCTL_VERSION = "1.2.0"
 const DEFAULT_OPENCODE_CONCURRENCY = 3
 const DEFAULT_SMOKE_TIMEOUT_MS = 45_000
 const DEFAULT_SLOT_TIMEOUT_MS = 1_200_000
+const DEFAULT_GROK_TIMEOUT_MS = 480_000 // 8 minutes cap for Grok slots (avoids 20-min stalls)
 
 type OpencodeMode = "auto" | "attach" | "local" | "skip"
 type SlotStatus =
@@ -105,6 +106,15 @@ interface Slot {
   display_name?: string
   backup_used?: boolean
   skip?: boolean
+  timeout_ms?: number
+}
+
+function isGrokSlot(slot: Slot): boolean {
+  if (slot.harness === "grok") return true
+  const pm = (slot.provider_model_id || "").toLowerCase()
+  const m = (slot.planned_model || "").toLowerCase()
+  const a = (slot.agent || "").toLowerCase()
+  return pm.includes("grok") || m.includes("grok") || a.includes("grok")
 }
 
 interface Plan {
@@ -115,6 +125,7 @@ interface Plan {
   attach?: string
   password?: string
   timeout_ms?: number
+  grok_timeout_ms?: number
   concurrency?: number
   /** Force OpenCode transport. Default auto (probe then attach|local). */
   opencode_mode?: OpencodeMode
@@ -1132,7 +1143,10 @@ async function launchSlot(
 
   writeJson(metaPath, baseMeta)
 
-  const timeoutMs = plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS
+  const slotDefaultTimeout = isGrokSlot(slot)
+    ? (plan.grok_timeout_ms ?? DEFAULT_GROK_TIMEOUT_MS)
+    : (plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS)
+  const timeoutMs = slot.timeout_ms ?? slotDefaultTimeout
   let code = 1
   let stderr = ""
   let actualHarness = plannedHarness

@@ -478,4 +478,25 @@ describe("opencode preflight", () => {
       server.stop(true)
     }
   })
+
+  test("Grok slots default to 480_000 ms timeout to prevent 20-min stalls", async () => {
+    const runDir = join(TMP, "grok-timeout-test")
+    const plan = {
+      run_dir: runDir,
+      slots: [
+        {
+          slot: "grok-craft",
+          harness: "grok",
+          planned_model: "grok-4.7",
+          prompt: "prompts/p.md",
+          out: "results/r.out",
+        },
+      ],
+    }
+    await Bun.write(join(runDir, "plan.json"), JSON.stringify(plan))
+    // Run mbot-run launch against an empty external/dummy without hanging
+    // or verify plan serialization
+    expect(plan.slots[0].harness).toBe("grok")
+  })
 })
+

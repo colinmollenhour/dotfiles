@@ -32,11 +32,13 @@ Resolve `CLAUDE_SKILL_DIR` to the installed skill roots (`~/.claude/skills/...` 
 | Init run | `bun …/many-brain-one-task/mbot-run.ts init --run-dir .tmp/ultra-N` — prints and freezes `ultra_review` (`label`: `Ultra Review 0.8`) |
 | Skill version | `bun …/mbot-run.ts version` |
 | Assemble prompts | `bun …/many-brain-one-task/assemble-prompts.ts --append context/bucket.md --out-dir prompts role.md:slot.full.md …` |
+| Build merits | `bun …/many-brain-one-task/build-merits.ts --run-dir .tmp/ultra-N` (joins roles/merits.md + context without auto issue-form) |
 | OpenCode preflight | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.1-sol` (HTTP/binary probe, no model call; `--deep` for a real round trip. Launch also probes; omit `--attach` when `OPENCODE_SERVER_HOST`/`PORT` are already set) |
 | Launch batch | `bun …/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (Claude Code). **OpenCode host:** add `--detach`, then barrier. Further phase plans (`plan-integration.json`) merge into `plan.json`; they do not replace it. |
 | Fail-closed wait | `bun …/mbot-run.ts barrier --run-dir .tmp/ultra-N` — **never** `sleep N`, **never** `until test -s empty.out` |
 | Harvest | `bun …/mbot-run.ts harvest --run-dir .tmp/ultra-N` |
 | Candidate index | `bun …/mbot-run.ts candidates --run-dir .tmp/ultra-N` — writes `candidates.json` + `candidate-index.md`. Do not invent `extract-issues.ts`. |
+| Prepare notes | `bun …/many-brain-one-task/prepare-notes.ts --summary .tmp/ultra-N/prepared-summary.md` (or `--batch`) — safe JSON payloads for glab api |
 | Usage (wall + cost) | `bun …/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) |
 
 OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills occtl children. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt-sol`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
@@ -62,7 +64,7 @@ Task type `code-review`. Profile: user `--profile X`, else `code-review.md`; Sea
 ### Allocation
 
 - `state` / `contracts` / `failure`: full participants × each bucket  
-- `craft`: one participant (Grok slot; else Claude/Opus slot, else profile backup) per bucket — Grok carries the fewest discovery threads in the default lineup and is fast enough that the extra per-bucket thread does not extend wall-clock  
+- `craft`: one participant (Grok slot; else Claude/Opus slot, else profile backup) per bucket — Grok carries the fewest discovery threads in the default lineup and is fast enough that the extra per-bucket thread does not extend wall-clock. **Grok slots are capped at 8 minutes**; if Grok times out or returns empty output, fail over immediately to Opus 5.5 rather than retrying on Grok or waiting 20 minutes.
 - `merits`: full participants, **once**, whole-change (no prior review comments in input)  
 - `integration`: full participants, whole-change  
 - Thread budget: `((3 × participants) + 1) × buckets` + merits fan-out + integration fan-out  
@@ -77,7 +79,7 @@ Count **reviewable lines** = added + deleted lines in primary artifacts (`git di
 |---|---|---|---|---|---|
 | `small` | ≤ 150 | one **combined-lens** thread per participant (state + contracts + failure + craft in one prompt) | one participant | none — the single thread already saw the whole change | 1 |
 | `medium` | 151–600 | full role grid, one bucket | one participant | round 2 only, and only if round 1 confirmed a medium-or-higher issue | 2 |
-| `standard` | > 600, or more than one bucket | Allocation above | Allocation above | Allocation above | 3 |
+| `standard` | > 600, or more than one bucket | Allocation above | Allocation above | Allocation above | 3 (early exit to 1 if round 1 confirms 0 high/critical) |
 
 - Move `small` up to `medium` when the diff touches a migration or schema, an auth/permission check, money, or locking/concurrency. Record the reason.
 - Combined-lens prompt: `assemble-prompts --append roles/contracts.md --append roles/failure.md --append roles/craft.md --append context/bucket.md --out-dir prompts roles/state.md:small.full.md`. It must still carry the `failure` scale/cost requirement, and each candidate names the lens it came from.
@@ -114,6 +116,9 @@ Skip only when genuinely N/A (prose-only → skip state; no interface change →
 
 `--max-rounds=N` default `3`. Clean round = that round produced **no new confirmed** issues after validation.
 
+- **Early exit rule (hard efficiency requirement):**
+  - If Round 1 confirms **0 high or critical severity issues** (i.e. only low-severity findings, or clean), **stop immediately at Round 1** — do not run Round 2 or Round 3. Additional convergence rounds on diffs with only low-severity findings produce diminishing returns and waste hours/tokens.
+  - If Round 1 confirmed high/critical issues, proceed to Round 2 (integration pass). If Round 2 confirms no new high/critical issues, **stop at Round 2**; do not run Round 3 unless an unconfirmed high/critical or major cross-cutting defect was confirmed in Round 2.
 - Round 1: role × bucket grid + merits + integration  
 - Later rounds: **integration-only** unless new subsystem enters scope  
 - Do **not** skip rounds 2–N because HEAD was unchanged — the SHA publication gate is a separate check at the end of a round, not a substitute for convergence. Stop when a later round adds no new confirmed issue, or the cap is hit.
