@@ -33,6 +33,21 @@
       "Bash(gh *)",
       "Bash(opencode *)",
       "Bash(occtl *)",
+      "Bash(codex)",
+      "Bash(codex *)",
+      "Bash(codex:*)",
+      "Bash(agy)",
+      "Bash(agy *)",
+      "Bash(agy:*)",
+      "Bash(grok)",
+      "Bash(grok *)",
+      "Bash(grok:*)",
+      "Bash(gemini)",
+      "Bash(gemini *)",
+      "Bash(gemini:*)",
+      "Bash(claude)",
+      "Bash(claude *)",
+      "Bash(claude:*)",
       "Read",
       "Edit",
       "Write",
@@ -76,6 +91,7 @@
       "Skill(gh-cli)",
       "Skill(github-security-advisories)",
       "Skill(glab-cli)",
+      "Skill(grok-cli)",
       "Skill(infographic)",
       "Skill(many-brain-one-decision)",
       "Skill(many-brain-one-task)",
@@ -93,7 +109,10 @@
       "WebFetch(domain:registry.npmjs.org)",
       "WebFetch(domain:gitlab.bss-llc.com)",
       "WebFetch(domain:chatgpt.com)",
-      "WebFetch(domain:ab.chatgpt.com)"
+      "WebFetch(domain:ab.chatgpt.com)",
+      "WebFetch(domain:api.openai.com)",
+      "WebFetch(domain:api.x.ai)",
+      "WebFetch(domain:generativelanguage.googleapis.com)"
     ],
     "deny": [
       "Read(~/.ssh/**)",
@@ -114,7 +133,12 @@
       "opencode",
       "glab",
       "gh",
-      "cup"
+      "cup",
+      "codex",
+      "agy",
+      "grok",
+      "gemini",
+      "claude"
     ],
     "network": {
       "allowedDomains": [
@@ -143,7 +167,13 @@
         "api.clickup.com",
         "*.coderabbit.ai",
         "sentry.io",
-        "*.posthog.com"
+        "*.posthog.com",
+        "api.openai.com",
+        "*.openai.com",
+        "api.x.ai",
+        "*.x.ai",
+        "generativelanguage.googleapis.com",
+        "*.googleapis.com"
       ]
     }
   },
