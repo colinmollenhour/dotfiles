@@ -1,12 +1,12 @@
 ---
 name: clickup-task-authoring
 disable-model-invocation: true
-description: 'Author a ClickUp task from a conversation, plan, review, incident, or spec as CUFM via cup task-sync. Covers the source-fidelity ledger, the house voice for task copy (plain verbs, declarative mood, paragraphs over lists, 5% length budget), rich description structure (banners, toggles, mermaid, tldraw, tables), open-decision blocks (question, AI Recommendation, two alternatives), title conventions, workspace Value Stream / Requested By / Bug-type rules, and the post-write audit. Use when creating or updating ClickUp task content (file a bug, write a ticket, turn this into a task). Load the clickup skill from `cup skill` for CUFM syntax and task-sync flags. Workspace IDs live in shipstream-clickup. Formerly clickup-tasks.'
+description: 'Author a ClickUp task from a conversation, plan, review, incident, or spec as CUFM via cup task-sync. Covers the source-fidelity ledger, the house voice for task copy (plain verbs, declarative mood, paragraphs over lists, 5% length budget), rich description structure (banners, toggles, mermaid, tldraw, tables), open-decision blocks (question, AI Recommendation, two alternatives), title conventions, workspace Value Stream / Requested By / Bug-type rules, and the post-write audit. Use when creating or updating ClickUp task content (file a bug, write a ticket, turn this into a task). Load the clickup skill from `cup skill` for CUFM syntax and task-sync flags. Workspace IDs come from `cup` or a project ClickUp skill. Formerly clickup-tasks.'
 ---
 
 # ClickUp task authoring
 
-What to put in a ClickUp task for the team workspace. **Load the `clickup` skill** (install/refresh with `cup skill`) and **read `references/cufm.md` before writing or updating any description.** That skill owns CUFM syntax and `cup task-sync` flags. Workspace IDs are **`shipstream-clickup`** (WMS repo).
+What to put in a ClickUp task for the team workspace. **Load the `clickup` skill** (install/refresh with `cup skill`) and **read `references/cufm.md` before writing or updating any description.** That skill owns CUFM syntax and `cup task-sync` flags. Get workspace IDs from `cup` (`cup task-types`, `cup fields <listId>`, `cup members`), or from the repo's ClickUp workspace skill when it has one.
 
 **Prerequisite:** `cup auth` must succeed. If it fails, halt and tell the user to run `cup init`.
 
@@ -151,7 +151,7 @@ ClickUp "Task Type" (`--custom-item-id`) is separate from the "Value Stream" cus
 - **Bug type:** defects, unexpected behavior, issues to fix
 - **Task type:** features, enhancements, docs, refactors, general work
 
-IDs: `shipstream-clickup`, or `cup task-types`. Set type at creation; changing it later is a separate step.
+IDs: `cup task-types`. Set type at creation; changing it later is a separate step.
 
 ## Format
 
@@ -256,7 +256,7 @@ A divider is a block, not text: it does not appear in the plaintext `description
 
 ## Persist
 
-Every task needs **Value Stream**. Client-reported work also needs **Requested By/Affects Clients**. Names resolve case-insensitively; a bad name lists valid options. Option IDs: `shipstream-clickup`.
+Every task needs **Value Stream**. Client-reported work also needs **Requested By/Affects Clients**. Names resolve case-insensitively; a bad name lists valid options. Option IDs: `cup fields <listId>`.
 
 After `cup create`, `task-sync init` the new id, write CUFM, then `push`. Updates: `pull` (or `init`), edit, `push`.
 
