@@ -10,7 +10,7 @@
  * Usage (invoked inline from the Claude Code Bash tool):
  *
  *   bun "${CLAUDE_SKILL_DIR}/mr-context.ts" \
- *     --project shipstream/server \
+ *     --project acme-inc/server \
  *     --mr 2514 \
  *     --out-dir .tmp/mr-2514-context
  *
@@ -23,7 +23,7 @@
  *
  * stdout summary:
  *   {
- *     "project": "shipstream/server",
+ *     "project": "acme-inc/server",
  *     "mr": 2514,
  *     "dir": ".tmp/mr-2514-context",
  *     "mr_state": "opened",
@@ -62,7 +62,7 @@ function die(msg: string, code = 2): never {
   process.exit(code)
 }
 
-if (!values.project) die("--project is required (e.g. shipstream/server)")
+if (!values.project) die("--project is required (e.g. acme-inc/server)")
 if (!values.mr) die("--mr is required (MR iid, e.g. 2514)")
 const mrNum = Number(values.mr)
 if (!Number.isInteger(mrNum) || mrNum <= 0) die(`--mr must be a positive integer (got ${values.mr})`)

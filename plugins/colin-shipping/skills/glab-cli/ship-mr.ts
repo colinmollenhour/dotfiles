@@ -8,7 +8,7 @@
  * Usage:
  *
  *   bun ship-mr.ts \
- *     --project shipstream/server \
+ *     --project acme-inc/server \
  *     --source my-feature \
  *     --target master \
  *     --title "Fix widget" \

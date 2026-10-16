@@ -1,12 +1,12 @@
 ---
 name: clickup-task-authoring
 disable-model-invocation: true
-description: 'Author a ClickUp task from a conversation, plan, review, incident, or spec as CUFM via cup task-sync. Covers the source-fidelity ledger, the house voice for task copy (plain verbs, declarative mood, paragraphs over lists, 5% length budget), rich description structure (banners, toggles, mermaid, tldraw, tables), open-decision blocks (question, AI Recommendation, two alternatives), title conventions, ShipStream Value Stream / Requested By / Bug-type rules, and the post-write audit. Use when creating or updating ClickUp task content (file a bug, write a ticket, turn this into a task). Load the clickup skill from `cup skill` for CUFM syntax and task-sync flags. Workspace IDs live in shipstream-clickup. Formerly clickup-tasks.'
+description: 'Author a ClickUp task from a conversation, plan, review, incident, or spec as CUFM via cup task-sync. Covers the source-fidelity ledger, the house voice for task copy (plain verbs, declarative mood, paragraphs over lists, 5% length budget), rich description structure (banners, toggles, mermaid, tldraw, tables), open-decision blocks (question, AI Recommendation, two alternatives), title conventions, workspace Value Stream / Requested By / Bug-type rules, and the post-write audit. Use when creating or updating ClickUp task content (file a bug, write a ticket, turn this into a task). Load the clickup skill from `cup skill` for CUFM syntax and task-sync flags. Workspace IDs live in shipstream-clickup. Formerly clickup-tasks.'
 ---
 
 # ClickUp task authoring
 
-What to put in a ShipStream ClickUp task. **Load the `clickup` skill** (install/refresh with `cup skill`) and **read `references/cufm.md` before writing or updating any description.** That skill owns CUFM syntax and `cup task-sync` flags. Workspace IDs are **`shipstream-clickup`** (WMS repo).
+What to put in a ClickUp task for the team workspace. **Load the `clickup` skill** (install/refresh with `cup skill`) and **read `references/cufm.md` before writing or updating any description.** That skill owns CUFM syntax and `cup task-sync` flags. Workspace IDs are **`shipstream-clickup`** (WMS repo).
 
 **Prerequisite:** `cup auth` must succeed. If it fails, halt and tell the user to run `cup init`.
 

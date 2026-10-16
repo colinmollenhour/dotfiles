@@ -56,7 +56,7 @@ These are the usual defaults from real cleanup sessions. Override only when `$AR
 6. Anything the checks are unsure about.
 
 ### Default branch name
-Many ShipStream repos use **`master`** as `origin` HEAD (not `main`). Detect via remote HEAD; do not assume `main`. Some worktrees (e.g. knowledge-base) track a different remote (`kb-remote`); do not judge those against `origin/master`.
+Many repos use **`master`** as `origin` HEAD (not `main`). Detect via remote HEAD; do not assume `main`. Some worktrees (e.g. knowledge-base) track a different remote (`kb-remote`); do not judge those against `origin/master`.
 
 ---
 

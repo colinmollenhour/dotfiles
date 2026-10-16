@@ -265,7 +265,7 @@ Run it from inside the repo so `:id` resolves, and use absolute paths for the pa
 
 ```bash
 bun "${CLAUDE_SKILL_DIR}/ship-mr.ts" \
-  --project shipstream/server \
+  --project acme-inc/server \
   --title "Fix widget" \
   --description-file /abs/body.md \
   --note-file /abs/note.md
@@ -275,7 +275,7 @@ bun "${CLAUDE_SKILL_DIR}/ship-mr.ts" \
 
 ```bash
 bun "${CLAUDE_SKILL_DIR}/ci-fail.ts" \
-  --project shipstream/server \
+  --project acme-inc/server \
   --branch my-feature \
   --out-dir .tmp/ci-fail
 ```

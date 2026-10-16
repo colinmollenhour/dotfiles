@@ -2,8 +2,8 @@
 /**
  * ci-fail.ts — gather latest pipeline + failed job traces for a branch/MR.
  *
- *   bun ci-fail.ts --project shipstream/server --branch my-feature --out-dir .tmp/ci-fail
- *   bun ci-fail.ts --project shipstream/server --mr 2514 --out-dir .tmp/ci-fail
+ *   bun ci-fail.ts --project acme-inc/server --branch my-feature --out-dir .tmp/ci-fail
+ *   bun ci-fail.ts --project acme-inc/server --mr 2514 --out-dir .tmp/ci-fail
  *
  * Writes under --out-dir:
  *   pipelines.json, failed-jobs.json, traces/<job-id>.log, summary.json

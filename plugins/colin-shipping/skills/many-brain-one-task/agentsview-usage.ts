@@ -10,7 +10,7 @@
  *
  * Usage:
  *   bun agentsview-usage.ts --run-dir .tmp/ultra-N
- *   bun agentsview-usage.ts --run-dir .tmp/ultra-N --title-prefix 'ultra|shipstream/server|!2783'
+ *   bun agentsview-usage.ts --run-dir .tmp/ultra-N --title-prefix 'ultra|acme-inc/server|!2783'
  *   bun agentsview-usage.ts --run-dir .tmp/ultra-N --since 14d --include-claude-children
  *   bun agentsview-usage.ts --run-dir .tmp/ultra-N --no-agentsview   # wall from meta only
  *

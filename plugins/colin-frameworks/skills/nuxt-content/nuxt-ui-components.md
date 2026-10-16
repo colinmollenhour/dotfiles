@@ -288,7 +288,7 @@ Tabbed content panels. TabsItem props: `label`, `icon`.
 ```mdc
 ::u-page-hero
 #title
-ShipStream Knowledge Base
+Acme Knowledge Base
 
 #description
 Your comprehensive guide.

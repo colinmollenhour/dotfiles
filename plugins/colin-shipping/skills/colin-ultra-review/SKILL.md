@@ -227,7 +227,7 @@ Do **not** hand-roll jq loops or trust OpenCode UI `$0.0000` session.cost. Use t
 
 ```bash
 bun …/many-brain-one-task/mbot-run.ts usage --run-dir .tmp/ultra-N
-# optional: --title-prefix 'ultra|shipstream/server|!2783' --since 14d --include-claude-children
+# optional: --title-prefix 'ultra|acme-inc/server|!2783' --since 14d --include-claude-children
 # writes .tmp/ultra-N/agentsview-usage.json and prints the same JSON on stdout
 ```
 
