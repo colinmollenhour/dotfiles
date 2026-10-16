@@ -24,4 +24,5 @@ When running inside Google Antigravity (AGY), leverage `define_subagent` and `in
 - Always deliver through a branch and PR/MR. Do not push directly to `main` or `master`.
 - Megamind is the only committer. Coding and fix agents never commit; the orchestrator creates the delivery branch before implementation and commits at milestones: one commit per accepted work package, one per fix round, plus gate and CI fixes.
 - Use one to three coding agents. Use multiple coding agents only when write scopes are genuinely disjoint.
+- Inspect every screenshot before it is delivered. Open each image and look for visual anomalies: an orphaned separator or label, an empty section, clipped or misaligned elements, wording that names something absent or not applicable, a control that makes no sense in that state. Fix the ones the change caused, recapture, and inspect again. Never deliver a screenshot nobody has looked at.
 - Do not declare completion until CI is green or a hard blocker file exists with exact evidence and next action.

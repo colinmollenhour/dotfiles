@@ -20,6 +20,7 @@ Your job is to take a user-provided objective, plan, spec, issue, or task descri
 - Always deliver through a branch and PR/MR. Do not push directly to `main` or `master`.
 - Megamind is the only committer. Coding and fix agents never commit; the orchestrator creates the delivery branch before implementation and commits at milestones: one commit per accepted work package, one per fix round, plus gate and CI fixes.
 - Use one to three coding agents. Use multiple coding agents only when write scopes are genuinely disjoint.
+- Inspect every screenshot before it is delivered. Open each image and look for visual anomalies: an orphaned separator or label, an empty section, clipped or misaligned elements, wording that names something absent or not applicable, a control that makes no sense in that state. Fix the ones the change caused, recapture, and inspect again. Never deliver a screenshot nobody has looked at.
 - Do not declare completion until CI is green or a hard blocker file exists with exact evidence and next action.
 
 ## Input Resolution
@@ -450,6 +451,24 @@ final/local-gates.md
 
 If gates fail, launch a fix agent with the failure output and repeat until gates pass or a hard blocker is documented.
 
+## Phase 11b: Visual Review
+
+Run this phase whenever the change alters something a user sees (pages, forms, dialogs, emails, terminal output). Skip it, and say so in `final/visual-review.md`, only when nothing visible changed or no running environment can show the change.
+
+1. List every changed page and every meaningful state: each mode of a new setting, shown versus hidden variants, empty and populated, error states, and before/after for redesigns.
+2. Delegate capture to one sub-agent following `colin-mr-description` (Screenshots) and any project screenshot skill. It snapshots config or data it changes and restores them afterwards. Masters go in `visual/`.
+3. The capturing agent inspects every image critically as a UI reviewer and reports each anomaly, saying whether this change caused it (compare against the base branch) or it already existed. Anomalies to look for: orphaned or duplicated separators and labels; empty or meaningless sections; clipped, overlapping, or misaligned elements; inconsistent note or hint styles; wording that names providers, settings, or features that are absent or not applicable; controls that make no sense in that state; focus rings, cursors, spinners, debug output.
+4. The orchestrator then opens every image itself. Do not rely on the sub-agent's verdict alone; the parent has the spec and knows what each state should look like.
+5. Fix every anomaly the change caused, plus trivial ones on the same pages, through a fix agent. Record pre-existing ones that are out of scope. Commit the fixes as a fix round, recapture the affected states, and inspect all images again. Repeat until a pass finds no anomaly caused by the change.
+
+Write:
+
+```text
+final/visual-review.md
+```
+
+with each image, its caption, the anomalies found per pass, the fix for each, and the residual pre-existing ones. Phase 12 delivers only images that passed this review.
+
 ## Phase 12: Finalize, Push, and PR/MR
 
 Always deliver through a hosted review item.
@@ -471,6 +490,7 @@ Megamind-specific inputs to `colin-mr-description`:
 - Test Plan: from `final/local-gates.md`
 - Changes: also summarize validated review findings and their fixes from `reviews/validated-findings.md` and the latest `reviews/fixed-review-N.md`, and, when `--roborev` integration was active, the outcomes in `reviews/roborev-drain-*.md`
 - Do not create the Educational Brief section here; Phase 13 adds it once the PR/MR URL is known
+- Screenshots: only the final images from Phase 11b, with their captions from `final/visual-review.md`
 
 Save:
 
@@ -624,5 +644,5 @@ Do not paste long critiques, reviews, decisions, or CI logs into chat. Point to 
 
 You are done only when one of these is true:
 
-- PR/MR exists, latest pushed commit includes the work, final local gates passed, and CI is green. When `--roborev` integration is active, no open failing Roborev review remains for the branch, or the residual is documented in `final/delivery.md`. When `--evidence` was requested, the evidence ZIP is also attached or an exact attachment failure is recorded in `final/evidence.md`.
+- PR/MR exists, latest pushed commit includes the work, final local gates passed, and CI is green. When `--roborev` integration is active, no open failing Roborev review remains for the branch, or the residual is documented in `final/delivery.md`. When `--evidence` was requested, the evidence ZIP is also attached or an exact attachment failure is recorded in `final/evidence.md`. When the change is user-visible, `final/visual-review.md` shows every delivered screenshot inspected with no unresolved anomaly caused by the change.
 - A hard blocker file exists explaining why autonomous completion is impossible, with exact evidence and next action.
