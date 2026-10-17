@@ -18,7 +18,6 @@ DOTFILES=(
   ".config/delta/themes.gitconfig"
   ".config/tmux-powerline/config.sh"
   ".config/tmux-powerline/themes/colin.sh"
-  ".paseo/orchestration-preferences.json"
 )
 
 DO_DOTFILES=false

@@ -56,28 +56,27 @@ home="$TEST_ROOT/dotfiles-home"
 mkdir -p "$home"
 
 output="$(run_install "$home" --dotfiles --no-input --dry-run --quiet)"
-assert_contains "$output" "Files that would be written (13):"
-assert_contains "$output" "Would create: 13"
+assert_contains "$output" "Files that would be written (12):"
+assert_contains "$output" "Would create: 12"
 assert_file_missing "$home/.bashrc.colin"
 assert_file_missing "$home/.local/share/colin-dotfiles/manifest"
 
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
-assert_contains "$output" "Files written (13):"
-assert_contains "$output" "Created: 13"
+assert_contains "$output" "Files written (12):"
+assert_contains "$output" "Created: 12"
 assert_contains "$output" "Replaced: 0"
-assert_files_equal "$ROOT_DIR/.paseo/orchestration-preferences.json" \
-  "$home/.paseo/orchestration-preferences.json"
+assert_file_missing "$home/.paseo/orchestration-preferences.json"
 
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Files written (0):"
-assert_contains "$output" "Unchanged (same hash and mtime): 13"
+assert_contains "$output" "Unchanged (same hash and mtime): 12"
 assert_contains "$output" "Replaced: 0"
 
 touch -d '2035-01-01 00:00:00 UTC' "$home/.config/starship.toml"
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Files written (1):"
 assert_contains "$output" "$home/.config/starship.toml"
-assert_contains "$output" "Unchanged (same hash and mtime): 12"
+assert_contains "$output" "Unchanged (same hash and mtime): 11"
 assert_contains "$output" "Replaced: 1"
 
 touch -d '2035-01-01 00:00:00 UTC' "$home/.config/docker-fzf.bash"
@@ -90,7 +89,7 @@ printf '\n# local customization\n' >> "$home/.config/starship.toml"
 output="$(run_install "$home" --dotfiles --no-input --quiet)"
 assert_contains "$output" "Skipping file modified since the last install: $home/.config/starship.toml"
 assert_contains "$output" "Files written (0):"
-assert_contains "$output" "Unchanged (same hash and mtime): 12"
+assert_contains "$output" "Unchanged (same hash and mtime): 11"
 assert_contains "$output" "Replaced: 0"
 assert_contains "$(<"$home/.config/starship.toml")" "# local customization"
 
@@ -320,5 +319,27 @@ assert_file_missing "$all_home/.tmux.conf"
 assert_file_missing "$all_home/.bashrc.colin"
 assert_file_missing "$all_home/.opencode"
 assert_file_missing "$all_home/.local/share/colin-dotfiles/manifest"
+
+# cship is suggested when statusLine is unset. The installer never writes it.
+status_home="$TEST_ROOT/status-home"
+mkdir -p "$status_home/.claude"
+printf '%s\n' '{ "permissions": { "allow": [] } }' > "$status_home/.claude/settings.json"
+output="$(run_install "$status_home" --agents --no-skills --no-input)"
+assert_contains "$output" "curl -fsSL https://cship.dev/install.sh | bash"
+assert_not_contains "$output" "simple-statusline"
+if grep -q '"statusLine"' "$status_home/.claude/settings.json"; then
+  printf 'Installer wrote statusLine into %s\n' "$status_home/.claude/settings.json" >&2
+  exit 1
+fi
+
+cat > "$status_home/.claude/settings.json" <<'EOF'
+{
+  "permissions": { "allow": [] },
+  "statusLine": { "type": "command", "command": "my-status" }
+}
+EOF
+output="$(run_install "$status_home" --agents --no-skills --no-input)"
+assert_not_contains "$output" "No statusline configured"
+assert_contains "$(<"$status_home/.claude/settings.json")" "my-status"
 
 printf 'install.sh and uninstall.sh regression tests passed\n'

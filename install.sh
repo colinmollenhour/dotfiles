@@ -18,7 +18,6 @@ DOTFILES=(
   ".config/delta/themes.gitconfig"
   ".config/tmux-powerline/config.sh"
   ".config/tmux-powerline/themes/colin.sh"
-  ".paseo/orchestration-preferences.json"
 )
 
 # Standalone CLIs installed to ~/.local/bin by --bins, as "source:name:runtime".
@@ -476,8 +475,8 @@ merge_settings_json() {
   fi
 }
 
-# If the user has no statusLine configured, point them at the simple-statusline
-# plugin (this repo no longer ships a statusline of its own). Advisory only.
+# If the user has no statusLine configured, point them at cship. Advisory only:
+# this installer never runs the cship installer and never writes statusLine.
 suggest_statusline_if_missing() {
   local claude_settings="$HOME/.claude/settings.json"
   command -v jq >/dev/null 2>&1 || return 0
@@ -487,14 +486,14 @@ suggest_statusline_if_missing() {
 
   log ""
   log "${C_BOLD}${C_CYAN}╭─ No statusline configured in ~/.claude/settings.json${C_RESET}"
-  log "${C_CYAN}│${C_RESET}  Install the ${C_BOLD}simple-statusline${C_RESET} plugin for a clean two-line statusline"
-  log "${C_CYAN}│${C_RESET}  (model, git status, context usage, rate limits). In Claude Code run:"
+  log "${C_CYAN}│${C_RESET}  ${C_BOLD}cship${C_RESET} is the suggested Claude Code statusline"
+  log "${C_CYAN}│${C_RESET}  (directory, git, model, cost, context, usage limits)."
+  log "${C_CYAN}│${C_RESET}  Optional. Run it yourself when you want it. It leaves an"
+  log "${C_CYAN}│${C_RESET}  existing statusLine and ~/.config/cship.toml alone:"
   log "${C_CYAN}│${C_RESET}"
-  log "${C_CYAN}│${C_RESET}    ${C_GREEN}/plugin marketplace add Postmodum37/simple-claude-code-statusline${C_RESET}"
-  log "${C_CYAN}│${C_RESET}    ${C_GREEN}/plugin install simple-statusline${C_RESET}"
-  log "${C_CYAN}│${C_RESET}    ${C_GREEN}/simple-statusline:setup${C_RESET}  ${C_YELLOW}(after restarting Claude Code)${C_RESET}"
+  log "${C_CYAN}│${C_RESET}    ${C_GREEN}curl -fsSL https://cship.dev/install.sh | bash${C_RESET}"
   log "${C_CYAN}│${C_RESET}"
-  log "${C_CYAN}╰─ Docs: https://github.com/Postmodum37/simple-claude-code-statusline#installation${C_RESET}"
+  log "${C_CYAN}╰─ Docs: https://cship.dev${C_RESET}"
 }
 
 # Recursively install all files under src_abs into dest_dir, tracking each in the manifest
@@ -966,10 +965,9 @@ install_agents() {
     fi
   fi
 
-  # settings.json is merged (not overwritten) by copy_claude_home so any
-  # statusLine set by the simple-statusline plugin is preserved. Configure the
-  # statusline itself with `/simple-statusline:setup` (see
-  # https://github.com/Postmodum37/simple-claude-code-statusline).
+  # settings.json is merged by copy_claude_home. statusLine is a user key, so
+  # an existing command stays. When it is unset, suggest_statusline_if_missing
+  # prints the optional cship install command and does not run it.
   copy_claude_home
 
   local orphaned_dirs=(
