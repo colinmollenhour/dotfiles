@@ -29,7 +29,8 @@ User Comments: $ARGUMENTS
    - `<harness>` is the agent harness currently running (e.g. `Claude Code`, `OpenCode`) — take it from your own runtime identity.
    - `<model>` is the model powering this session (e.g. `Opus 4.7`, `GPT 5.4`) — take it from your own runtime identity. If you cannot determine harness or model, use `By: AI agent` instead.
 
-3. Finally, post a new comment with a summary of the fixes, rebuttals, skipped threads and follow-up questions and the current state of the PR/MR. Use the same self-identifying header (with `· Summary` appended), followed by a blank line, followed by the summary body:
+3. If any pushed fix adds or changes user-visible functionality/UI or materially alters behavior described in the PR/MR, load `colin-mr-description` and refresh the PR/MR description — including capturing new screenshots or recapturing affected screenshots so `## Screenshots` reflects the post-update functionality.
+4. Finally, post a new comment with a summary of the fixes, rebuttals, skipped threads and follow-up questions and the current state of the PR/MR. Use the same self-identifying header (with `· Summary` appended), followed by a blank line, followed by the summary body:
 
    ```text
    > **AI Review Response** · Commit: <sha> · By: <harness> with <model> · Summary

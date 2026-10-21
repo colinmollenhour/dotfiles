@@ -48,12 +48,13 @@ Based on that state and the context of this session:
    ```bash
    gh pr create --title "<title>" --body-file /abs/body.md
    # or if PR exists:
+   gh pr edit <PR_NUMBER> --body-file /abs/body.md
    gh pr comment --body-file /abs/note.md
    ```
    For full PR context later, use `gh-cli/pr-context.ts` — not needed for ship.
 
    - Unless told otherwise, create the PR/MR if none exists.
-   - If one already exists, post a short commit note and refresh the description per `colin-mr-description`.
+   - If one already exists, post a short commit note **and** refresh the description per `colin-mr-description` — including capturing new screenshots for any newly added user-visible features/states and recapturing existing screenshots affected by the update so `## Screenshots` reflects the post-update functionality.
    - Load full `glab-cli` / `gh-cli` **only** if the ship script/API fails or you need inline discussions, uploads, or pagination edge cases.
 
 7. `git status --short` after push.

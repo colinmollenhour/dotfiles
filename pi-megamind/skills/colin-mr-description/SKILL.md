@@ -95,7 +95,10 @@ Update an existing description:
 
 1. Fetch the current body: `gh pr view <N> --json body -q .body`, or `glab mr view <IID> --output json` and read `description`.
 2. Replace only the sections this skill owns, matched by heading. Preserve human-written text and sections added by others. Never append a second copy of a heading.
-3. Refresh Summary, Changes, and Test Plan when new commits change scope. Recapture screenshots when new commits change a page they show. Regenerate the brief only when architecture or design changed materially.
+3. Refresh Summary, Changes, Screenshots, and Test Plan whenever new commits add features, alter behavior or UI, or change scope:
+   - **Capture new screenshots** for any user-visible features, pages, dialogs, or states added or newly modified by the update (creating the `## Screenshots` section if it was previously omitted).
+   - **Recapture existing screenshots** whenever new commits change a page or state they show, so `## Screenshots` always reflects the **post-update functionality**. Never leave pre-update screenshots or skip screenshots for newly added UI on an update.
+   - Regenerate the brief only when architecture or design changed materially.
 4. Write the full body back: `gh pr edit <N> --body-file /abs/body.md`, or `ship-mr.ts --description-file /abs/body.md` (which replaces the whole description).
 
 For new commits pushed to an existing PR/MR, also post a short note (`gh pr comment --body-file`, or `ship-mr.ts --note-file`). When the agent authored the commit, start it with:
