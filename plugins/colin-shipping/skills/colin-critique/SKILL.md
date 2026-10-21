@@ -1,5 +1,6 @@
 ---
 name: colin-critique
+disable-model-invocation: true
 slash: true
 description: Multi-model spec critique — surfaces inconsistencies, gaps, naming issues, and inferior design
 argument-hint: "[file path or 'current plan' or TaskID] [--agents list...] [--summary]"

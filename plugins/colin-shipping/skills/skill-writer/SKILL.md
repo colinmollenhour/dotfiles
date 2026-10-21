@@ -1,5 +1,6 @@
 ---
 name: skill-writer
+disable-model-invocation: true
 description: 'Create or improve Agent Skills, SKILL.md frontmatter, structure, instructions, and resources.'
 ---
 

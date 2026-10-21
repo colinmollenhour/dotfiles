@@ -1,5 +1,6 @@
 ---
 name: cclsp-fix-diagnostics
+disable-model-invocation: true
 description: Scan a codebase with the CCLSP MCP and fix reported diagnostics. Language- and project-agnostic. Use for "fix all the LSP errors", "check the workspace for errors", "fix diagnostics in <path>", or auditing a branch/PR/commit range for new errors. Default scope is the whole codebase, chunked. User can narrow to files, folders, commits, ranges, branches, PRs, or MRs.
 ---
 

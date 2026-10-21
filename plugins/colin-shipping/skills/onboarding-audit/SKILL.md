@@ -1,5 +1,6 @@
 ---
 name: onboarding-audit
+disable-model-invocation: true
 description: Act as a brand-new user of a product and audit its first-run onboarding end to end — sign up with a real email, drive the web app / desktop app / CLI, log every dead end, unexplained error, and undocumented prerequisite, then write a severity-ranked friction report with concrete fixes. Use when asked to "test onboarding", "sign up as a new user", "dogfood the first-run experience", "onboarding QA/audit", or to reproduce a new-user journey and report the friction.
 ---
 

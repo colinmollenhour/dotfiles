@@ -1,5 +1,6 @@
 ---
 name: colin-feature-export
+disable-model-invocation: true
 slash: true
 description: Create an implementation guide for a feature in this repo so you can port it to another repo
 argument-hint: Describe the feature, sources, etc...

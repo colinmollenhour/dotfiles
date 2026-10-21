@@ -1,7 +1,7 @@
 {
   "name": "colin-frameworks",
-  "version": "0.1.1",
-  "description": "Nuxt UI and Content, Drizzle ORM, VoltAgent, and Playwright E2E skills",
+  "version": "0.1.2",
+  "description": "Nuxt UI and Content, Drizzle ORM, and Playwright E2E skills",
   "author": {
     "name": "Colin Mollenhour"
   },

@@ -1,5 +1,6 @@
 ---
 name: coolify
+disable-model-invocation: true
 description: Generate a project template for Coolify
 allowed-tools: WebFetch(domain:raw.githubusercontent.com)
 ---

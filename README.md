@@ -201,7 +201,7 @@ A reference to the skills and agents in `plugins/` and `.opencode/agents/`. The 
 | Plugin | Contents | Plugin dependencies |
 |---|---|---|
 | `colin-shipping` | Review and shipping workflows, MBOT/MBOD, GitHub/GitLab helpers, docs, audits, and skill authoring | `colin-cli-bridges` |
-| `colin-frameworks` | Nuxt UI/Content, Drizzle ORM, VoltAgent, Playwright E2E | — |
+| `colin-frameworks` | Nuxt UI/Content, Drizzle ORM, Playwright E2E | — |
 | `colin-cli-bridges` | Claude, Codex, and Grok CLI routing | — |
 | `colin-visuals` | Animated visualizations, infographic prompts, Nano Banana image generation | — |
 | `megamind` | Autonomous delivery skill and dedicated Claude agent | `colin-shipping` |
@@ -350,7 +350,6 @@ Claude loads these automatically when a task matches, or you can reference them 
 - **`many-brain-one-decision`** (MBOD) — Coordinate a multi-round debate across MBOT agents with distinct personalities until they converge on a decision or hit the configured round limit. Use it for prompts like "decide which option is best", "debate this tradeoff", or "propose a solution to this problem".
 - **`educational-brief`** — Creates grounded journey/design/architecture/lessons briefs for delivered PRs, MRs, branches, features, or agent runs.
 - **`generate-e2e-test`** — Drives Playwright MCP through a workflow, then generates the E2E test code.
-- **`security-hardening`** — App-level security review covering abuse prevention, rate limiting, business logic, and input validation. Beyond generic checklists.
 - **`cli-design`** — Design and review CLIs against `clig.dev` guidelines: flags, help text, errors, and scriptability.
 - **`docs-writer`** — Write or restructure technical docs against Diataxis, Google, Microsoft, and Write the Docs style guides.
 - **`skill-writer`** — Author new `.claude` skills with correct frontmatter and structure.
@@ -361,11 +360,11 @@ Claude loads these automatically when a task matches, or you can reference them 
 - **`drizzle-orm`** — TypeScript-first ORM patterns for Postgres, MySQL, and SQLite: schemas, queries, migrations, relations.
 - **`nuxt-ui`** — Nuxt UI components. Fetches current docs from `ui.nuxt.com/llms.txt` so APIs are accurate.
 - **`nuxt-content`** — Author Markdown and MDC content files for Nuxt Content sites.
-- **`voltagent`** — Build VoltAgent AI agents: tools, memory, hooks, sub-agents.
 
 ### Media
 
-- **`nano-banana`** — Required for any image generation or editing. Wraps the Gemini CLI.
+- **`nano-banana`** — Required for any image generation or editing. Wraps the `agy` (Antigravity) CLI.
+
 - **`whiteboard`** — A poor man's [dev.fast](https://dev.fast/) whiteboard. The agent sketches an explanation (Mermaid diagrams, cards, stickies, diffs, code) in a plain HTML file, and your browser tab reloads on every save at the same scroll position. It's driven by the `whiteboard` CLI, a zero-dependency Node server that `--agents` links into `~/.local/bin`:
   - `whiteboard start` / `new <project>/<topic>` / `status` / `stop` manage the server and boards. Boards live in `~/.whiteboard` by default. The live server's index at `/` lists them all, which is fine because only you reach it over Tailscale. Published copies have no index (see `publish` below).
   - The server listens on the Tailscale address by default; pass `--host 0.0.0.0` for every adapter. `status` shows connected viewers and their remote addresses.
