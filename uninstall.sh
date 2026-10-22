@@ -153,7 +153,7 @@ is_dotfile_dest() {
 
 is_agent_dest() {
   local dest="$1" src="${2:-}"
-  if [[ "$dest" == "$HOME/.claude"* || "$dest" == "$HOME/.opencode"* || "$dest" == "$HOME/.grok"* || "$dest" == "$HOME/.agents"* ]]; then
+  if [[ "$dest" == "$HOME/.claude"* || "$dest" == "$HOME/.opencode"* || "$dest" == "$HOME/.grok"* || "$dest" == "$HOME/.agents"* || "$dest" == "$HOME/.gemini/antigravity-cli/skills"* ]]; then
     return 0
   fi
   if [[ "$src" == plugins/* || "$src" == ".claude"* || "$src" == ".opencode"* || "$src" == ".grok"* || "$src" == ".agents"* ]]; then
@@ -349,6 +349,7 @@ cleanup_empty_dirs() {
     "$HOME/.claude/commands"
     "$HOME/.claude/skills"
     "$HOME/.claude"
+    "$HOME/.gemini/antigravity-cli/skills"
     "${XDG_DATA_HOME:-$HOME/.local/share}/colin-dotfiles"
   )
   local dir
@@ -356,6 +357,9 @@ cleanup_empty_dirs() {
   # parents fails until those empties are gone.
   if [[ "$DRY_RUN" == false && -d "$HOME/.agents" ]]; then
     find "$HOME/.agents" -depth -type d -empty -delete 2>/dev/null || true
+  fi
+  if [[ "$DRY_RUN" == false && -d "$HOME/.gemini/antigravity-cli/skills" ]]; then
+    find "$HOME/.gemini/antigravity-cli/skills" -depth -type d -empty -delete 2>/dev/null || true
   fi
   for dir in "${dirs[@]}"; do
     [[ -d "$dir" ]] || continue

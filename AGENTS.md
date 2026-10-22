@@ -11,7 +11,7 @@ conflict on the next install.
 
 | Source in this repo | Installed (do not edit) |
 |---|---|
-| `plugins/*/skills/` | `~/.claude/skills/`, `~/.agents/skills/` |
+| `plugins/*/skills/` | `~/.claude/skills/`, `~/.agents/skills/`, `~/.gemini/antigravity-cli/skills/` |
 | `plugins/megamind/agents/`, `.claude/agents/` | `~/.claude/agents/` |
 | `.opencode/agents/` | `~/.opencode/agents/` |
 | `pi-megamind/skills/` | Pi/OMP package copy of the Claude skills |

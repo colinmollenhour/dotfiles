@@ -249,18 +249,31 @@ assert_files_equal "$ROOT_DIR/.opencode/agents/colin-mbot-opus.md" \
 
 # --no-skills supports a clean marketplace install without duplicate skill mirrors.
 no_skills_home="$TEST_ROOT/no-skills-home"
-mkdir -p "$no_skills_home/.config/opencode/skills/third-party"
+mkdir -p "$no_skills_home/.config/opencode/skills/third-party" "$no_skills_home/.gemini/antigravity-cli"
 printf 'skills CLI owns this file\n' > "$no_skills_home/.config/opencode/skills/third-party/SKILL.md"
 output="$(run_install "$no_skills_home" --agents --no-skills --no-input --quiet)"
 assert_contains "$(<"$no_skills_home/.config/opencode/skills/third-party/SKILL.md")" "skills CLI owns this file"
 assert_file_missing "$no_skills_home/.claude/skills"
 assert_file_missing "$no_skills_home/.agents/skills/whiteboard"
+assert_file_missing "$no_skills_home/.gemini/antigravity-cli/skills"
 assert_file_missing "$no_skills_home/.local/bin/whiteboard"
 assert_file_missing "$no_skills_home/.local/bin/git-cleanup-scan"
 assert_files_equal "$ROOT_DIR/plugins/megamind/agents/megamind.md" \
   "$no_skills_home/.grok/agents/megamind.md"
 assert_files_equal "$ROOT_DIR/.opencode/agents/megamind.md" \
   "$no_skills_home/.opencode/agents/megamind.md"
+
+# When ~/.gemini/antigravity-cli is present, skills are also mirrored into ~/.gemini/antigravity-cli/skills.
+agy_home="$TEST_ROOT/agy-home"
+mkdir -p "$agy_home/.gemini/antigravity-cli"
+output="$(run_install "$agy_home" --agents --no-input --quiet)"
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/colin-review/SKILL.md" \
+  "$agy_home/.gemini/antigravity-cli/skills/colin-review/SKILL.md"
+assert_files_equal "$ROOT_DIR/plugins/megamind/skills/megamind/SKILL.md" \
+  "$agy_home/.gemini/antigravity-cli/skills/megamind/SKILL.md"
+output="$(run_uninstall "$agy_home" --agents --no-input --quiet)"
+assert_file_missing "$agy_home/.gemini/antigravity-cli/skills"
+[[ -d "$agy_home/.gemini/antigravity-cli" ]] || { echo "Expected ~/.gemini/antigravity-cli to remain" >&2; exit 1; }
 
 # An old manifest must survive a dotfiles-only update before skills are refreshed.
 migration_home="$TEST_ROOT/migration-home"

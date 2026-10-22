@@ -869,6 +869,9 @@ install_plugin_skills() {
     [[ -d "$skills_dir" ]] || continue
     copy_dir_contents "$skills_dir" "$HOME/.claude/skills"
     copy_dir_contents "$skills_dir" "$HOME/.agents/skills"
+    if [[ -d "$HOME/.gemini/antigravity-cli" ]]; then
+      copy_dir_contents "$skills_dir" "$HOME/.gemini/antigravity-cli/skills"
+    fi
   done
 }
 
@@ -978,7 +981,6 @@ install_agents() {
     "$HOME/.config/opencode/command"
     "$HOME/.config/opencode/skill"
     "$HOME/.config/grok/agents"
-    "$HOME/.gemini/antigravity-cli/skills"
   )
   local orphan
   for orphan in "${orphaned_dirs[@]}"; do

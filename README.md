@@ -105,7 +105,8 @@ individual skills, also select the helpers a workflow calls: Megamind uses MBOT/
 educational brief skills, and the CLI bridge skills. MBOD needs MBOT beside it for helper scripts.
 
 `install.sh --agents` remains a complete personal installation route: it copies every plugin's skills
-into `~/.claude/skills` and `~/.agents/skills`, installs native agents/settings, and sets up helper CLIs
+into `~/.claude/skills` and `~/.agents/skills` (plus `~/.gemini/antigravity-cli/skills` when
+`~/.gemini/antigravity-cli` is present), installs native agents/settings, and sets up helper CLIs
 and the optional whiteboard user service. `--no-skills` skips the skill copies and their CLI/service
 setup; it preserves existing copies. Remove old copies with the installer that owns them before
 switching routes (`./uninstall.sh --agents` for dotfiles, or `npx skills remove` for the skills CLI).
@@ -154,7 +155,7 @@ Running `./uninstall.sh` uses this same manifest to cleanly undo installation at
 
 ### Claude Code config
 
-Skills from `plugins/*/skills/`, agents, and Claude settings install into `~/.claude/`. The `--agents` flag also mirrors skills into the shared `~/.agents/skills/` directory used by Codex, OpenCode, and agy. Workflows that used to live in `.claude/commands/` are skills now; leftover copies under `~/.claude/commands` and `~/.opencode/commands` are deleted on install. Side-effect skills (`/colin-review`, `/megamind`, commit/push/cleanup, and similar) set `disable-model-invocation: true` so they only run when you type `/name`. Library skills (`gh-cli`, `many-brain-one-task`, ORM/docs helpers) set `user-invocable: false` so they stay off the `/` menu. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
+Skills from `plugins/*/skills/`, agents, and Claude settings install into `~/.claude/`. The `--agents` flag also mirrors skills into the shared `~/.agents/skills/` directory used by Codex and OpenCode, and into `~/.gemini/antigravity-cli/skills/` when `~/.gemini/antigravity-cli` is present. Workflows that used to live in `.claude/commands/` are skills now; leftover copies under `~/.claude/commands` and `~/.opencode/commands` are deleted on install. Side-effect skills (`/colin-review`, `/megamind`, commit/push/cleanup, and similar) set `disable-model-invocation: true` so they only run when you type `/name`. Library skills (`gh-cli`, `many-brain-one-task`, ORM/docs helpers) set `user-invocable: false` so they stay off the `/` menu. Claude `settings.json` / `settings.local.json` are merged in place and rewritten only when the merge actually changes the file.
 
 ### CLIs
 
@@ -243,7 +244,7 @@ Megamind supports native integration across 5 AI development platforms:
 - **OpenCode Pi**: Native agent at `.opencode/agents/megamind.md` (installed to `~/.opencode/agents/megamind.md`) configured with `mode: primary` and tool declarations. Invoke via `/megamind <task>` or agent selection in OpenCode TUI.
 - **Oh My Pi (omp) & Pi**: Installable npm package at `pi-megamind/`. Supports `omp install ./pi-megamind` and `pi install ./pi-megamind` with slash command `/megamind <task>` and `mode: main` execution.
 - **Grok CLI**: Installed to `~/.grok/agents/megamind.md`. Supports headless batch fan-out via `grok --prompt-file` with `--always-approve` and `--disallowed-tools Agent`.
-- **Antigravity (AGY)**: Native skill loaded via standard `~/.agents/skills/megamind/SKILL.md` (and `.claude/skills/megamind/SKILL.md`). Leverages native `define_subagent` and `invoke_subagent` for parallel MBOT/MBOD worker orchestration.
+- **Antigravity (AGY)**: Native skill loaded via `~/.gemini/antigravity-cli/skills/megamind/SKILL.md` (when `~/.gemini/antigravity-cli` is present) or `~/.agents/skills/megamind/SKILL.md`. Leverages native `define_subagent` and `invoke_subagent` for parallel MBOT/MBOD worker orchestration.
 
 Install all targets automatically via:
 
