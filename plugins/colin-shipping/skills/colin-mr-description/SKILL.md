@@ -95,10 +95,11 @@ Update an existing description:
 
 1. Fetch the current body: `gh pr view <N> --json body -q .body`, or `glab mr view <IID> --output json` and read `description`.
 2. Replace only the sections this skill owns, matched by heading. Preserve human-written text and sections added by others. Never append a second copy of a heading.
-3. Refresh Summary, Changes, Screenshots, and Test Plan whenever new commits add features, alter behavior or UI, or change scope:
+3. Compare the description with `git diff <target>...HEAD` and the new commits. The description must always reflect what the branch actually does now: behavior added, removed, or changed, logic, design decisions, config options, scope. Refresh Summary, Changes, Screenshots, and Test Plan whenever any of that moved, deleting text about anything no longer true. Skip the rewrite only for a purely superficial push (typo, formatting, rename, comment, lint, test-only with no behavior change):
    - **Capture new screenshots** for any user-visible features, pages, dialogs, or states added or newly modified by the update (creating the `## Screenshots` section if it was previously omitted).
    - **Recapture existing screenshots** whenever new commits change a page or state they show, so `## Screenshots` always reflects the **post-update functionality**. Never leave pre-update screenshots or skip screenshots for newly added UI on an update.
-   - Regenerate the brief only when architecture or design changed materially.
+   - Revise the brief when architecture, design, or a recorded decision changed materially.
+   - End the body with `Described at: <short-sha>` (HEAD at review time). Bump it on every push, including ones that skip the rewrite, so a reader can see how current the description is. Replace the existing footer; never add a second.
 4. Write the full body back: `gh pr edit <N> --body-file /abs/body.md`, or `ship-mr.ts --description-file /abs/body.md` (which replaces the whole description).
 
 For new commits pushed to an existing PR/MR, also post a short note (`gh pr comment --body-file`, or `ship-mr.ts --note-file`). When the agent authored the commit, start it with:
