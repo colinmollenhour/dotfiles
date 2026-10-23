@@ -7,26 +7,26 @@ and the CodeRabbit / off-profile-model bans; they are not repeated here.
 
 ## Participants and allocation (overrides colin-ultra-review "Allocation")
 
-All at **max** effort. Call out this effort in the final report. Opus also runs adjudication, integration, and
+Three participants for the Opus reasoning experiment: **GPT 6.1 Sol xhigh**, **Opus 5.5 xhigh**, and **Opus 5.5 high**. Call out these variants in the final report. Opus (high or xhigh) also runs adjudication, integration, and
 summarization. Backup when a primary cannot run: **none** (retry once with the same model; if
 still down, proceed with the available primary).
 
 | Lens | Participants |
 |---|---|
-| `state` / `contracts` / `failure` | Opus 5.5 + GPT-6.1 Sol, × each bucket |
-| `merits` | Opus 5.5 + GPT-6.1 Sol, once |
-| `integration` (every round) | Opus 5.5 + GPT-6.1 Sol |
+| `state` / `contracts` / `failure` | Opus 5.5 xhigh + Opus 5.5 high + GPT-6.1 Sol xhigh, × each bucket |
+| `merits` | Opus 5.5 xhigh + Opus 5.5 high + GPT-6.1 Sol xhigh, once |
+| `integration` (every round) | Opus 5.5 xhigh + Opus 5.5 high + GPT-6.1 Sol xhigh |
 
-Thread budget: `6 × buckets` + 2 merits + 2 integration per round, plus adjudication. Record
-`participants: 2` in `run-summary.json`.
+Thread budget: `9 × buckets` + 3 merits + 3 integration per round, plus adjudication. Record
+`participants: 3` in `run-summary.json`.
 
 The table above is the `standard` tier. Smaller diffs use colin-ultra-review "Size tier"
 thresholds with these participants:
 
 | Tier | Discovery | Merits | Integration | Typical threads |
 |---|---|---|---|---|
-| `small` | Opus 5.5 + GPT-6.1 Sol, combined-lens | Opus 5.5 | none | 3 + ≤2 adjudication |
-| `medium` | `standard` grid, one bucket (6) | Opus 5.5 | Opus 5.5 + GPT-6.1 Sol in round 2 only if round 1 confirmed medium+ | 7–9 + adjudication |
+| `small` | Opus 5.5 xhigh + Opus 5.5 high + GPT-6.1 Sol xhigh, combined-lens | Opus 5.5 xhigh | none | 4 + ≤2 adjudication |
+| `medium` | `standard` grid, one bucket (9) | Opus 5.5 xhigh | Opus 5.5 xhigh + Opus 5.5 high + GPT-6.1 Sol xhigh in round 2 only if round 1 confirmed medium+ | 10–13 + adjudication |
 
 ## Validation (overrides colin-ultra-review §8)
 
@@ -55,19 +55,19 @@ The parent is Claude Code (`claude -p`, has the native `Agent` tool) or OpenCode
 session, has `task` and no `Agent`). `--harness claude|opencode` picks it; Claude is the default.
 Check your tool surface — never assume.
 
-- **Claude parent:** Opus slots use native `Agent`, listed in `plan.json` with
-  `harness: "external"` so harvest still scores the `.out`. GPT slots are `mbot-run` OpenCode
-  slots.
-- **OpenCode parent:** every participant, Opus included, is an `mbot-run` slot with a
+- **OpenCode parent (preferred):** every participant, Opus included, is an `mbot-run` slot with a
   `colin-mbot-*` agent; no `external` slots. The `task` tool skips `--out` harvest and timeout
   salvage, so use it only for orchestration chores (indexing, greps), never for a participant.
+- **Claude parent:** Claude native `Agent` cannot run `xhigh` effort or separate variant experiments.
+  Route all Opus and GPT slots as `mbot-run` OpenCode slots to test Opus high vs xhigh fairly.
 
 ## OpenCode slots (either harness)
 
 | Participant | `model` | `agent` | `variant` |
 |---|---|---|---|
-| Opus 5.5 | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `max` |
-| GPT-6.1 Sol | `openai/gpt-6.1-sol` | `colin-mbot-gpt-sol` | `max` |
+| Opus 5.5 xhigh | `anthropic/claude-opus-5-5` | `colin-mbot-opus-xhigh` | `xhigh` |
+| Opus 5.5 high | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `high` |
+| GPT-6.1 Sol xhigh | `openai/gpt-6.1-sol` | `colin-mbot-gpt-sol` | `xhigh` |
 
 - Always set `model`, `agent`, and `variant`; `mbot-run` auto-picks an agent only for GPT.
   Never `build` / `general`.

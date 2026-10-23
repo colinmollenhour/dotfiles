@@ -5,7 +5,7 @@ Preferred models:
 
 Backup model (never more than one and ONLY these):
 - Qwen3.8 Max (xhigh)
-- GLM 5.3 (max)
+- GLM 5.3 (xhigh)
 
 Do not use OpenCode Zen or OpenRouter providers except for the backup models.
 

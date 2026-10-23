@@ -439,7 +439,7 @@ Preferred models:
 
 Backup model (never more than one and ONLY these):
 - Qwen3.8 Max (xhigh)
-- GLM 5.3 (max)
+- GLM 5.3 (xhigh)
 
 Do not use OpenCode Zen or OpenRouter providers except for the backup models.
 ```
@@ -484,7 +484,8 @@ Sorted roughly by capability:
 
 | Agent | Model |
 |---|---|
-| `colin-mbot-opus` | Anthropic Claude Opus 5.5 |
+| `colin-mbot-opus` | Anthropic Claude Opus 5.5 (high reasoning) |
+| `colin-mbot-opus-xhigh` | Anthropic Claude Opus 5.5 (xhigh reasoning) |
 | `colin-mbot-gpt-astra` | OpenAI GPT 6 Astra |
 | `colin-mbot-gpt-sol` | OpenAI GPT 6.1 Sol |
 | `colin-mbot-gpt-sol-zen` | GPT 6.1 Sol through OpenCode Zen |
