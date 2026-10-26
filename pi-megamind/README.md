@@ -9,6 +9,8 @@ Installable Megamind autonomous-delivery workflow with supporting multi-agent sk
 - `skills/many-brain-one-decision/` — MBOD moderated multi-agent decision workflow.
 - `skills/educational-brief/` — grounded educational brief synthesis.
 - `skills/colin-mr-description/` — PR/MR description structure, validation, and posting.
+- `skills/full-send/`, `skills/full-stop/` — verified delivery through merge or an open, unmerged handoff, using MBOT/MBOD and the existing description workflow.
+- `skills/modernize/` — reassess and update a stale PR/MR, or recommend rework/closure without merging or closing it.
 - `skills/gh-cli/`, `skills/glab-cli/` — hosted PR/MR and CI platform operations.
 - `skills/claude-cli/`, `skills/codex-cli/`, `skills/grok-cli/` — CLI routing references used by MBOT/MBOD.
 - `prompts/megamind.md` — shared `/megamind` prompt template.

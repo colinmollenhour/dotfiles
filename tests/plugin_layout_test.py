@@ -19,7 +19,9 @@ class PluginLayoutTest(unittest.TestCase):
 
     def test_marketplace_sources_exist_and_match_manifests(self):
         self.assertEqual(len(self.entries), len(self.plugins))
-        self.assertEqual(set(self.plugins.values()), set((ROOT / 'plugins').iterdir()))
+        # Local tool metadata (such as .claude/) is not a distributable plugin.
+        plugin_paths = {p for p in (ROOT / 'plugins').iterdir() if not p.name.startswith('.')}
+        self.assertEqual(set(self.plugins.values()), plugin_paths)
         for name, plugin in self.plugins.items():
             with self.subTest(plugin=name):
                 self.assertTrue(plugin.is_dir())
@@ -66,6 +68,25 @@ class PluginLayoutTest(unittest.TestCase):
         skills = self.plugins['colin-shipping'] / 'skills'
         self.assertTrue((skills / 'many-brain-one-decision/../many-brain-one-task/mbot-run.ts').is_file())
         self.assertTrue((skills / 'many-brain-one-task/reference.md').is_file())
+
+    def test_delivery_workflows_ship_complete_and_match_pi(self):
+        skills = self.plugins['colin-shipping'] / 'skills'
+        for name in ('full-send', 'full-stop', 'modernize'):
+            source = skills / name
+            mirror = ROOT / 'pi-megamind/skills' / name
+            with self.subTest(skill=name):
+                source_files = {p.relative_to(source) for p in source.rglob('*') if p.is_file()}
+                mirror_files = {p.relative_to(mirror) for p in mirror.rglob('*') if p.is_file()}
+                self.assertEqual(source_files, mirror_files)
+                self.assertIn(Path('LICENSE'), source_files)
+                self.assertIn(Path('agents/openai.yaml'), source_files)
+                for relative in source_files:
+                    self.assertEqual((source / relative).read_bytes(),
+                                     (mirror / relative).read_bytes())
+                for document in source.rglob('*.md'):
+                    for link in re.findall(r'\]\(([^)]+)\)', document.read_text()):
+                        if '://' not in link and not link.startswith('#'):
+                            self.assertTrue((document.parent / link).is_file(), (document, link))
 
     def test_megamind_keeps_a_dedicated_agent(self):
         agent = self.plugins['megamind'] / 'agents/megamind.md'

@@ -104,6 +104,19 @@ The skills CLI installs skills, not Claude plugin agents or dependency manifests
 individual skills, also select the helpers a workflow calls: Megamind uses MBOT/MBOD, the PR/MR and
 educational brief skills, and the CLI bridge skills. MBOD needs MBOT beside it for helper scripts.
 
+`full-send` takes a change through verification, MBOT code review, a PR/MR, CI and review feedback,
+and a protected merge. `full-stop` runs the same workflow but leaves the request open for you to
+merge, with automatic merge and queue/train enrollment off. `modernize` checks whether an old
+PR/MR still solves a useful problem before rebasing it; it can recommend rework or closure without
+performing either. These workflows are explicit invocations and support GitHub and GitLab.
+
+For an individual skills CLI install, `full-stop` needs `full-send`; `full-send` needs `modernize`,
+MBOT/MBOD, `colin-mr-description`, `educational-brief`, the matching `gh-cli`/`glab-cli`, and the
+CLI bridge skills selected by your MBOT profile. `modernize` uses MBOD for disputed decisions.
+`colin-fix-comments`, `colin-fix-pipeline`, and `colin-review-merits` are optional helpers; the new
+workflows include guidance for when those are absent. No tstack-only helpers or T3 Code tools
+are required. The three adapted skills retain Theo Browne's MIT license and upstream revision.
+
 `install.sh --agents` remains a complete personal installation route: it copies every plugin's skills
 into `~/.claude/skills` and `~/.agents/skills` (plus `~/.gemini/antigravity-cli/skills` when
 `~/.gemini/antigravity-cli` is present), installs native agents/settings, and sets up helper CLIs
@@ -508,6 +521,8 @@ Add your own by dropping a new `colin-mbot-<NAME>.md` into `.opencode/agents/` w
 ## Typical flows
 
 - **Shipping a change.** Make edits → `/colin-review` → `/colin-commit-and-push` → on feedback `/colin-fix-comments` → on red CI `/colin-fix-pipeline`.
+- **Autonomous delivery.** `/full-send <goal or PR/MR>` continues through merge; `/full-stop <goal or PR/MR>` stops with an unmerged handoff. Plugin installs use `/colin-shipping:full-send` and `/colin-shipping:full-stop`.
+- **Reviving an old request.** `/modernize <PR/MR URL>` reassesses its intent, then rebases and updates it only if the implementation still fits.
 - **Planning a feature.** `/agent-sops-pdd` → `/colin-finalize-spec` → `/colin-critique --summary` → `/agent-sops-code-task-generator`.
 - **Important merge.** `/colin-ultra-review --no-post` → review the output → `post` if it looks right. Use `--re-review` on subsequent pushes.
 - **Picking up someone else's context.** Ask them to run `/colin-handoff` and commit the resulting Markdown.

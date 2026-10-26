@@ -208,6 +208,16 @@ assert_file_missing "$agents_home/.claude/agents/colin-mbot-opus.md"
 assert_contains "$(<"$agents_home/.agents/skills/colin-review/agents/openai.yaml")" \
   "allow_implicit_invocation: false"
 assert_file_missing "$agents_home/.agents/skills/gh-cli/agents/openai.yaml"
+for workflow in full-send full-stop modernize; do
+  for mirror in .claude/skills .agents/skills; do
+    for asset in SKILL.md agents/openai.yaml LICENSE; do
+      assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/$workflow/$asset" \
+        "$agents_home/$mirror/$workflow/$asset"
+    done
+  done
+done
+assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/full-send/references/monitoring.md" \
+  "$agents_home/.agents/skills/full-send/references/monitoring.md"
 assert_file_missing "$agents_home/.gemini"
 assert_contains "$output" "Unchanged (same hash and mtime): 2"
 
