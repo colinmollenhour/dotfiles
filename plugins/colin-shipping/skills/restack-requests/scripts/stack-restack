@@ -1,0 +1,705 @@
+#!/usr/bin/env python3
+"""Restack helper for stacked GitLab MRs and GitHub PRs (restack-requests).
+
+Mechanical evidence and git plumbing only; the agent decides, merges, and reports.
+
+  plan <request> --out FILE   resolve the request, its merge gates, and every open request stacked on it
+  wait <request> [--timeout S]
+                              block until the request is merged, closed, or stalled
+  restack --plan FILE         replay each dependent's own commits onto its new base (local only)
+  publish --plan FILE         force-push restacked branches with lease and retarget their requests
+  restack-one --head SHA --onto REF [--exclude SHA ...]
+                              the primitive behind restack, for one-off or test use
+
+<request> is a number (2942, !2942, #2942), a URL, a source branch, or a ticket key such as
+DEV-3380. Run from inside the repository. Output: JSON on stdout. The forge (gitlab via glab,
+github via gh) is detected from the origin URL; override it with --forge.
+
+A dependent is any open request whose branch targets the root's branch or contains any head the
+root ever had (every GitLab MR version, every GitHub force-push), so rewritten parents are covered.
+Its own commits are `rev-list <head> --not <new base> <every ancestor's heads>`, which is what
+keeps a squash-merged parent's commits from being replayed a second time. The new base is the
+root's target branch once the root is merged, or the root's current tip while it is still open.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+from pathlib import Path
+from typing import Any
+
+REMOTE = 'origin'
+# Repository hooks must not fire in the throwaway worktree.
+NO_HOOKS = ['-c', 'core.hooksPath=/dev/null']
+
+Req = dict[str, Any]
+
+
+class Failure(Exception):
+    pass
+
+
+def run(args: list[str], *, cwd: str | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+    try:
+        proc = subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise Failure(f'{args[0]} is not installed')
+    if check and proc.returncode != 0:
+        raise Failure(f"{' '.join(args)} failed ({proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}")
+    return proc
+
+
+def git(*args: str, cwd: str | None = None, check: bool = True) -> str:
+    return run(['git', *NO_HOOKS, *args], cwd=cwd, check=check).stdout.strip()
+
+
+def git_ok(*args: str, cwd: str | None = None) -> bool:
+    return run(['git', *NO_HOOKS, *args], cwd=cwd, check=False).returncode == 0
+
+
+def has_commit(sha: str) -> bool:
+    return git_ok('cat-file', '-e', f'{sha}^{{commit}}')
+
+
+def is_ancestor(a: str, b: str) -> bool:
+    return git_ok('merge-base', '--is-ancestor', a, b)
+
+
+def fetch() -> None:
+    git('fetch', '--quiet', '--prune', REMOTE)
+
+
+def dedupe(shas: list[str | None]) -> list[str]:
+    seen: list[str] = []
+    for sha in shas:
+        if sha and sha not in seen and has_commit(sha):
+            seen.append(sha)
+    return seen
+
+
+# ---------------------------------------------------------------- forges
+#
+# A forge turns its API into normalized requests: number, title, author, url, source_branch,
+# target_branch, sha (current head), state (open|merged|closed), draft, same_repo (head lives in
+# this repository), landed_sha (merged only), auto_merge, squash (GitLab only).
+
+class GitLab:
+    name = 'gitlab'
+    prefix = '!'
+    number_re = r'/merge_requests/(\d+)'
+
+    def api(self, path: str) -> Any:
+        return json.loads(run(['glab', 'api', path]).stdout or 'null')
+
+    def pages(self, path: str) -> list[Any]:
+        sep = '&' if '?' in path else '?'
+        items: list[Any] = []
+        page = 1
+        while True:
+            batch = self.api(f'{path}{sep}per_page=100&page={page}')
+            if not batch:
+                return items
+            items.extend(batch)
+            if len(batch) < 100:
+                return items
+            page += 1
+
+    def norm(self, mr: dict[str, Any]) -> Req:
+        state = {'opened': 'open', 'locked': 'open', 'merged': 'merged', 'closed': 'closed'}[mr['state']]
+        return {
+            'number': mr['iid'], 'title': mr['title'], 'author': mr['author']['username'],
+            'url': mr['web_url'], 'source_branch': mr['source_branch'], 'target_branch': mr['target_branch'],
+            'sha': mr['sha'], 'state': state, 'draft': bool(mr.get('draft')),
+            'same_repo': mr['source_project_id'] == mr['target_project_id'],
+            'landed_sha': (mr.get('squash_commit_sha') or mr.get('merge_commit_sha') or mr['sha'])
+            if state == 'merged' else None,
+            'auto_merge': bool(mr.get('merge_when_pipeline_succeeds') or mr.get('auto_merge_enabled')),
+            'squash': mr.get('squash'),
+        }
+
+    def get(self, number: int) -> Req:
+        return self.norm(self.api(f'projects/:id/merge_requests/{number}'))
+
+    def list_open(self) -> list[Req]:
+        return [self.norm(mr) for mr in self.pages('projects/:id/merge_requests?state=opened')]
+
+    def search_merged(self, text: str) -> list[Req]:
+        found = self.api('projects/:id/merge_requests?state=merged&order_by=updated_at&per_page=20'
+                         f'&search={urllib.parse.quote(text)}')
+        return [self.norm(mr) for mr in found or []]
+
+    def heads(self, req: Req) -> list[str]:
+        versions = self.pages(f"projects/:id/merge_requests/{req['number']}/versions")
+        return [v['head_commit_sha'] for v in versions]
+
+    def progress(self, number: int) -> tuple[str, bool]:
+        mr = self.api(f'projects/:id/merge_requests/{number}')
+        status = (mr.get('head_pipeline') or {}).get('status')
+        ci = {'success': 'success', 'running': 'running', 'pending': 'running', 'created': 'running',
+              'failed': 'failed', 'canceled': 'failed'}.get(status, 'none' if status is None else 'running')
+        return ci, self.norm(mr)['auto_merge']
+
+    def gates(self, req: Req) -> dict[str, Any]:
+        mr = self.api(f"projects/:id/merge_requests/{req['number']}")
+        approvals = self.api(f"projects/:id/merge_requests/{req['number']}/approvals")
+        ci, _ = self.progress(req['number'])
+        status = mr.get('detailed_merge_status')
+        blockers = []
+        if req['state'] != 'open':
+            blockers.append(f"state is {req['state']}")
+        if req['draft']:
+            blockers.append('draft')
+        if ci in ('failed', 'none'):
+            blockers.append(f'head pipeline is {"failed" if ci == "failed" else "missing"}')
+        if not approvals.get('approved'):
+            blockers.append(f"{approvals.get('approvals_left')} approval(s) still required")
+        if status not in ('mergeable', 'need_rebase', 'ci_still_running', 'ci_must_pass', 'checking', 'unchecked'):
+            blockers.append(f'detailed_merge_status is {status}')
+        return {
+            'state': req['state'], 'merge_status': status, 'needs_rebase': status == 'need_rebase',
+            'ci': ci, 'approved': approvals.get('approved'),
+            'approved_by': [a['user']['username'] for a in approvals.get('approved_by', [])],
+            'blockers': blockers,
+        }
+
+    def retarget(self, number: int, branch: str) -> None:
+        run(['glab', 'mr', 'update', str(number), '--target-branch', branch])
+
+    def settings(self) -> dict[str, Any]:
+        p = self.api('projects/:id')
+        warnings = []
+        if p.get('squash_option') == 'never':
+            warnings.append('squash_option is never: merging cannot produce one commit per MR')
+        if p.get('merge_method') == 'merge':
+            warnings.append('merge_method is merge: every MR also adds a merge commit')
+        return {'default_branch': p['default_branch'], 'squash_option': p.get('squash_option'),
+                'merge_method': p.get('merge_method'),
+                'delete_branch_on_merge': p.get('remove_source_branch_after_merge'), 'warnings': warnings}
+
+
+class GitHub:
+    name = 'github'
+    prefix = '#'
+    number_re = r'/pull/(\d+)'
+
+    def api(self, path: str) -> Any:
+        return json.loads(run(['gh', 'api', path]).stdout or 'null')
+
+    def norm(self, pr: dict[str, Any]) -> Req:
+        merged = bool(pr.get('merged_at'))
+        head_repo = (pr['head'].get('repo') or {}).get('full_name')
+        return {
+            'number': pr['number'], 'title': pr['title'], 'author': pr['user']['login'],
+            'url': pr['html_url'], 'source_branch': pr['head']['ref'], 'target_branch': pr['base']['ref'],
+            'sha': pr['head']['sha'], 'state': 'merged' if merged else pr['state'],
+            'draft': bool(pr.get('draft')), 'same_repo': head_repo == pr['base']['repo']['full_name'],
+            'landed_sha': (pr.get('merge_commit_sha') or pr['head']['sha']) if merged else None,
+            'auto_merge': bool(pr.get('auto_merge')), 'squash': None,
+            'repo': pr['base']['repo']['full_name'],
+        }
+
+    def get(self, number: int) -> Req:
+        return self.norm(self.api(f'repos/{{owner}}/{{repo}}/pulls/{number}'))
+
+    def list_open(self) -> list[Req]:
+        out = run(['gh', 'api', '--paginate', '--slurp', 'repos/{owner}/{repo}/pulls?state=open&per_page=100']).stdout
+        return [self.norm(pr) for page in json.loads(out or '[]') for pr in page]
+
+    def search_merged(self, text: str) -> list[Req]:
+        found = self.api('repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=50')
+        return [self.norm(pr) for pr in found or [] if pr.get('merged_at')]
+
+    def heads(self, req: Req) -> list[str]:
+        owner, name = req['repo'].split('/', 1)
+        query = ('query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){'
+                 'pullRequest(number:$n){commits(last:100){nodes{commit{oid}}}'
+                 'timelineItems(itemTypes:[HEAD_REF_FORCE_PUSHED_EVENT],first:100){nodes{'
+                 '... on HeadRefForcePushedEvent{beforeCommit{oid} afterCommit{oid}}}}}}}')
+        out = run(['gh', 'api', 'graphql', '-f', f'query={query}', '-f', f'owner={owner}',
+                   '-f', f'name={name}', '-F', f"n={req['number']}"]).stdout
+        pr = json.loads(out)['data']['repository']['pullRequest']
+        shas = [n['commit']['oid'] for n in pr['commits']['nodes']]
+        for event in pr['timelineItems']['nodes']:
+            shas += [(event.get('beforeCommit') or {}).get('oid'), (event.get('afterCommit') or {}).get('oid')]
+        return [s for s in shas if s]
+
+    def view(self, number: int, repo: str) -> dict[str, Any]:
+        fields = 'state,isDraft,mergeStateStatus,reviewDecision,statusCheckRollup,autoMergeRequest'
+        view = json.loads(run(['gh', 'pr', 'view', str(number), '--json', fields]).stdout)
+        owner, name = repo.split('/', 1)
+        query = ('query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){'
+                 'pullRequest(number:$n){isInMergeQueue}}}')
+        out = run(['gh', 'api', 'graphql', '-f', f'query={query}', '-f', f'owner={owner}',
+                   '-f', f'name={name}', '-F', f'n={number}']).stdout
+        view['isInMergeQueue'] = json.loads(out)['data']['repository']['pullRequest']['isInMergeQueue']
+        return view
+
+    @staticmethod
+    def ci_of(view: dict[str, Any]) -> str:
+        failed, pending = False, False
+        for check in view.get('statusCheckRollup') or []:
+            if check.get('status') not in (None, 'COMPLETED') or check.get('state') in ('PENDING', 'EXPECTED'):
+                pending = True
+            if check.get('conclusion') in ('FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED',
+                                           'STARTUP_FAILURE') or check.get('state') in ('FAILURE', 'ERROR'):
+                failed = True
+        if failed:
+            return 'failed'
+        if pending:
+            return 'running'
+        return 'success' if view.get('statusCheckRollup') else 'none'
+
+    def progress(self, number: int) -> tuple[str, bool]:
+        view = self.view(number, self.get(number)['repo'])
+        return self.ci_of(view), bool(view.get('autoMergeRequest') or view.get('isInMergeQueue'))
+
+    def gates(self, req: Req) -> dict[str, Any]:
+        view = self.view(req['number'], req['repo'])
+        ci = self.ci_of(view)
+        merge_state = view.get('mergeStateStatus')
+        decision = view.get('reviewDecision')
+        blockers = []
+        if req['state'] != 'open':
+            blockers.append(f"state is {req['state']}")
+        if req['draft']:
+            blockers.append('draft')
+        if ci == 'failed':
+            blockers.append('checks are failing')
+        if decision in ('REVIEW_REQUIRED', 'CHANGES_REQUESTED'):
+            blockers.append(f'review decision is {decision}')
+        if merge_state == 'DIRTY':
+            blockers.append('merge conflicts with the base branch')
+        return {
+            'state': req['state'], 'merge_status': merge_state, 'needs_rebase': merge_state == 'BEHIND',
+            'ci': ci, 'approved': decision == 'APPROVED' if decision else None,
+            'review_decision': decision, 'in_merge_queue': bool(view.get('isInMergeQueue')),
+            'blockers': blockers,
+        }
+
+    def retarget(self, number: int, branch: str) -> None:
+        run(['gh', 'pr', 'edit', str(number), '--base', branch])
+
+    def settings(self) -> dict[str, Any]:
+        r = self.api('repos/{owner}/{repo}')
+        warnings = []
+        if not r.get('allow_squash_merge'):
+            warnings.append('squash merging is disabled: merging cannot produce one commit per PR')
+        return {'default_branch': r['default_branch'], 'allow_squash_merge': r.get('allow_squash_merge'),
+                'delete_branch_on_merge': r.get('delete_branch_on_merge'), 'warnings': warnings}
+
+
+def make_forge(name: str | None) -> GitLab | GitHub:
+    if not name:
+        url = git('remote', 'get-url', REMOTE)
+        host = (re.match(r'^[a-z+]+://(?:[^@/]+@)?([^/:]+)', url) or re.match(r'^(?:[^@]+@)?([^:/]+):', url))
+        host = host.group(1).lower() if host else ''
+        if 'gitlab' in host:
+            name = 'gitlab'
+        elif 'github' in host:
+            name = 'github'
+        elif run(['gh', 'repo', 'view', '--json', 'name'], check=False).returncode == 0:
+            name = 'github'
+        elif run(['glab', 'repo', 'view'], check=False).returncode == 0:
+            name = 'gitlab'
+        else:
+            raise Failure(f'cannot tell the forge for {url}; pass --forge gitlab|github')
+    return GitLab() if name == 'gitlab' else GitHub()
+
+
+# ---------------------------------------------------------------- request lookup
+
+def resolve(forge: GitLab | GitHub, arg: str) -> int:
+    arg = arg.strip()
+    m = re.search(forge.number_re, arg) or re.fullmatch(r'[!#]?(\d+)', arg)
+    if m:
+        return int(m.group(1))
+    opened = forge.list_open()
+    exact = [r for r in opened if r['source_branch'] == arg]
+    if exact:
+        return exact[0]['number']
+    key = arg.lower()
+
+    def matches(r: Req) -> bool:
+        return r['source_branch'].lower().startswith(key) or key in r['title'].lower()
+
+    fuzzy = [r for r in opened if matches(r)] or [r for r in forge.search_merged(arg) if matches(r)]
+    if len(fuzzy) == 1:
+        return fuzzy[0]['number']
+    if not fuzzy:
+        raise Failure(f'no open or recently merged request matches {arg!r}')
+    listing = ', '.join(f"{forge.prefix}{r['number']} ({r['state']}, {r['source_branch']})" for r in fuzzy)
+    raise Failure(f'{arg!r} is ambiguous: {listing}')
+
+
+def known_heads(forge: GitLab | GitHub, req: Req) -> list[str]:
+    """Every head the request's branch has had that exists locally, current first."""
+    return dedupe([req['sha'], *forge.heads(req)])
+
+
+# ---------------------------------------------------------------- plan
+
+def evil(merge: str) -> bool:
+    """A merge whose recorded result differs from a clean automatic merge; rebasing drops that resolution."""
+    return bool(git('show', '--remerge-diff', '--format=', merge))
+
+
+def cmd_plan(args: argparse.Namespace) -> dict[str, Any]:
+    forge = args.forge
+    fetch()
+    root = forge.get(resolve(forge, args.request))
+    root_heads = known_heads(forge, root)
+    opened = [r for r in forge.list_open() if r['number'] != root['number'] and r['same_repo']]
+    by_branch = {r['source_branch']: r for r in opened}
+    target_ref = f"refs/remotes/{REMOTE}/{root['target_branch']}"
+
+    def containing(sha: str) -> set[str]:
+        if is_ancestor(sha, target_ref):
+            return set()
+        out = git('for-each-ref', '--contains', sha, '--format=%(refname)', f'refs/remotes/{REMOTE}')
+        prefix = f'refs/remotes/{REMOTE}/'
+        return {ref[len(prefix):] for ref in out.splitlines() if ref.startswith(prefix)}
+
+    # Fixpoint: anything containing a known head or targeting a known branch is stacked.
+    members: dict[int, Req] = {}
+    heads: dict[int, list[str]] = {root['number']: root_heads}
+    sources = {root['number']: root['source_branch']}
+    frontier = [root['number']]
+    while frontier:
+        number = frontier.pop()
+        found: set[str] = set()
+        for sha in heads[number]:
+            found |= containing(sha)
+        found |= {r['source_branch'] for r in opened if r['target_branch'] == sources[number]}
+        for branch in sorted(found):
+            req = by_branch.get(branch)
+            if req and req['number'] not in members:
+                members[req['number']] = req
+                heads[req['number']] = known_heads(forge, req)
+                sources[req['number']] = branch
+                frontier.append(req['number'])
+
+    def tip(req: Req) -> str:
+        return git('rev-parse', f"refs/remotes/{REMOTE}/{req['source_branch']}")
+
+    def candidates(req: Req) -> list[int]:
+        own_tip = tip(req)
+        return [n for n, other in members.items()
+                if n != req['number'] and own_tip not in heads[n]
+                and (req['target_branch'] == other['source_branch']
+                     or any(is_ancestor(sha, own_tip) and not is_ancestor(sha, target_ref) for sha in heads[n]))]
+
+    cands = {n: candidates(r) for n, r in members.items()}
+    depth: dict[int, int] = {}
+
+    def depth_of(number: int, stack: tuple[int, ...] = ()) -> int:
+        if number in stack:
+            raise Failure(f'cyclic stack between {forge.prefix}{number} and {forge.prefix}{stack[-1]}')
+        if number not in depth:
+            depth[number] = 1 + max((depth_of(c, stack + (number,)) for c in cands[number]), default=0)
+        return depth[number]
+
+    parent_of = {n: max(cands[n], key=lambda c: depth_of(c), default=root['number']) for n in members}
+
+    def chain(number: int) -> list[int]:
+        out = []
+        while number != root['number']:
+            number = parent_of[number]
+            out.append(number)
+        return out
+
+    dependents = []
+    for number in sorted(members, key=lambda n: (depth_of(n), n)):
+        req = members[number]
+        parent = parent_of[number]
+        exclude = sorted({sha for anc in chain(number) for sha in heads[anc]})
+        head = tip(req)
+        retarget = req['target_branch'] == root['source_branch'] and parent == root['number']
+        own = git('rev-list', '--no-merges', head, '--not', target_ref, *exclude)
+        merges = git('rev-list', '--merges', head, '--not', target_ref, *exclude)
+        dependents.append({
+            'number': number, 'ref': f'{forge.prefix}{number}',
+            'title': req['title'], 'author': req['author'], 'url': req['url'],
+            'source_branch': req['source_branch'], 'target_branch': req['target_branch'],
+            'target_if_merged': root['target_branch'] if retarget else req['target_branch'],
+            'parent': parent, 'head': head, 'heads': heads[number], 'exclude': exclude,
+            'own_commits': len(own.splitlines()),
+            'merge_commits': merges.splitlines(),
+            'evil_merges': [m for m in merges.splitlines() if evil(m)],
+        })
+
+    settings = forge.settings()
+    warnings = list(settings.pop('warnings'))
+    if root['state'] == 'open' and root['target_branch'] != settings['default_branch']:
+        warnings.append(f"{forge.prefix}{root['number']} targets {root['target_branch']}, not the default branch "
+                        f"{settings['default_branch']}: its squash lands on {root['target_branch']}, and the default "
+                        'branch gets one commit for that whole branch later')
+    if root['state'] == 'open' and not settings.get('delete_branch_on_merge'):
+        warnings.append('source branches are not deleted on merge: pass the remove-source-branch flag when merging')
+
+    plan = {
+        'forge': forge.name,
+        'repo_settings': settings,
+        'warnings': warnings,
+        'root': {
+            'number': root['number'], 'ref': f"{forge.prefix}{root['number']}", 'title': root['title'],
+            'url': root['url'], 'state': root['state'], 'source_branch': root['source_branch'],
+            'target_branch': root['target_branch'], 'sha': root['sha'], 'squash': root['squash'],
+            'heads': root_heads, 'gates': forge.gates(root),
+        },
+        'dependents': dependents,
+    }
+    Path(args.out).write_text(json.dumps(plan, indent=2) + '\n')
+    return plan
+
+
+# ---------------------------------------------------------------- wait
+
+def cmd_wait(args: argparse.Namespace) -> dict[str, Any]:
+    forge = args.forge
+    number = resolve(forge, args.request)
+    deadline = time.monotonic() + args.timeout
+    polls = 0
+    while True:
+        polls += 1
+        req = forge.get(number)
+        if req['state'] == 'merged':
+            return {'number': number, 'state': 'merged', 'landed_sha': req['landed_sha']}
+        if req['state'] == 'closed':
+            return {'number': number, 'state': 'closed'}
+        ci, auto_merge = forge.progress(number)
+        if ci == 'failed' or (polls > 3 and not auto_merge):
+            return {'number': number, 'state': 'stalled', 'ci': ci, 'auto_merge': auto_merge}
+        if time.monotonic() > deadline:
+            return {'number': number, 'state': 'timeout', 'ci': ci}
+        time.sleep(args.interval)
+
+
+# ---------------------------------------------------------------- restack
+
+def hunk_lines(commit: str) -> tuple[list[str], list[str]]:
+    """Sorted changed lines and the per-file change summary of one commit, independent of its base."""
+    lines: list[str] = []
+    in_hunk = False
+    for line in git('show', '--format=', '--no-color', '--no-ext-diff', '--no-renames', commit).splitlines():
+        if line.startswith('diff --git'):
+            in_hunk = False
+        elif line.startswith('@@'):
+            in_hunk = True
+        elif in_hunk and line[:1] in ('+', '-'):
+            lines.append(line)
+    files = git('show', '--format=', '--no-renames', '--numstat', commit).splitlines()
+    return sorted(lines), sorted(files)
+
+
+def binary_paths(commit: str) -> list[str]:
+    out = git('show', '--format=', '--no-renames', '--numstat', commit)
+    return [row.split('\t', 2)[2] for row in out.splitlines() if row.startswith('-\t-\t')]
+
+
+def restack_one(head: str, onto: str, exclude: list[str], allow_evil: bool = False) -> dict[str, Any]:
+    onto_sha = git('rev-parse', f'{onto}^{{commit}}')
+    excl = [sha for sha in exclude if has_commit(sha)]
+    old = git('rev-parse', head)
+    commits = git('rev-list', '--reverse', '--topo-order', '--no-merges', head, '--not', onto_sha, *excl).splitlines()
+    merges = git('rev-list', '--merges', head, '--not', onto_sha, *excl).splitlines()
+    evil_merges = [m for m in merges if evil(m)]
+    result: dict[str, Any] = {'ok': False, 'old': old, 'onto': onto_sha,
+                              'commits': len(commits), 'dropped_merges': merges, 'evil_merges': evil_merges}
+    # Already based on the new base with nothing foreign in between: leave the branch alone.
+    reachable = set(git('rev-list', head, '--not', onto_sha).splitlines())
+    own = set(git('rev-list', head, '--not', onto_sha, *excl).splitlines())
+    if is_ancestor(onto_sha, head) and reachable == own:
+        result.update(ok=True, new=old, up_to_date=True, picked=0, dropped_empty=[], content_mismatch=[])
+        return result
+    if evil_merges and not allow_evil:
+        result['error'] = 'merge commits carry hand-made resolutions that a rebase would drop'
+        return result
+    tmp = tempfile.mkdtemp(prefix='stack-restack-')
+    try:
+        git('worktree', 'add', '--quiet', '--detach', tmp, onto_sha)
+        picked, dropped, mismatched = [], [], []
+        for commit in commits:
+            before = git('rev-parse', 'HEAD', cwd=tmp)
+            proc = run(['git', *NO_HOOKS, '-c', 'rerere.enabled=false', 'cherry-pick', '--allow-empty', '--empty=drop', commit],
+                       cwd=tmp, check=False)
+            if proc.returncode != 0:
+                conflicts = git('diff', '--name-only', '--diff-filter=U', cwd=tmp, check=False).splitlines()
+                git('cherry-pick', '--abort', cwd=tmp, check=False)
+                subject = git('log', '-1', '--format=%s', commit)
+                # The same fix landing on both sides is the usual cause; name it so the report can say so.
+                upstream = git('log', '--format=%H\t%s', onto_sha, '--not', head, *excl).splitlines()
+                same_subject = [row.split('\t', 1)[0] for row in upstream if row.split('\t', 1)[-1] == subject]
+                result.update(error='conflict', conflict_commit=commit, conflict_subject=subject,
+                              conflict_files=conflicts, picked=len(picked),
+                              base_commits_with_same_subject=same_subject)
+                return result
+            after = git('rev-parse', 'HEAD', cwd=tmp)
+            if after == before:
+                dropped.append(commit)
+                continue
+            picked.append({'old': commit, 'new': after})
+            same_bins = all(git('rev-parse', '--verify', '-q', f'{commit}:{p}', check=False)
+                            == git('rev-parse', '--verify', '-q', f'{after}:{p}', check=False)
+                            for p in binary_paths(commit))
+            if hunk_lines(commit) != hunk_lines(after) or not same_bins:
+                mismatched.append(commit)
+        new = git('rev-parse', 'HEAD', cwd=tmp)
+        result.update(ok=not mismatched, new=new, picked=len(picked), dropped_empty=dropped,
+                      content_mismatch=mismatched, empty=new == onto_sha)
+        if mismatched:
+            result['error'] = 'replayed commits changed content'
+        return result
+    finally:
+        git('worktree', 'remove', '--force', tmp, check=False)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def cmd_restack_one(args: argparse.Namespace) -> dict[str, Any]:
+    return restack_one(args.head, args.onto, args.exclude, args.allow_evil_merges)
+
+
+def cmd_restack(args: argparse.Namespace) -> dict[str, Any]:
+    forge = args.forge
+    plan = json.loads(Path(args.plan).read_text())
+    root = plan['root']
+    fetch()
+    live = forge.get(root['number'])
+    if live['state'] == 'merged':
+        mode = 'merged'
+        base_ref = f"refs/remotes/{REMOTE}/{root['target_branch']}"
+        landed = live['landed_sha']
+        if not is_ancestor(landed, base_ref):
+            raise Failure(f'{landed} is not on {base_ref} yet; fetch again')
+        exclude_root = {sha for sha in set(root['heads']) | {live['sha']} if has_commit(sha)}
+    elif live['state'] == 'open':
+        # Parent not merged: dependents follow its current tip.
+        mode = 'open'
+        base_ref = f"refs/remotes/{REMOTE}/{live['source_branch']}"
+        if not git_ok('rev-parse', '--verify', '-q', base_ref):
+            raise Failure(f"{base_ref} does not exist on {REMOTE}")
+        exclude_root = {sha for sha in set(root['heads']) | {live['sha']} if has_commit(sha)}
+    else:
+        raise Failure(f"{forge.prefix}{root['number']} is {live['state']}; nothing to restack onto")
+    results: dict[int, dict[str, Any]] = {}
+    for dep in plan['dependents']:
+        number, parent = dep['number'], dep['parent']
+        new_target = dep['target_if_merged'] if mode == 'merged' else dep['target_branch']
+        res: dict[str, Any] = {'number': number, 'ref': dep['ref'], 'source_branch': dep['source_branch'],
+                               'new_target_branch': new_target}
+        current = git('rev-parse', f"refs/remotes/{REMOTE}/{dep['source_branch']}", check=False)
+        if parent != root['number'] and not results.get(parent, {}).get('ok'):
+            res.update(ok=False, error=f'parent {forge.prefix}{parent} was not restacked')
+        elif current != dep['head']:
+            res.update(ok=False, error=f"branch moved since plan ({dep['head'][:10]} -> {current[:10] or 'deleted'}); re-plan")
+        else:
+            onto = base_ref if parent == root['number'] else results[parent]['new']
+            res.update(restack_one(dep['head'], onto, sorted(set(dep['exclude']) | exclude_root), args.allow_evil_merges))
+            if res.get('ok'):
+                git('update-ref', f"refs/restack/{dep['source_branch']}", res['new'])
+                if mode == 'merged' and new_target == root['target_branch']:
+                    final_target = base_ref
+                elif parent in results:
+                    final_target = results[parent]['new']
+                else:
+                    final_target = f"refs/remotes/{REMOTE}/{new_target}"
+                clean = git_ok('merge-tree', '--write-tree', '--quiet', final_target, res['new'])
+                res['merges_cleanly_into'] = {'ref': new_target, 'clean': clean}
+                if not clean:
+                    res.update(ok=False, error=f"restacked branch conflicts with {new_target}")
+        results[number] = res
+    plan['mode'] = mode
+    plan['restack'] = list(results.values())
+    Path(args.plan).write_text(json.dumps(plan, indent=2) + '\n')
+    return {'mode': mode, 'restack': plan['restack']}
+
+
+# ---------------------------------------------------------------- publish
+
+def cmd_publish(args: argparse.Namespace) -> dict[str, Any]:
+    forge = args.forge
+    plan = json.loads(Path(args.plan).read_text())
+    deps = {d['number']: d for d in plan['dependents']}
+    out = []
+    pushed: set[int] = set()
+    for res in plan.get('restack', []):
+        dep = deps[res['number']]
+        entry: dict[str, Any] = {'number': dep['number'], 'ref': dep['ref'], 'source_branch': dep['source_branch']}
+        parent = dep['parent']
+        if not res.get('ok'):
+            entry['skipped'] = res.get('error', 'restack failed')
+        elif parent != plan['root']['number'] and parent not in pushed:
+            entry['skipped'] = f"parent {forge.prefix}{parent} was not published"
+        elif args.only and dep['number'] not in args.only:
+            entry['skipped'] = 'not selected'
+        else:
+            branch, old, new = dep['source_branch'], res['old'], res['new']
+            if res.get('up_to_date'):
+                pushed.add(dep['number'])
+                entry['skipped'] = 'already based on the new base'
+            else:
+                git('update-ref', f'refs/restack-backup/{branch}', old)
+                proc = run(['git', 'push', '--quiet', f'--force-with-lease=refs/heads/{branch}:{old}',
+                            REMOTE, f'{new}:refs/heads/{branch}'], check=False)
+                if proc.returncode != 0:
+                    entry['error'] = f'push rejected: {proc.stderr.strip()}'
+                    out.append(entry)
+                    continue
+                pushed.add(dep['number'])
+                entry.update(pushed=True, old=old, new=new, backup_ref=f'refs/restack-backup/{branch}')
+            live = forge.get(dep['number'])
+            if live['target_branch'] != res['new_target_branch']:
+                forge.retarget(dep['number'], res['new_target_branch'])
+                entry['retargeted'] = f"{live['target_branch']} -> {res['new_target_branch']}"
+        out.append(entry)
+    return {'publish': out}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument('--forge', choices=['gitlab', 'github'], help='default: detect from the origin URL')
+    sub = parser.add_subparsers(dest='cmd', required=True)
+    p = sub.add_parser('plan', parents=[common])
+    p.add_argument('request')
+    p.add_argument('--out', required=True)
+    p.set_defaults(fn=cmd_plan)
+    p = sub.add_parser('wait', parents=[common])
+    p.add_argument('request')
+    p.add_argument('--timeout', type=int, default=3000)
+    p.add_argument('--interval', type=int, default=30)
+    p.set_defaults(fn=cmd_wait)
+    p = sub.add_parser('restack', parents=[common])
+    p.add_argument('--plan', required=True)
+    p.add_argument('--allow-evil-merges', action='store_true')
+    p.set_defaults(fn=cmd_restack)
+    p = sub.add_parser('publish', parents=[common])
+    p.add_argument('--plan', required=True)
+    p.add_argument('--only', type=int, nargs='*', help='publish only these request numbers')
+    p.set_defaults(fn=cmd_publish)
+    p = sub.add_parser('restack-one')
+    p.add_argument('--head', required=True)
+    p.add_argument('--onto', required=True)
+    p.add_argument('--exclude', nargs='*', default=[])
+    p.add_argument('--allow-evil-merges', action='store_true')
+    p.set_defaults(fn=cmd_restack_one)
+    args = parser.parse_args()
+    try:
+        if args.cmd != 'restack-one':
+            args.forge = make_forge(args.forge)
+        print(json.dumps(args.fn(args), indent=2))
+        return 0
+    except Failure as exc:
+        print(json.dumps({'error': str(exc)}, indent=2))
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
