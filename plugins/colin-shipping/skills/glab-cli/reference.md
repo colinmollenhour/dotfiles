@@ -240,7 +240,20 @@ cd /path/to/repo && glab api /markdown -X POST -f gfm=true -f project=<group>/<r
 
 Note the asymmetry that makes `full_path` tempting: GitLab *emits* `/-/project/<id>/uploads/...` as the resolved absolute URL, so it looks like the canonical form. It is an output, not an input — authored as a relative markdown path it gets resolved against the repository instead.
 
-Do **not** try to validate an upload URL with `curl -H "PRIVATE-TOKEN: ..."`. Upload routes are served to browser **sessions**, not API tokens; you will get a 302 or the login HTML regardless of whether the file exists. That is a misleading signal — use the markdown render instead.
+Do **not** try to validate or download an upload URL with `curl -H "PRIVATE-TOKEN: ..."`. Upload routes are served to browser **sessions**, not API tokens; you will get a 302 or the login HTML regardless of whether the file exists. That is a misleading signal — use the markdown render instead.
+
+#### Download an existing upload (view an MR's screenshots)
+
+Uploads cannot be fetched with `curl` and a token, but the **API can**: `GET /projects/:id/uploads/:secret/:filename` returns the raw file. Take `<secret>` and `<filename>` from the `/uploads/<secret>/<filename>` path in the description or note, and use the numeric project ID (`glab api projects/<group>%2F<repo> | jq .id`).
+
+```bash
+# Run from INSIDE the repo (see the host note above), then Read the file to view it.
+cd /path/to/repo
+glab api projects/<id>/uploads/<secret>/<filename> > /abs/out/<filename>
+# .webp is not viewable by Read: dwebp in.webp -o out.png
+```
+
+**A `404 Project Not Found` from this call almost always means you ran it outside the repo** (glab fell back to gitlab.com), not that the upload is missing or the API lacks the endpoint. Fix the working directory before trying anything else, and never conclude that MR images cannot be fetched from a failed `curl` or a 302.
 
 Images render inline; archives and other files render as attachment links. Never echo a token into command output.
 

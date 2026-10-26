@@ -43,7 +43,7 @@ glab api "projects/:fullpath/merge_requests/<iid>/discussions?per_page=100"  # p
 - **`-f` is not file upload.** `-f description=@body.md` sends the literal string `@body.md`. Use `--input` + `Content-Type: application/json` for raw JSON bodies, `--form "file=@path"` for multipart uploads.
 - Long MR descriptions: create MR, then PUT description via API JSON (`ship-mr.ts` does this).
 - Upload embeds: use response `markdown` / `url` fields — **never** `full_path` (breaks rendering). Verify with `glab api /markdown` from inside the repo.
-- Do not validate upload URLs with `PRIVATE-TOKEN` curl (session-only routes).
+- Do not validate or download upload URLs with `PRIVATE-TOKEN` curl (session-only routes; you get a 302 to sign-in). To **download** an MR image: `cd <repo> && glab api projects/<numeric-id>/uploads/<secret>/<file> > out` (see reference.md). A `404 Project Not Found` means glab ran outside the repo, not that the file is missing.
 
 ## Inline discussions
 
