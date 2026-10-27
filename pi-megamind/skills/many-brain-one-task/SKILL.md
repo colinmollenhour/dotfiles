@@ -29,7 +29,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    Repeated `--append` is cumulative. Discovery outputs also get [roles/issue-form.md](roles/issue-form.md) automatically (skipped for merits).
    Role templates for ultra: [roles/](roles/).
 4. **Write `plan.json`** with one entry per harness-owned slot (`opencode` / `occtl` / `grok`). Native Claude `Agent` slots use `harness: "external"` — launch those via the Agent tool yourself; still list them so harvest scores their `.out`. **On an OpenCode host there are no `external` slots**: every participant, Claude models included, is an `opencode` slot with a `colin-mbot-*` agent.
-5. **OpenCode preflight + launch + harvest.** Do **not** invoke `occtl` or `run-opencode.ts` from this skill — `mbot-run` owns both (occtl by default; run-opencode.ts only as an internal fallback).
+5. **OpenCode preflight + launch + harvest.** Do **not** invoke `occtl` or `run-opencode.ts` from this skill — `mbot-run` owns the transport. OpenCode 2 uses the `/api` HTTP API. OpenCode 1 uses occtl, with `run-opencode.ts` only as an internal fallback.
    ```bash
    # Optional explicit preflight (launch probes automatically when slots use opencode).
    # Default is an HTTP/binary probe; add --deep for a real model round trip.
@@ -46,16 +46,16 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    ```
    **OpenCode host:** `launch --detach` then `barrier` — a blocking launch dies with its occtl children when the 120s bash timeout fires. **Claude Code host:** blocking `launch` is fine; pass Bash `timeout: 1320000` (22 min).
    Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). `mbot-run` selects the server via `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` (already-set env wins over the attach URL) and does **not** pass `occtl --attach`. GPT OpenCode slots default `--variant high` and `--agent colin-mbot-gpt-sol`; **every other family must set `"agent"` and `"model"` on the slot** (`colin-mbot-opus` + `anthropic/claude-opus-5-5`, `colin-mbot-grok` + `xai/grok-4.7`, …). Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
-   Meta records `actual_harness`, `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and (Grok) `cost_usd`. Harvest salvages timed-out sessions via `occtl last` and **must not** overwrite per-slot `ended_at`.
+   Meta records `actual_harness`, `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and `cost_usd` (Grok JSON, or the OpenCode session cost on v2). Harvest salvages a timed-out session from its latest assistant message and **must not** overwrite per-slot `ended_at`.
 6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`. `mbot-run usage` talks to agentsview over `AGENTSVIEW_URL` (HTTP) when the CLI is not on PATH.
 
 ## OpenCode reliability (hard)
 
 1. **All flags before `--`** in every OpenCode invocation. After `--` is only the harness footer text.
-2. **Preflight before fan-out** — `launch` probes the attach server (`GET /config/providers`) or, locally, `opencode --version`; no model call unless `"smoke_deep": true`. Unreachable attach → local spawn; neither → OpenCode slots fail-closed (`opencode_mode=skip`). A slot whose attach run can't connect re-runs locally once (`meta.attach_fallback`) and later slots skip attach, unless `opencode_mode` is `attach`.
+2. **Preflight before fan-out** — `launch` probes the attach server (OpenCode 2: `GET /api/info` and `GET /api/model`; OpenCode 1: `GET /config/providers`) or, locally, `opencode --version`; no model call unless `"smoke_deep": true`. `/config/providers` on a v2 server is the web UI, not the catalog. Unreachable attach → local spawn; neither → OpenCode slots fail-closed (`opencode_mode=skip`). A slot whose attach run can't connect re-runs locally once (`meta.attach_fallback`) and later slots skip attach, unless `opencode_mode` is `attach`.
 3. **Never wait on `test -s empty.out`** and never `sleep N; rg VERDICT`. Use `mbot-run barrier`.
 4. **Cap attach concurrency** (default 3) to avoid shared-server stalls.
-5. **Pin model ids** from attach `/config/providers` when available (`openai/gpt-6.1-sol` preferred when listed).
+5. **Pin model ids** from the attach catalog (`/api/model` on v2, `/config/providers` on v1) when available (`openai/gpt-6.1-sol` preferred when listed).
 6. **OpenCode host `launch --detach`** (new process group). Wrapping a blocking launch in the default 120s bash tool kills the batch. Claude Code keeps blocking launch.
 
 ## Host harness routing (hard)

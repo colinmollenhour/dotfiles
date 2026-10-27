@@ -79,9 +79,13 @@ Check your tool surface — never assume.
 - `plan.json` `"attach": "http://127.0.0.1:4096"` (the bot serve already in
   `OPENCODE_SERVER_HOST`/`PORT`). Never retarget to the personal server (`:4095`,
   `100.110.251.42`, `seamus`), and never call `occtl` or `run-opencode.ts` directly.
-- List models through the bot serve (bare `opencode models` ignores attach):
+- List models through the bot serve (bare `opencode models` ignores attach). OpenCode 2 answers `GET /api/model` (HTTP Basic). `GET /config/providers` is that server's web UI. OpenCode 1 still answers `/config/providers`.
 
 ```bash
+# OpenCode 2
+curl -sS -u "opencode:$OPENCODE_SERVER_PASSWORD" "http://127.0.0.1:4096/api/model" \
+  | jq -r '.data[] | "\(.providerID)/\(.modelID)"'
+# OpenCode 1
 curl -sS "http://127.0.0.1:4096/config/providers" \
   | jq -r '.providers[] | .id as $p | .models | to_entries[] | "\($p)/\(.key)\t\(.value.name)"'
 ```

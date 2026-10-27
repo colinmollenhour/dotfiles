@@ -119,7 +119,7 @@ Do not call `occtl` or `run-opencode.ts` from this skill.
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
 | GPT | `colin-mbot-gpt-sol` | `openai/gpt-6.1-sol` |
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
-| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from attach `/config/providers` |
+| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 
 Never `--agent build` / `general`, and never omit `"variant"`. Do not use `claude-code/*` models for debater slots — that provider is the parent harness's, not a fan-out target.
 

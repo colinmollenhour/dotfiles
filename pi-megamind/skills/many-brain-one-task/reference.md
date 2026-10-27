@@ -64,7 +64,7 @@ The host harness (you, the one running this skill right now) limits which models
 | Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
-| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from attach `/config/providers` |
+| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 
 Do not hand-pick `build` or `general`. Fall back to a first-party CLI only when the profile pins one or the `colin-mbot-*` agent is not installed (`~/.opencode/agents/<name>.md`). Note that a containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — check `command -v` before planning a CLI route.
 
@@ -411,8 +411,9 @@ Launching a later phase plan (`plan-integration.json`, `plan-validate.json`) **m
 
 `mbot-run` picks the transport once during preflight:
 
-1. **`occtl run`** with `OPENCODE_SERVER_HOST`/`PORT` when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`. Do not pass `--attach` (missing on occtl 1.3.0).
-2. **`run-opencode.ts`** only if occtl is missing or too old.
+1. **OpenCode 2** (`GET /api/info`): `mbot-run` calls `/api/session` and reads models from `/api/model`. occtl 1.5 still posts to `/session`, which is the web UI on v2, so it is not the transport. A local run starts `opencode serve` and reads the password from that process.
+2. **OpenCode 1 `occtl run`** with `OPENCODE_SERVER_HOST`/`PORT` when `occtl --version` is ≥ `1.2.0`. Local mode uses `occtl run --spawn`. Do not pass `--attach` (missing on occtl 1.3.0).
+3. **`run-opencode.ts`** only if the server is v1 and occtl is missing or too old.
 
 Do not cache `OPENCODE_VIA` in the parent, do not `occtl ping` as a preflight, and do not load `occtl view-skill` for MBOT slots. Timeout recovery (`occtl last` after 124 / thin `.out`) is inside `launch` and `harvest`.
 

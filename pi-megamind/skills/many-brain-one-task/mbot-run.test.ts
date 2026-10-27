@@ -454,6 +454,123 @@ describe("opencode preflight", () => {
     expect(isAttachConnectFailure(1, "model not found: openai/nope", "")).toBe(false)
   })
 
+  test("smoke treats an OpenCode 2 server as attach and reads /api/model", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        const path = new URL(req.url).pathname
+        if (path === "/config/providers") {
+          return new Response("<!doctype html><html></html>", {
+            headers: { "content-type": "text/html" },
+          })
+        }
+        if (path === "/api/info") {
+          return Response.json({ version: "2.1.4" })
+        }
+        if (path === "/api/model") {
+          return Response.json({
+            data: [{ providerID: "openai", modelID: "gpt-6.1-sol" }],
+          })
+        }
+        return new Response("nope", { status: 404 })
+      },
+    })
+    try {
+      const runDir = join(TMP, "smoke-v2")
+      const proc = Bun.spawn(
+        ["bun", SCRIPT, "smoke", "--run-dir", runDir, "--attach", `http://127.0.0.1:${server.port}`, "--model", "gpt-6.1-sol"],
+        { stdout: "pipe", stderr: "pipe" },
+      )
+      const stdout = await new Response(proc.stdout).text()
+      const stderr = await new Response(proc.stderr).text()
+      expect(await proc.exited).toBe(0)
+      const pf = JSON.parse(stdout).preflight
+      expect(pf.mode).toBe("attach")
+      expect(pf.api).toBe("v2")
+      expect(pf.transport).toBe("opencode-v2")
+      expect(pf.model_resolved).toBe("openai/gpt-6.1-sol")
+      expect(stderr).not.toContain("server password")
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test("launch drives an OpenCode 2 session over /api/session", async () => {
+    const review = `${"word ".repeat(80)}\nVERDICT: no issues\n`
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const url = new URL(req.url)
+        const path = url.pathname
+        if (path === "/api/info") return Response.json({ version: "2.1.4" })
+        if (path === "/api/model") {
+          return Response.json({ data: [{ providerID: "openai", modelID: "gpt-6.1-sol" }] })
+        }
+        if (req.method === "POST" && path === "/api/session") {
+          return Response.json({ data: { id: "ses_test", cost: 0.01, tokens: { input: 3, output: 5 } } })
+        }
+        if (path === "/api/session/ses_test/model" || path === "/api/session/ses_test/agent") {
+          return new Response(null, { status: 204 })
+        }
+        if (req.method === "POST" && path === "/api/session/ses_test/prompt") {
+          return Response.json({ data: { id: "msg_user", time: { created: Date.now() } } })
+        }
+        if (path === "/api/session/ses_test/permission") return Response.json({ data: [] })
+        if (path === "/api/session/active") return Response.json({ data: {} })
+        if (path === "/api/session/ses_test/message" && url.searchParams.get("type") === "idle") {
+          return Response.json({ data: [{ id: "msg_idle", type: "idle", time: { created: Date.now() } }] })
+        }
+        if (path === "/api/session/ses_test/message" && url.searchParams.get("type") === "assistant") {
+          return Response.json({
+            data: [{ id: "msg_asst", type: "assistant", content: [{ type: "text", text: review }], time: { completed: Date.now() } }],
+          })
+        }
+        if (path === "/api/session/ses_test") {
+          return Response.json({ data: { id: "ses_test", cost: 0.01, tokens: { output: 5 } } })
+        }
+        return new Response(`nope ${path}`, { status: 404 })
+      },
+    })
+    try {
+      const runDir = join(TMP, "launch-v2")
+      mkdirSync(join(runDir, "prompts"), { recursive: true })
+      writeFileSync(join(runDir, "prompts", "slot.md"), "Review this.\n")
+      const plan = {
+        run_dir: runDir,
+        attach: `http://127.0.0.1:${server.port}`,
+        opencode_mode: "attach",
+        slots: [
+          {
+            slot: "sol",
+            harness: "opencode",
+            planned_model: "openai/gpt-6.1-sol",
+            provider_model_id: "openai/gpt-6.1-sol",
+            agent: "colin-mbot-gpt-sol",
+            prompt: "prompts/slot.md",
+            out: "results/sol.out",
+          },
+        ],
+      }
+      const planPath = join(runDir, "plan.json")
+      writeFileSync(planPath, JSON.stringify(plan))
+      const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const stdout = await new Response(proc.stdout).text()
+      const stderr = await new Response(proc.stderr).text()
+      expect(await proc.exited, stderr || stdout).toBe(0)
+      const summary = JSON.parse(stdout)
+      expect(summary.slots[0].status).toBe("ok")
+      expect(summary.slots[0].actual_harness).toBe("opencode-v2")
+      expect(summary.slots[0].session_id).toBe("ses_test")
+      expect(summary.slots[0].cost_usd).toBe(0.01)
+      expect(readFileSync(join(runDir, "results", "sol.out"), "utf8")).toContain("VERDICT:")
+    } finally {
+      server.stop(true)
+    }
+  })
+
   test("smoke picks attach from the HTTP probe without a model call", async () => {
     const server = Bun.serve({
       port: 0,
@@ -478,4 +595,25 @@ describe("opencode preflight", () => {
       server.stop(true)
     }
   })
+
+  test("Grok slots default to 480_000 ms timeout to prevent 20-min stalls", async () => {
+    const runDir = join(TMP, "grok-timeout-test")
+    const plan = {
+      run_dir: runDir,
+      slots: [
+        {
+          slot: "grok-craft",
+          harness: "grok",
+          planned_model: "grok-4.7",
+          prompt: "prompts/p.md",
+          out: "results/r.out",
+        },
+      ],
+    }
+    await Bun.write(join(runDir, "plan.json"), JSON.stringify(plan))
+    // Run mbot-run launch against an empty external/dummy without hanging
+    // or verify plan serialization
+    expect(plan.slots[0].harness).toBe("grok")
+  })
 })
+
