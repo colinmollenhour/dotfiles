@@ -44,6 +44,7 @@ everything, and the adversarial pass after them did the real filtering. Once per
    or lack of consensus. No nested subagents.
 4. If an adjudicator rejects ≥90% or confirms 100% of a batch of 8+, re-check its medium-and-above
    verdicts yourself against the source and record each override. Do not add another fleet pass.
+5. **Convergence early exit:** If Round 1 confirms 0 high or critical severity issues (only low-severity or clean), stop immediately and publish findings. Do not launch Round 2 or Round 3.
 
 Model comparison "Confirmed" / "Rejected" come from adjudication; list adjudication slots as
 auxiliary in run accounting, with wall and cost.
@@ -73,13 +74,18 @@ Check your tool surface — never assume.
 - GPT goes through `openai`, not OpenCode Zen.
 - `claude-code/opus` is the parent harness model — never a participant.
 - `"concurrency": 3` (4 max): all slots, and an OpenCode parent, share one server. Wall-clock
-  20 min per slot (`--timeout-ms 1200000`).
+  20 min per slot (`--timeout-ms 1200000`). Grok slots are capped at 8 min (`--timeout-ms 480000`);
+  if Grok returns empty output or times out at minute 8, fail over immediately to Opus 5.5 rather than retrying on Grok.
 - `plan.json` `"attach": "http://127.0.0.1:4096"` (the bot serve already in
   `OPENCODE_SERVER_HOST`/`PORT`). Never retarget to the personal server (`:4095`,
-  `100.110.251.42`, `seamus`), and never call `occtl` or `run-opencode.ts` directly.
-- List models through the bot serve (bare `opencode models` ignores attach):
+  `100.110.251.42`, `seamus`). `mbot-run` speaks `/session` on this OpenCode 1 server. Do not shell out to `opencode`.
+- List models through the bot serve (bare `opencode models` ignores attach). OpenCode 2 answers `GET /api/model` (HTTP Basic). `GET /config/providers` is that server's web UI. OpenCode 1 still answers `/config/providers`.
 
 ```bash
+# OpenCode 2
+curl -sS -u "opencode:$OPENCODE_SERVER_PASSWORD" "http://127.0.0.1:4096/api/model" \
+  | jq -r '.data[] | "\(.providerID)/\(.modelID)"'
+# OpenCode 1
 curl -sS "http://127.0.0.1:4096/config/providers" \
   | jq -r '.providers[] | .id as $p | .models | to_entries[] | "\($p)/\(.key)\t\(.value.name)"'
 ```

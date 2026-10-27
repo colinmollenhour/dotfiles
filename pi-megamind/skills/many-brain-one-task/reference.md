@@ -47,7 +47,7 @@ The host harness (you, the one running this skill right now) limits which models
 | Pi          | any other model family    | Follow the profile's requested CLI/harness. If unspecified in the Pi package, use Pi itself as the participant. |
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to **`botctl prompt`** (via `botctl-prompt` skill) or the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
 | Claude Code | Grok                     | `grok` CLI (preferred). OpenCode `colin-mbot-grok` only if `grok` is missing/unauthenticated or the profile forces OpenCode. See [Grok](#grok). |
-| Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll `occtl` / `run-opencode.ts`.                       |
+| Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll an OpenCode client.                                |
 | OpenCode    | Claude (Opus/Sonnet/Fable/Haiku) | `mbot-run` OpenCode slot with the matching `colin-mbot-*` agent. Shell out to `botctl prompt` / `claude` CLI **only** when the profile pins a first-party CLI or no Claude `colin-mbot-*` agent is installed. |
 | OpenCode    | Grok                     | `mbot-run` OpenCode slot, agent `colin-mbot-grok`. `grok` CLI only when the profile pins it (and the CLI is present). See [Grok](#grok). |
 | OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults `--variant high` and `--agent colin-mbot-gpt-sol`). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
@@ -64,7 +64,7 @@ The host harness (you, the one running this skill right now) limits which models
 | Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
-| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from attach `/config/providers` |
+| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 
 Do not hand-pick `build` or `general`. Fall back to a first-party CLI only when the profile pins one or the `colin-mbot-*` agent is not installed (`~/.opencode/agents/<name>.md`). Note that a containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — check `command -v` before planning a CLI route.
 
@@ -119,7 +119,7 @@ Profiles may include an attach directive instructing every OpenCode invocation t
 
 **Password:** optional. Put it on the plan (`"password"`) or in `OPENCODE_SERVER_PASSWORD`.
 
-**Plumbing the directive:** put `attach` on `plan.json` (e.g. `"attach": "http://127.0.0.1:4096"`) so `mbot-run` stays in attach mode and does not `--spawn`. Server selection is `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`: already-set env wins; otherwise mbot-run fills them from the attach URL. It does **not** pass `occtl --attach` (missing on occtl 1.3.0; env works on 1.3 and 1.5+). Do not invoke `occtl` / `run-opencode.ts` from the parent session.
+**Plumbing the directive:** put `attach` on `plan.json` (e.g. `"attach": "http://127.0.0.1:4096"`) so `mbot-run` stays in attach mode and does not start a local `opencode serve`. Already-set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` win over that URL; otherwise `mbot-run` dials the attach URL. Do not drive the server from the parent session.
 
 ### Resolving OpenCode model names
 
@@ -393,14 +393,14 @@ Use this only when `botctl` is unavailable or the profile explicitly requires he
 
 ### OpenCode
 
-The parent session never invokes `occtl`, `opencode`, or `run-opencode.ts` for MBOT/MBOD slots. Write a `plan.json` with `harness: "opencode"` (or `"occtl"` — same path) and run:
+The parent session never shells out to `opencode` for MBOT/MBOD slots. Write a `plan.json` with `harness: "opencode"` (or `"occtl"`, the same path; `actual_harness` is `opencode-v1` or `opencode-v2`) and run:
 
 ```bash
 # Claude Code host (blocking launch — give Bash timeout: 1320000):
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
 
-# OpenCode host — MUST detach (120s bash timeout otherwise kills occtl children):
+# OpenCode host — MUST detach (120s bash timeout otherwise kills the child `opencode serve`):
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json --detach
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id> --timeout-ms 1200000
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
@@ -409,16 +409,14 @@ bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" candidates --run-dir .tmp/<run-id>
 
 Launching a later phase plan (`plan-integration.json`, `plan-validate.json`) **merges** those slots into `plan.json`. It does not replace prior slots. Prompt/out may be `prompts/x.md` (relative to `run_dir`) or repo-relative `.tmp/<id>/prompts/x.md`; `mbot-run` strips a duplicated run-dir prefix. Always set `project_dir` to the repo root (inferred when `run_dir` is `<repo>/.tmp/<id>`).
 
-`mbot-run` picks the transport once during preflight:
+`mbot-run` picks the HTTP API once during preflight:
 
-1. **`occtl run`** with `OPENCODE_SERVER_HOST`/`PORT` when `occtl --version` is ≥ `1.2.0` (HTTP API, session sidecar, timeout salvage). Local mode uses `occtl run --spawn`. Do not pass `--attach` (missing on occtl 1.3.0).
-2. **`run-opencode.ts`** only if occtl is missing or too old.
+1. **OpenCode 2** when `GET /api/info` is JSON: `/api/session` and models from `/api/model`. A local run starts `opencode serve` and reads the password from that process.
+2. **OpenCode 1** when `GET /config/providers` is JSON (and `/api/info` is the web UI): `POST /session` and `POST /session/{id}/prompt_async`. The same local `opencode serve` is ready when that catalog answers, with no password.
 
-Do not cache `OPENCODE_VIA` in the parent, do not `occtl ping` as a preflight, and do not load `occtl view-skill` for MBOT slots. Timeout recovery (`occtl last` after 124 / thin `.out`) is inside `launch` and `harvest`.
+Do not cache a transport choice in the parent and do not preflight the server yourself. Timeout recovery (read the latest assistant message after a thin `.out`) is inside `launch` and `harvest`.
 
-Default OpenCode wall-clock: **20 minutes** (`timeout_ms: 1200000` on the plan). `mbot-run` kills the child 2 minutes after that. If you ever wrap a **blocking** `mbot-run launch` in the host Bash tool, give Bash **22 minutes** (`timeout: 1320000`) so sidecars flush. On OpenCode, do not wrap a blocking launch at all — use `--detach` (new process group) then `barrier`. `setsid`/`nohup` from the parent is obsolete.
-
-`occtl run --timeout` is **milliseconds**. Other occtl commands (`send`, `stream`, `wait-for-idle`) take **seconds**. That mismatch is why the parent must not call occtl itself.
+Default OpenCode wall-clock: **20 minutes** (`timeout_ms: 1200000` on the plan). `mbot-run` stops the session after that. If you ever wrap a **blocking** `mbot-run launch` in the host Bash tool, give Bash **22 minutes** (`timeout: 1320000`) so sidecars flush. On OpenCode, do not wrap a blocking launch at all — use `--detach` (new process group) then `barrier`. `setsid`/`nohup` from the parent is obsolete.
 
 Exit **124** with a rich body (VERDICT / ISSUE / `BEGIN_MBOD_JSON` / ≥2KB) is **success**. Harvest records `recovered: true` when it salvaged the body from the session after a timeout.
 
@@ -489,7 +487,7 @@ Read results only from the persisted files under `.tmp/<run-id>/results/`; this 
 
 **Attribution:** per-model tables, Unique/Shared columns, and validation credit use `meta.actual_model` (or the updated plan entry), never the model token in a filename alone. Report every reassignment as `planned → actual` with paths. Flag any basename model ≠ `actual_model` mismatch in run accounting.
 
-**Thin `.out` recovery (OpenCode):** do not hand-roll `occtl last`. `mbot-run harvest` already salvages from `<out>.session` (abort leftover sessions, then `occtl last`). If `meta.recovered` is true and the body is rich, count the slot complete.
+**Thin `.out` recovery (OpenCode):** do not read the session yourself. `mbot-run harvest` already loads the latest assistant message for `<out>.session`. If `meta.recovered` is true and the body is rich, count the slot complete.
 
 Write `run-summary.json` with participant outcomes, planned vs actual models, prompt/output paths, candidate counts, reassignments, clobber/recovery events, and any task-specific validation results. Then apply the user's finalizing steps. Unless directed otherwise, aggregate findings, scrutinize evidence, compare models, and report both unique signal and false positives. Preserve raw outputs; never replace them with only the aggregate summary.
 

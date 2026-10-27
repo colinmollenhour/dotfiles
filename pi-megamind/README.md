@@ -113,6 +113,6 @@ flowchart TD
 
 ## Notes
 
-This package intentionally preserves the source workflow text closely. The MBOT/MBOD skills still mention Claude Code, OpenCode, `occtl`, `claude`, and `codex` routing because Megamind can still use those external CLIs/harnesses when explicitly requested. The packaged default route is Pi.
+This package intentionally preserves the source workflow text closely. The MBOT/MBOD skills still mention Claude Code, OpenCode, `claude`, and `codex` routing because Megamind can still use those external CLIs/harnesses when explicitly requested. The packaged default route is Pi.
 
 Pi packages run with full system access through skills and any invoked helper scripts. Review the copied skill content before installing globally or publishing.

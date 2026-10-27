@@ -67,7 +67,7 @@ Grok CLI host: native `spawn_subagent`. Pi host with `pi-fast-subagent`: its `su
 
 **On an OpenCode host, keep every debater inside OpenCode.** Run all of them through `mbot-run` with a `colin-mbot-*` agent — Claude models included — rather than shelling out to `claude` / `botctl` / `grok`. One harness means one attach, one concurrency cap, one harvest path, and uniform cost accounting. Do **not** use the OpenCode `task` tool for debater slots: it skips `--out` harvest and timeout salvage. Shell out only when the profile pins a CLI, or the `colin-mbot-*` agent file is missing from `~/.opencode/agents/`. A containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — `command -v` before planning a CLI route.
 
-Do not call `occtl` or `run-opencode.ts` from this skill.
+Do not drive OpenCode yourself. `mbot-run` speaks HTTP for OpenCode 1 (`/session`) and OpenCode 2 (`/api`).
 
 **Launch notes:**
 
@@ -75,7 +75,7 @@ Do not call `occtl` or `run-opencode.ts` from this skill.
 - Debate rounds must not spawn nested agents (`--disallowed-tools Agent` / `--no-subagents` where the CLI supports it). The `colin-mbot-*` agents already set `task: deny`, so OpenCode slots need no extra flag.
 - Unique `--session-id` per parallel `botctl` / Claude debater.
 - Require a parseable `BEGIN_MBOD_JSON` block, or the normal schema-repair path.
-- **OpenCode host:** `launch --detach` then `barrier` — a blocking launch dies with its occtl children when the 120s bash-tool timeout fires. **Claude Code host:** blocking `launch` is fine.
+- **OpenCode host:** `launch --detach` then `barrier` — a blocking launch dies with its child `opencode serve` when the 120s bash-tool timeout fires. **Claude Code host:** blocking `launch` is fine.
 - OpenCode slots: one-round `plan.json`, then `mbot-run launch` / `harvest`:
 
 ```json
@@ -119,7 +119,7 @@ Do not call `occtl` or `run-opencode.ts` from this skill.
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
 | GPT | `colin-mbot-gpt-sol` | `openai/gpt-6.1-sol` |
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
-| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from attach `/config/providers` |
+| GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 
 Never `--agent build` / `general`, and never omit `"variant"`. Do not use `claude-code/*` models for debater slots — that provider is the parent harness's, not a fan-out target.
 
@@ -132,7 +132,7 @@ bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/mbot-run.ts" harvest \
 
 **OpenCode server selection.** `mbot-run` reads `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`, and already-set env wins over the plan's `"attach"`. Put the matching URL on the plan anyway so it stays in attach mode and never `--spawn`s.
 
-Inside the **Seamus podman container** that env already points at the in-container bot serve, `127.0.0.1:4096`. Do not retarget to the operator's personal server (port `4095`, host `100.110.251.42`, hostname `seamus`) — Seamus rewrites it back and bot work must not land there. The image ships `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, `occtl`, `opencode`; it does **not** ship `grok`, `botctl`, `cr`, `pi`, `gemini`, or the `agentsview` CLI, so every debater there is an OpenCode slot. `AGENTSVIEW_URL` is injected — run `mbot-run usage` without `--no-agentsview`.
+Inside the **Seamus podman container** that env already points at the in-container bot serve, `127.0.0.1:4096`. Do not retarget to the operator's personal server (port `4095`, host `100.110.251.42`, hostname `seamus`) — Seamus rewrites it back and bot work must not land there. The image ships `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, and `opencode` (OpenCode 1, so `mbot-run` uses `/session`). It does **not** ship `grok`, `botctl`, `cr`, `pi`, `gemini`, or the `agentsview` CLI, so every debater there is an OpenCode slot. `AGENTSVIEW_URL` is injected — run `mbot-run usage` without `--no-agentsview`.
 
 ### Step 3: Assign Personalities
 

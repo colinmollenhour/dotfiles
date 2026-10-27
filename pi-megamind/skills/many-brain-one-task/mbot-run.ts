@@ -2,18 +2,17 @@
 /**
  * mbot-run.ts — durable control plane for Many Brain One Task / ultra-review.
  *
- * OpenCode reliability (2026-08):
- * - ALL flags go before `--` (attach/variant/title must not be swallowed)
- * - Prefer `occtl run` against OPENCODE_SERVER_HOST/PORT (HTTP API, session sidecar, timeout salvage).
- *   Do not pass `--attach` — occtl 1.3.0 rejects it; 1.5+ still honors the env vars.
- * - Fallback: run-opencode.ts when occtl is missing or older than 1.2.0
+ * OpenCode reliability (2026-08, HTTP API 2026-10):
+ * - OpenCode 2 (`GET /api/info`): `/api/session` and `/api/model`.
+ * - OpenCode 1 (`/config/providers` JSON, including the Seamus bot): `/session`.
+ * - No occtl binary and no run-opencode.ts. Both generations go through opencode-v2.ts.
  * - Cheap preflight before fan-out: HTTP probe of the attach server, else `opencode --version`.
  *   No model call unless `smoke --deep` / plan `smoke_deep`. Unreachable attach → local spawn.
  * - A slot whose attach run cannot connect retries once locally; later slots skip attach.
- * - Pin models against attach /config/providers when possible
+ * - Pin models against the attach catalog (`/api/model` on v2, `/config/providers` on v1)
  * - Default concurrency 3 for OpenCode (shared server contention)
  * - Fail-closed harvest: empty after launch = failed, not "wait forever"
- * - Timeout recovery: `occtl last` (abort leftover sessions) before marking timeout
+ * - Timeout recovery: interrupt the session and read its latest assistant text
  * - `barrier` command: wait for slots without hanging on permanent empties
  *
  * Commands:
@@ -40,7 +39,7 @@
  *   "slots": [{ "slot", "planned_model", "provider_model_id", "harness", "prompt", "out", ... }]
  * }
  *
- * harness: opencode | occtl | grok | external
+ * harness: opencode | occtl (alias of opencode) | grok | external
  * stdout: always one JSON object for jq.
  */
 
@@ -66,18 +65,25 @@ import {
   inferProjectDir,
   resolvePlanPath,
 } from "./mbot-paths.ts"
+import {
+  fetchLatestAssistantText,
+  opencodeCliMajor,
+  probeOpencode,
+  runOpencodeV1,
+  runOpencodeV2,
+  withEphemeralServer,
+  type OpencodeApi,
+} from "./opencode-v2.ts"
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
-const RUN_OPENCODE = join(SCRIPT_DIR, "run-opencode.ts")
 
 const HARNESS_FOOTER =
   "Emit the COMPLETE result as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
 
-const MIN_OCCTL_VERSION = "1.2.0"
-
 const DEFAULT_OPENCODE_CONCURRENCY = 3
 const DEFAULT_SMOKE_TIMEOUT_MS = 45_000
 const DEFAULT_SLOT_TIMEOUT_MS = 1_200_000
+const DEFAULT_GROK_TIMEOUT_MS = 480_000 // 8 minutes cap for Grok slots (avoids 20-min stalls)
 
 type OpencodeMode = "auto" | "attach" | "local" | "skip"
 type SlotStatus =
@@ -105,6 +111,15 @@ interface Slot {
   display_name?: string
   backup_used?: boolean
   skip?: boolean
+  timeout_ms?: number
+}
+
+function isGrokSlot(slot: Slot): boolean {
+  if (slot.harness === "grok") return true
+  const pm = (slot.provider_model_id || "").toLowerCase()
+  const m = (slot.planned_model || "").toLowerCase()
+  const a = (slot.agent || "").toLowerCase()
+  return pm.includes("grok") || m.includes("grok") || a.includes("grok")
 }
 
 interface Plan {
@@ -115,6 +130,7 @@ interface Plan {
   attach?: string
   password?: string
   timeout_ms?: number
+  grok_timeout_ms?: number
   concurrency?: number
   /** Force OpenCode transport. Default auto (probe then attach|local). */
   opencode_mode?: OpencodeMode
@@ -155,7 +171,7 @@ interface Meta {
   /** Process wall in ms (ended_at − started_at). Survives harvest. */
   wall_ms?: number
   cost_usd?: number | null
-  cost_source?: "grok_json" | "occtl" | "agentsview" | "unavailable" | "none"
+  cost_source?: "grok_json" | "occtl" | "opencode_v1" | "opencode_v2" | "agentsview" | "unavailable" | "none"
   usage?: Record<string, unknown>
   bytes?: number
   markers?: { verdict: number; issue: number }
@@ -190,15 +206,15 @@ interface OpencodePreflight {
   smoke_ok: boolean
   smoke_ms?: number
   smoke_error?: string
-  /** http = attach /config/providers, binary = `opencode --version`, model = deep smoke. */
+  /** http = attach catalog, binary = `opencode --version`, model = deep smoke. */
   probe?: "http" | "binary" | "model"
+  /** v2 is `/api/*`. v1 is `/config/providers` and `/session`. */
+  api?: OpencodeApi
+  version?: string
   model_requested?: string
   model_resolved?: string
   models_checked?: number
-  prefer_run_opencode: boolean
-  occtl_ok?: boolean
-  occtl_version?: string | null
-  transport?: "occtl" | "run-opencode"
+  transport?: "opencode-v1" | "opencode-v2"
   timestamp: string
 }
 
@@ -458,83 +474,27 @@ function normalizeAttachUrl(attach?: string): string | undefined {
   return `http://${t.replace(/\/$/, "")}`
 }
 
-export function attachEnv(attach?: string, password?: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env }
-  if (!env.NODE_USE_ENV_PROXY) env.NODE_USE_ENV_PROXY = "1"
-  const url = normalizeAttachUrl(attach)
-  if (url) {
+/**
+ * URL to dial. `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` win when set
+ * (Seamus `gitlab.env`); otherwise the plan attach URL is used.
+ */
+export function resolveAttachUrl(attach?: string): string | undefined {
+  const fromAttach = normalizeAttachUrl(attach)
+  const host = process.env.OPENCODE_SERVER_HOST?.trim()
+  if (!host) return fromAttach
+  let port = process.env.OPENCODE_SERVER_PORT?.trim() || ""
+  let proto = "http"
+  if (fromAttach) {
     try {
-      const u = new URL(url)
-      // Existing OPENCODE_SERVER_* win (host config / gitlab.env). Attach URL fills gaps.
-      if (!env.OPENCODE_SERVER_HOST) env.OPENCODE_SERVER_HOST = u.hostname
-      if (!env.OPENCODE_SERVER_PORT) env.OPENCODE_SERVER_PORT = u.port || "4096"
+      const u = new URL(fromAttach)
+      if (!port) port = u.port
+      if (u.protocol === "https:") proto = "https"
     } catch {
-      /* leave env host/port unset */
+      /* keep defaults */
     }
   }
-  if (password && !env.OPENCODE_SERVER_PASSWORD) env.OPENCODE_SERVER_PASSWORD = password
-  return env
-}
-
-function parseSemver(text: string): [number, number, number] | null {
-  const m = text.match(/(\d+)\.(\d+)\.(\d+)/)
-  if (!m) return null
-  return [Number(m[1]), Number(m[2]), Number(m[3])]
-}
-
-function semverGte(a: [number, number, number], b: [number, number, number]): boolean {
-  for (let i = 0; i < 3; i++) {
-    if (a[i] > b[i]) return true
-    if (a[i] < b[i]) return false
-  }
-  return true
-}
-
-function detectOcctl(): { ok: boolean; version: string | null } {
-  const res = spawnSync("occtl", ["--version"], {
-    encoding: "utf8",
-    timeout: 8000,
-  })
-  if (res.error || res.status !== 0) return { ok: false, version: null }
-  const version = (res.stdout || res.stderr || "").trim() || null
-  const parsed = version ? parseSemver(version) : null
-  const min = parseSemver(MIN_OCCTL_VERSION)
-  if (!parsed || !min || !semverGte(parsed, min)) return { ok: false, version }
-  return { ok: true, version }
-}
-
-export function occtlAttachArgs(_attach?: string): string[] {
-  // occtl 1.3.0 has no --attach. Server selection is OPENCODE_SERVER_HOST/PORT
-  // via attachEnv(), which 1.3.0 and 1.5+ both honor.
-  return []
-}
-
-function occtlLastText(sessionId: string, attach?: string, password?: string): string {
-  const args = [
-    "last",
-    sessionId,
-    "--role",
-    "assistant",
-    "--text-only",
-    ...occtlAttachArgs(attach),
-  ]
-  const res = spawnSync("occtl", args, {
-    encoding: "utf8",
-    timeout: 20_000,
-    maxBuffer: 10 * 1024 * 1024,
-    env: attachEnv(attach, password),
-  })
-  const text = (res.stdout || "").trim()
-  if (res.status === 0 && text && text !== "No messages in session.") return text
-  return ""
-}
-
-function occtlAbortSession(sessionId: string, attach?: string, password?: string): void {
-  spawnSync("occtl", ["abort", sessionId, ...occtlAttachArgs(attach)], {
-    encoding: "utf8",
-    timeout: 15_000,
-    env: attachEnv(attach, password),
-  })
+  if (!port) port = "4096"
+  return `${proto}://${host}:${port}`
 }
 
 function readSessionId(outPath: string, fallback?: string | null): string | null {
@@ -549,13 +509,13 @@ function readSessionId(outPath: string, fallback?: string | null): string | null
 }
 
 /** Salvage a thin/empty --out from the OpenCode session after timeout or empty JSON. */
-function recoverSlotBody(opts: {
+async function recoverSlotBody(opts: {
   outPath: string
   sessionId?: string | null
   attach?: string
   password?: string
-  abortFirst?: boolean
-}): { body: string; recovered: boolean; sessionId: string | null } {
+  api?: OpencodeApi
+}): Promise<{ body: string; recovered: boolean; sessionId: string | null }> {
   let body = ""
   if (existsSync(opts.outPath)) {
     try {
@@ -567,12 +527,14 @@ function recoverSlotBody(opts: {
   const sessionId = readSessionId(opts.outPath, opts.sessionId)
   if (isRich(body) || !sessionId) return { body, recovered: false, sessionId }
 
-  if (opts.abortFirst) occtlAbortSession(sessionId, opts.attach, opts.password)
-  let salvaged = occtlLastText(sessionId, opts.attach, opts.password)
-  if (!isRich(salvaged)) {
-    occtlAbortSession(sessionId, opts.attach, opts.password)
-    const again = occtlLastText(sessionId, opts.attach, opts.password)
-    if (again.length > salvaged.length) salvaged = again
+  let salvaged = ""
+  const attach = opts.attach ? resolveAttachUrl(opts.attach) : undefined
+  if (attach) {
+    try {
+      salvaged = await fetchLatestAssistantText(attach, sessionId, opts.password, opts.api)
+    } catch {
+      salvaged = ""
+    }
   }
   if (salvaged && (isRich(salvaged) || salvaged.trim().length > body.trim().length)) {
     mkdirSync(dirname(opts.outPath), { recursive: true })
@@ -649,60 +611,28 @@ async function listAttachModels(
   attach: string,
   password?: string,
   timeoutMs = 8000,
+  directory?: string,
 ): Promise<string[]> {
-  return (await probeAttach(attach, password, timeoutMs)).models
+  return (await probeAttach(attach, password, timeoutMs, directory)).models
 }
 
-/** GET /config/providers. ok = server answered 2xx; doubles as the attach preflight. */
+/**
+ * Attach preflight. OpenCode 2 answers `GET /api/info` and lists models at
+ * `GET /api/model`. OpenCode 1 answers `GET /config/providers`. A 200 HTML
+ * body is the v2 web UI, not a catalog.
+ */
 async function probeAttach(
   attach: string,
   password?: string,
   timeoutMs = 8000,
-): Promise<{ ok: boolean; models: string[]; ms: number; error?: string }> {
-  const t0 = Date.now()
+  directory?: string,
+): Promise<{ ok: boolean; models: string[]; ms: number; error?: string; api?: OpencodeApi; version?: string }> {
   const url = normalizeAttachUrl(attach)
   if (!url) return { ok: false, models: [], ms: 0, error: "no attach url" }
-  const endpoint = `${url}/config/providers`
-  const pw = password || process.env.OPENCODE_SERVER_PASSWORD
-  const headers: Record<string, string> = {}
-  if (pw) {
-    const user = process.env.OPENCODE_SERVER_USERNAME || "opencode"
-    headers.Authorization = `Basic ${Buffer.from(`${user}:${pw}`).toString("base64")}`
-  }
-  const ac = new AbortController()
-  const t = setTimeout(() => ac.abort(), timeoutMs)
-  try {
-    const res = await fetch(endpoint, { signal: ac.signal, headers })
-    if (!res.ok) {
-      return { ok: false, models: [], ms: Date.now() - t0, error: `${endpoint}: HTTP ${res.status}` }
-    }
-    const data = (await res.json()) as {
-      providers?: Array<{ id?: string; models?: Record<string, unknown> | unknown[] }>
-    }
-    const out: string[] = []
-    for (const p of data.providers || []) {
-      const pid = p.id || ""
-      const models = p.models
-      if (!pid || !models) continue
-      if (Array.isArray(models)) {
-        for (const m of models) {
-          const mid = typeof m === "string" ? m : (m as { id?: string })?.id
-          if (mid) out.push(`${pid}/${mid}`)
-        }
-      } else {
-        for (const mid of Object.keys(models)) out.push(`${pid}/${mid}`)
-      }
-    }
-    return { ok: true, models: out, ms: Date.now() - t0 }
-  } catch (e) {
-    const msg = ac.signal.aborted ? `timed out after ${timeoutMs}ms` : String((e as Error)?.message || e)
-    return { ok: false, models: [], ms: Date.now() - t0, error: `${endpoint}: ${msg}` }
-  } finally {
-    clearTimeout(t)
-  }
+  return probeOpencode(url, password, timeoutMs, directory)
 }
 
-/** Local preflight: the `opencode` binary that both occtl --spawn and run-opencode.ts need. */
+/** Local preflight: `opencode --version`. A local run starts `opencode serve` itself. */
 function probeLocalOpencode(): { ok: boolean; ms: number; error?: string } {
   const t0 = Date.now()
   const res = spawnSync("opencode", ["--version"], { encoding: "utf8", timeout: 8000 })
@@ -741,6 +671,72 @@ function resolveModelId(requested: string, available: string[]): string {
   return hit || requested
 }
 
+type OpencodeTransport = "opencode-v1" | "opencode-v2"
+
+/** v1 when the probe or a local OpenCode 1 binary says so. Otherwise v2. */
+function chooseOpencodeTransport(api: OpencodeApi | undefined, local: boolean): OpencodeTransport {
+  if (api === "v1") return "opencode-v1"
+  if (api === "v2") return "opencode-v2"
+  if (local && opencodeCliMajor() === 1) return "opencode-v1"
+  return "opencode-v2"
+}
+
+interface OpencodeTurn {
+  code: number
+  text: string
+  stderr: string
+  timedOut: boolean
+  sessionId: string | null
+  costUsd: number | null
+  usage?: Record<string, unknown>
+  api: OpencodeApi
+}
+
+/** One OpenCode turn. Attach uses `api`; a local `opencode serve` reports its own. */
+async function runOpencodeTurn(opts: {
+  attach?: string
+  password?: string
+  model: string
+  variant?: string
+  agent?: string
+  title?: string
+  prompt: string
+  directory: string
+  timeoutMs: number
+  api: OpencodeApi
+  onSession?: (id: string) => void
+}): Promise<OpencodeTurn> {
+  const run = async (baseUrl: string, password: string | undefined, api: OpencodeApi) => {
+    const runner = api === "v1" ? runOpencodeV1 : runOpencodeV2
+    const result = await runner({
+      baseUrl,
+      password,
+      model: opts.model,
+      variant: opts.variant,
+      agent: opts.agent,
+      title: opts.title,
+      prompt: opts.prompt,
+      directory: opts.directory,
+      timeoutMs: opts.timeoutMs,
+      onSession: opts.onSession,
+    })
+    return { result, api }
+  }
+  const { result, api } = opts.attach
+    ? await run(opts.attach, opts.password, opts.api)
+    : await withEphemeralServer((ctx) => run(ctx.baseUrl, ctx.password, ctx.api))
+  return {
+    code: result.code,
+    text: result.text,
+    stderr: result.error || "",
+    timedOut: result.code === 124,
+    sessionId: result.sessionId,
+    costUsd: result.costUsd,
+    usage: result.usage,
+    api,
+  }
+}
+
 async function smokeOpencode(opts: {
   runDir: string
   attach?: string
@@ -753,7 +749,7 @@ async function smokeOpencode(opts: {
 }): Promise<OpencodePreflight> {
   const runDir = resolve(opts.runDir)
   mkdirSync(join(runDir, "results"), { recursive: true })
-  const attachUrl = normalizeAttachUrl(opts.attach)
+  const attachUrl = resolveAttachUrl(opts.attach)
   const attachProbe =
     attachUrl && opts.forceMode !== "skip" && opts.forceMode !== "local"
       ? await probeAttach(attachUrl, opts.password)
@@ -761,20 +757,20 @@ async function smokeOpencode(opts: {
   const available = attachProbe?.models ?? []
   const model = resolveModelId(opts.model, available)
 
-  const occtl = detectOcctl()
-  const transport: "occtl" | "run-opencode" = occtl.ok ? "occtl" : "run-opencode"
+  const chooseTransport = (api: OpencodeApi | undefined, local: boolean) =>
+    chooseOpencodeTransport(api, local)
+  let transport = chooseTransport(attachProbe?.api, opts.forceMode === "local" || !attachUrl)
   const base: OpencodePreflight = {
     mode: opts.forceMode && opts.forceMode !== "auto" ? opts.forceMode : "auto",
     attach: opts.attach,
     attach_url: attachUrl,
     smoke_ok: false,
     probe: opts.deep ? "model" : undefined,
+    api: attachProbe?.api,
+    version: attachProbe?.version,
     model_requested: opts.model,
     model_resolved: model,
     models_checked: available.length,
-    prefer_run_opencode: transport === "run-opencode",
-    occtl_ok: occtl.ok,
-    occtl_version: occtl.version,
     transport,
     timestamp: nowIso(),
   }
@@ -783,7 +779,7 @@ async function smokeOpencode(opts: {
     target: "attach" | "local",
   ): Promise<{ ok: boolean; ms: number; error?: string }> => {
     if (opts.deep) {
-      return runSmokeOnce({
+      const once = await runSmokeOnce({
         runDir,
         model,
         attach: target === "attach" ? attachUrl : undefined,
@@ -792,6 +788,12 @@ async function smokeOpencode(opts: {
         tag: target,
         transport,
       })
+      if (once.api) {
+        base.api = once.api
+        base.transport = once.api === "v1" ? "opencode-v1" : "opencode-v2"
+        transport = base.transport
+      }
+      return once
     }
     base.probe = target === "attach" ? "http" : "binary"
     return target === "attach" && attachProbe ? attachProbe : probeLocalOpencode()
@@ -834,6 +836,8 @@ async function smokeOpencode(opts: {
     // fall through to local
   }
 
+  transport = chooseTransport(undefined, true)
+  base.transport = transport
   const local = await check("local")
   base.mode = local.ok ? "local" : "skip"
   base.smoke_ok = local.ok
@@ -854,8 +858,8 @@ async function runSmokeOnce(opts: {
   password?: string
   timeoutMs: number
   tag: string
-  transport: "occtl" | "run-opencode"
-}): Promise<{ ok: boolean; ms: number; error?: string }> {
+  transport: OpencodeTransport
+}): Promise<{ ok: boolean; ms: number; error?: string; api?: OpencodeApi }> {
   const prompt = join(opts.runDir, `smoke-opencode-${opts.tag}.md`)
   const out = join(opts.runDir, "results", `_smoke-${opts.tag}.out`)
   const err = join(opts.runDir, "results", `_smoke-${opts.tag}.err`)
@@ -864,69 +868,24 @@ async function runSmokeOnce(opts: {
     "Reply with exactly the single token OPENCODE_SMOKE_OK and nothing else. No tools.\n",
   )
   const t0 = Date.now()
-  const r =
-    opts.transport === "occtl"
-      ? await runCmd("occtl", occtlRunArgs({
-          model: opts.model,
-          promptPath: prompt,
-          outPath: out,
-          errPath: err,
-          timeoutMs: opts.timeoutMs,
-          dir: opts.runDir,
-          attach: opts.attach,
-          password: opts.password,
-          message: "Reply with exactly OPENCODE_SMOKE_OK",
-        }), {
-          cwd: opts.runDir,
-          env: attachEnv(opts.attach, opts.password),
-          timeoutMs: opts.timeoutMs + 15_000,
-        })
-      : await runCmd(
-          "bun",
-          [
-            RUN_OPENCODE,
-            "--model",
-            opts.model,
-            "--file",
-            prompt,
-            "--out",
-            out,
-            "--stderr",
-            err,
-            "--timeout-ms",
-            String(opts.timeoutMs),
-            "--dir",
-            opts.runDir,
-            ...(opts.attach ? ["--attach", opts.attach] : []),
-            ...(opts.password ? ["--password", opts.password] : []),
-            "--",
-            "Reply with exactly OPENCODE_SMOKE_OK",
-          ],
-          {
-            cwd: opts.runDir,
-            env: attachEnv(opts.attach, opts.password),
-            timeoutMs: opts.timeoutMs + 15_000,
-          },
-        )
+  const promptText = `${readFileSync(prompt, "utf8").trim()}\n\nReply with exactly OPENCODE_SMOKE_OK`
+  const turn = await runOpencodeTurn({
+    attach: opts.attach,
+    password: opts.password,
+    model: opts.model,
+    prompt: promptText,
+    directory: opts.runDir,
+    timeoutMs: opts.timeoutMs,
+    title: "mbot-run smoke",
+    api: opts.transport === "opencode-v1" ? "v1" : "v2",
+    onSession: (id) => writeSessionSidecar(out, id),
+  })
+  writeFileSync(out, turn.text)
+  if (turn.stderr) writeFileSync(err, turn.stderr)
   const ms = Date.now() - t0
-  let body = ""
-  if (existsSync(out)) {
-    try {
-      body = readFileSync(out, "utf8")
-    } catch {
-      body = ""
-    }
-  }
   // Any reply proves the model path works; the exact token is not required.
-  if (r.code === 0 && body.trim()) return { ok: true, ms }
-  const errText = existsSync(err)
-    ? readFileSync(err, "utf8").trim().slice(0, 400)
-    : r.stderr.trim().slice(0, 400)
-  return {
-    ok: false,
-    ms,
-    error: errText || `exit ${r.code}, out_bytes=${body.length}`,
-  }
+  if (turn.code === 0 && turn.text.trim()) return { ok: true, ms, api: turn.api }
+  return { ok: false, ms, api: turn.api, error: turn.stderr || `exit ${turn.code}` }
 }
 
 function opencodeAgentInstalled(name: string, projectDir: string): boolean {
@@ -936,44 +895,6 @@ function opencodeAgentInstalled(name: string, projectDir: string): boolean {
     join(homedir(), ".config", "opencode", "agents", `${name}.md`),
   ]
   return files.some((p) => existsSync(p))
-}
-
-export function occtlRunArgs(opts: {
-  model: string
-  promptPath: string
-  outPath: string
-  errPath?: string
-  timeoutMs: number
-  dir: string
-  attach?: string
-  password?: string
-  variant?: string
-  agent?: string
-  title?: string
-  message: string
-}): string[] {
-  // ALL flags before --
-  const args = ["run", "--model", opts.model]
-  if (opts.variant) args.push("--variant", opts.variant)
-  if (opts.agent) args.push("--agent", opts.agent)
-  if (opts.title) args.push("--title", opts.title)
-  args.push(
-    "--file",
-    opts.promptPath,
-    "--out",
-    opts.outPath,
-    "--timeout",
-    String(opts.timeoutMs),
-    "--dir",
-    opts.dir,
-  )
-  if (opts.errPath) args.push("--stderr", opts.errPath)
-  // Attach mode: env only (see attachEnv). --attach breaks occtl 1.3.0.
-  // No attach → --spawn an ephemeral server rather than guessing 127.0.0.1:4096.
-  if (!opts.attach) args.push("--spawn")
-  if (opts.password) args.push("--password", opts.password)
-  args.push("--", opts.message)
-  return args
 }
 
 function loadPreflight(runDir: string): OpencodePreflight | null {
@@ -1132,7 +1053,10 @@ async function launchSlot(
 
   writeJson(metaPath, baseMeta)
 
-  const timeoutMs = plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS
+  const slotDefaultTimeout = isGrokSlot(slot)
+    ? (plan.grok_timeout_ms ?? DEFAULT_GROK_TIMEOUT_MS)
+    : (plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS)
+  const timeoutMs = slot.timeout_ms ?? slotDefaultTimeout
   let code = 1
   let stderr = ""
   let actualHarness = plannedHarness
@@ -1142,6 +1066,7 @@ async function launchSlot(
   let capturedCostUsd: number | null = null
   let capturedCostSource: Meta["cost_source"]
   let capturedUsage: Record<string, unknown> | undefined
+  let capturedApi: OpencodeApi | undefined
   let attachFallback: string | undefined
 
   if (slot.harness === "grok") {
@@ -1213,7 +1138,7 @@ async function launchSlot(
       !attachUnreachable &&
       Boolean(preflight?.attach_url || plan.attach)
     let attachUrl = useAttach
-      ? preflight?.attach_url || normalizeAttachUrl(plan.attach)
+      ? resolveAttachUrl(preflight?.attach_url || plan.attach)
       : undefined
     attachMode = useAttach ? "attach" : "local"
 
@@ -1222,17 +1147,20 @@ async function launchSlot(
     // multi-model plan onto one model.
     if (actualModel) {
       if (attachUrl) {
-        const avail = await listAttachModels(attachUrl, plan.password)
+        const avail = await listAttachModels(attachUrl, plan.password, 8000, projectDir)
         actualModel = resolveModelId(actualModel, avail)
       }
     } else if (preflight?.model_resolved) {
       actualModel = preflight.model_resolved
     }
 
-    const transport =
-      preflight?.transport ?? (detectOcctl().ok ? "occtl" : "run-opencode")
-    const useOcctl = transport === "occtl"
-    actualHarness = useOcctl ? "occtl" : "run-opencode"
+    const remembered =
+      preflight?.transport === "opencode-v1" || preflight?.transport === "opencode-v2"
+        ? preflight.transport
+        : undefined
+    const transport: OpencodeTransport =
+      remembered ?? chooseOpencodeTransport(preflight?.api, !attachUrl)
+    actualHarness = transport
 
     const variant =
       slot.variant !== undefined
@@ -1250,54 +1178,42 @@ async function launchSlot(
         : undefined
 
     const invoke = async (attach: string | undefined) => {
-      if (useOcctl) {
-        return runCmd(
-          "occtl",
-          occtlRunArgs({
-            model: actualModel,
-            promptPath,
-            outPath,
-            errPath,
-            timeoutMs,
-            dir: projectDir,
-            attach,
-            password: plan.password,
-            variant,
-            agent,
-            title: slot.title,
-            message: HARNESS_FOOTER,
-          }),
-          {
-            cwd: projectDir,
-            env: attachEnv(attach, plan.password),
-            timeoutMs: timeoutMs + 120_000,
-          },
-        )
-      }
-      const args = [
-        RUN_OPENCODE,
-        "--model",
-        actualModel,
-        "--file",
-        promptPath,
-        "--out",
-        outPath,
-        "--timeout-ms",
-        String(timeoutMs),
-        "--dir",
-        projectDir,
-      ]
-      if (variant) args.push("--variant", variant)
-      if (agent) args.push("--agent", agent)
-      if (slot.title) args.push("--title", slot.title)
-      if (attach) args.push("--attach", attach)
-      if (plan.password) args.push("--password", plan.password)
-      args.push("--", HARNESS_FOOTER)
-      return runCmd("bun", args, {
-        cwd: projectDir,
-        env: attachEnv(attach, plan.password),
-        timeoutMs: timeoutMs + 120_000,
+      const promptText = `${readFileSync(promptPath, "utf8").trim()}\n\n${HARNESS_FOOTER}`
+      const turn = await runOpencodeTurn({
+        attach,
+        password: plan.password,
+        model: actualModel,
+        variant,
+        agent,
+        title: slot.title,
+        prompt: promptText,
+        directory: projectDir,
+        timeoutMs,
+        api: transport === "opencode-v1" ? "v1" : "v2",
+        onSession: (id) => {
+          capturedSessionId = id
+          writeSessionSidecar(outPath, id)
+        },
       })
+      capturedApi = turn.api
+      actualHarness = turn.api === "v1" ? "opencode-v1" : "opencode-v2"
+      writeFileSync(outPath, turn.text)
+      if (turn.sessionId) {
+        capturedSessionId = turn.sessionId
+        writeSessionSidecar(outPath, turn.sessionId)
+      }
+      if (turn.costUsd != null) {
+        capturedCostUsd = turn.costUsd
+        capturedCostSource = turn.api === "v1" ? "opencode_v1" : "opencode_v2"
+      }
+      if (turn.usage) capturedUsage = turn.usage
+      if (turn.stderr) writeFileSync(errPath, turn.stderr)
+      return {
+        code: turn.code,
+        stdout: turn.text,
+        stderr: turn.stderr,
+        timedOut: turn.timedOut,
+      }
     }
 
     let r = await invoke(attachUrl)
@@ -1336,12 +1252,12 @@ async function launchSlot(
     }
   }
 
-  const recovered = recoverSlotBody({
+  const recovered = await recoverSlotBody({
     outPath,
     sessionId: capturedSessionId,
-    attach: attachMode === "attach" ? (preflight?.attach_url || plan.attach) : undefined,
+    attach: attachMode === "attach" ? resolveAttachUrl(preflight?.attach_url || plan.attach) : undefined,
     password: plan.password,
-    abortFirst: code === 124 || code === 130 || code === 143,
+    api: capturedApi,
   })
   const body = recovered.body
   const sessionId = capturedSessionId || recovered.sessionId || readSessionId(outPath)
@@ -1601,11 +1517,11 @@ async function cmdLaunch(planPath: string): Promise<void> {
   process.exit(metas.every((m) => m.terminal) ? (ok ? 0 : 1) : 1)
 }
 
-function harvestOne(
+async function harvestOne(
   outPath: string,
   slotHint?: string,
-  recover?: { attach?: string; password?: string },
-): Meta {
+  recover?: { attach?: string; password?: string; api?: OpencodeApi },
+): Promise<Meta> {
   const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
   let meta: Meta | null = null
   if (existsSync(metaPath)) {
@@ -1618,12 +1534,17 @@ function harvestOne(
   const slot =
     meta?.slot || slotHint || outPath.split("/").pop()?.replace(/\.out$/, "") || "unknown"
 
-  const salvaged = recoverSlotBody({
+  const salvaged = await recoverSlotBody({
     outPath,
     sessionId: meta?.session_id,
     attach: recover?.attach,
     password: recover?.password,
-    abortFirst: meta?.status === "timeout" || meta?.status === "empty",
+    api:
+      meta?.actual_harness === "opencode-v1"
+        ? "v1"
+        : meta?.actual_harness === "opencode-v2"
+          ? "v2"
+          : recover?.api,
   })
   const body = salvaged.body
   const bytes = body.length
@@ -1724,7 +1645,7 @@ function harvestOne(
   return next
 }
 
-function cmdHarvest(runDir: string): void {
+async function cmdHarvest(runDir: string): Promise<void> {
   const absDir = resolve(runDir)
   const resultsDir = join(absDir, "results")
   if (!existsSync(resultsDir)) die(`results dir missing: ${resultsDir}`)
@@ -1740,8 +1661,9 @@ function cmdHarvest(runDir: string): void {
     }
   }
   const recover = {
-    attach: preflight?.attach_url || plan?.attach,
+    attach: resolveAttachUrl(preflight?.attach_url || plan?.attach),
     password: plan?.password,
+    api: preflight?.api,
   }
 
   const outs = readdirSync(resultsDir)
@@ -1749,13 +1671,13 @@ function cmdHarvest(runDir: string): void {
     .map((f) => join(resultsDir, f))
     .sort()
 
-  const metas = outs.map((p) => harvestOne(p, undefined, recover))
+  const metas = await Promise.all(outs.map((p) => harvestOne(p, undefined, recover)))
 
   const state = loadState(absDir)
   for (const [k, m] of Object.entries(state.slots)) {
     if (!metas.find((x) => x.slot === k)) {
       if (m.harness === "external" || m.status === "external") {
-        if (m.out && existsSync(m.out)) metas.push(harvestOne(m.out, k, recover))
+        if (m.out && existsSync(m.out)) metas.push(await harvestOne(m.out, k, recover))
         else metas.push({ ...m, terminal: true })
       } else if (m.terminal || isTerminal(m.status)) {
         metas.push(m)
@@ -2085,7 +2007,7 @@ async function main(): Promise<void> {
     await cmdLaunch(values.plan)
   } else if (command === "harvest") {
     if (!values["run-dir"]) die("--run-dir is required")
-    cmdHarvest(values["run-dir"])
+    await cmdHarvest(values["run-dir"])
   } else if (command === "candidates") {
     if (!values["run-dir"]) die("--run-dir is required")
     cmdCandidates(values["run-dir"])
