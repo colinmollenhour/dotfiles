@@ -83,7 +83,7 @@ Do not invent model strings; prefer the exact id printed by `grok models`.
 
 - **Grok CLI host**: prefer the native `spawn_subagent` tool for Grok-family participants (same process family, tool surface, session model). Fall back to this CLI when the subagent tool is unavailable or the profile explicitly requests shell-out.
 - **Any other host** (Claude Code, OpenCode, Pi, Codex, Gemini): shell out with this CLI for Grok-family models. Do **not** prefer OpenCode `colin-mbot-grok` when `grok` is installed and authenticated — the first-party CLI keeps usage on the xAI plan and avoids OpenRouter/OpenCode routing quirks.
-- **OpenCode host fallback**: only use `colin-mbot-grok` (or `occtl run` with an xAI/OpenRouter Grok model) when `grok version` fails or the user/profile explicitly requests OpenCode-routed Grok.
+- **OpenCode host fallback**: only use an OpenCode slot (`colin-mbot-grok` through `mbot-run`) when `grok version` fails or the user/profile explicitly requests OpenCode-routed Grok.
 
 ## Efficiency Tips (batch / multi-agent)
 

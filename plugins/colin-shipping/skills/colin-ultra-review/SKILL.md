@@ -2,7 +2,7 @@
 name: colin-ultra-review
 slash: true
 disable-model-invocation: true
-allowed-tools: Read, Write, Glob, Grep, Agent, Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which *), Bash(mkdir *), Bash(cp *), Bash(wc *), Bash(bun *), Bash(occtl *), Bash(botctl *), Bash(claude *), Bash(grok *), Bash(codex *), Bash(agentsview *), Bash(timeout *), mcp__github_inline_comment__create_inline_comment
+allowed-tools: Read, Write, Glob, Grep, Agent, Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr edit:*), Bash(gh api:*), Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr note:*), Bash(glab mr list:*), Bash(glab mr update:*), Bash(glab api:*), Bash(git *), Bash(jq:*), Bash(curl:*), Bash(which *), Bash(mkdir *), Bash(cp *), Bash(wc *), Bash(bun *), Bash(botctl *), Bash(claude *), Bash(grok *), Bash(codex *), Bash(agentsview *), Bash(timeout *), mcp__github_inline_comment__create_inline_comment
 description: Multi-model, repository-aware bug review with focused discovery, evidence validation, and convergence rounds
 argument-hint: "[PR/MR number, URL, or git description] [agents] [--roles=csv] [--re-review] [--max-rounds=N] [--no-post] [--no-summary]"
 ---
@@ -42,7 +42,7 @@ Resolve `CLAUDE_SKILL_DIR` to the directory containing this `SKILL.md`, whether 
 | Prepare notes | `bun …/many-brain-one-task/prepare-notes.ts --summary .tmp/ultra-N/prepared-summary.md` (or `--batch`) — safe JSON payloads for glab api |
 | Usage (wall + cost) | `bun …/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) |
 
-OpenCode hard rules: all flags **before** `--`; use `mbot-run` (not hand-rolled occtl); empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills occtl children. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt-sol`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
+OpenCode hard rules: use `mbot-run` (it speaks `/api` on OpenCode 2 and `/session` on OpenCode 1). Empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills the child `opencode serve`. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt-sol`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
 
 Load **many-brain-one-task** for plan schema, delivery contracts, profiles. Role templates: `many-brain-one-task/roles/{state,contracts,failure,craft,merits,integration}.md`.
 
@@ -90,7 +90,7 @@ Count **reviewable lines** = added + deleted lines in primary artifacts (`git di
 
 ### plan.json slots
 
-Harness-owned rows: `harness: "opencode"|"occtl"|"grok"`. Native Agent rows: `harness: "external"` (you launch Agent; mbot-run harvest still scores `.out`). Prefer slot-keyed paths `results/<slot>.out` + `*.meta.json` with `planned_model` / `actual_model`.
+Harness-owned rows: `harness: "opencode"` or `"grok"` (`"occtl"` is a legacy alias of `"opencode"`). Native Agent rows: `harness: "external"` (you launch Agent; mbot-run harvest still scores `.out`). Prefer slot-keyed paths `results/<slot>.out` + `*.meta.json` with `planned_model` / `actual_model`.
 
 Seamus OpenCode titles:
 

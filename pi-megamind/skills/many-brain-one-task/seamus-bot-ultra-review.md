@@ -78,7 +78,7 @@ Check your tool surface — never assume.
   if Grok returns empty output or times out at minute 8, fail over immediately to Opus 5.5 rather than retrying on Grok.
 - `plan.json` `"attach": "http://127.0.0.1:4096"` (the bot serve already in
   `OPENCODE_SERVER_HOST`/`PORT`). Never retarget to the personal server (`:4095`,
-  `100.110.251.42`, `seamus`), and never call `occtl` or `run-opencode.ts` directly.
+  `100.110.251.42`, `seamus`). `mbot-run` speaks `/session` on this OpenCode 1 server. Do not shell out to `opencode`.
 - List models through the bot serve (bare `opencode models` ignores attach). OpenCode 2 answers `GET /api/model` (HTTP Basic). `GET /config/providers` is that server's web UI. OpenCode 1 still answers `/config/providers`.
 
 ```bash

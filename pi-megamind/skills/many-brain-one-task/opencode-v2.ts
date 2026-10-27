@@ -1,12 +1,11 @@
 /**
- * OpenCode 2 HTTP client for mbot-run.
+ * OpenCode HTTP client for mbot-run. No occtl binary.
  *
- * OpenCode 2 serves the web UI on the old v1 paths (`/config/providers` is
- * HTML) and the API under `/api`. occtl 1.5 still posts to `/session`, so a
- * v2 server needs this client for probe, prompt, and salvage.
- *
- * Auth is HTTP Basic (`opencode` + the server password). An ephemeral
- * `opencode serve` prints its password on stdout; that value stays in memory.
+ * OpenCode 2 serves the web UI on the old paths and the API under `/api`.
+ * OpenCode 1 (the Seamus bot serve) keeps `/config/providers` and `/session`.
+ * This module drives both. Auth is HTTP Basic (`opencode` + the server
+ * password) when the server requires it. An ephemeral `opencode serve`
+ * prints its password on stdout; that value stays in memory.
  */
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
@@ -323,19 +322,155 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null
 }
 
+const V1_STABLE_MS = 5000
+
+interface V1Envelope {
+  info: {
+    id?: string
+    role?: string
+    cost?: unknown
+    tokens?: unknown
+    finish?: string
+    error?: unknown
+    time?: { completed?: number }
+  }
+  parts: unknown[]
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null
+}
+
+function directoryQuery(directory?: string): Record<string, string> | undefined {
+  return directory ? { directory } : undefined
+}
+
+function v1Envelopes(body: unknown): V1Envelope[] {
+  const data = Array.isArray(body) ? body : unwrapData(body)
+  if (!Array.isArray(data)) return []
+  const out: V1Envelope[] = []
+  for (const item of data) {
+    const rec = asRecord(item)
+    const info = asRecord(rec?.info)
+    if (!info) continue
+    out.push({
+      info: info as V1Envelope["info"],
+      parts: Array.isArray(rec?.parts) ? rec.parts : [],
+    })
+  }
+  return out
+}
+
+function textFromParts(parts: unknown[]): string {
+  const bits: string[] = []
+  for (const part of parts) {
+    const rec = asRecord(part)
+    if (!rec || rec.type !== "text") continue
+    if (typeof rec.text === "string" && rec.text) bits.push(rec.text)
+  }
+  return bits.join("\n")
+}
+
+function v1HasActiveTool(parts: unknown[]): boolean {
+  return parts.some((part) => {
+    const rec = asRecord(part)
+    if (!rec || rec.type !== "tool") return false
+    const state = asRecord(rec.state)
+    const status = state?.status
+    return status === "pending" || status === "running" || status === "in_progress"
+  })
+}
+
+function lastNewAssistant(envelopes: V1Envelope[], prior: Set<string>): V1Envelope | null {
+  for (let i = envelopes.length - 1; i >= 0; i--) {
+    const env = envelopes[i]
+    if (env.info.role !== "assistant") continue
+    if (env.info.id && prior.has(env.info.id)) return null
+    return env
+  }
+  return null
+}
+
+function v1TurnFinished(env: V1Envelope): boolean {
+  if (env.info.error != null) return true
+  if (env.info.time?.completed == null) return false
+  return env.info.finish !== "tool-calls"
+}
+
+async function listV1Messages(
+  baseUrl: string,
+  sessionId: string,
+  password: string | undefined,
+  directory: string | undefined,
+): Promise<V1Envelope[]> {
+  const listed = await authed(baseUrl, "GET", `/session/${encodeURIComponent(sessionId)}/message`, {
+    password,
+    timeoutMs: 15000,
+    query: { ...directoryQuery(directory), limit: "100000" },
+  })
+  if (listed.status !== 200) return []
+  return v1Envelopes(listed.body)
+}
+
+/** Reply `once` to this session's pending v1 permission requests. Other sessions are left alone. */
+async function replyPendingPermissionsV1(
+  baseUrl: string,
+  sessionId: string,
+  password?: string,
+  directory?: string,
+): Promise<void> {
+  const listed = await authed(baseUrl, "GET", "/permission", {
+    password,
+    timeoutMs: 8000,
+    query: directoryQuery(directory),
+  })
+  if (listed.status !== 200) return
+  const data = Array.isArray(listed.body) ? listed.body : unwrapData(listed.body)
+  if (!Array.isArray(data)) return
+  for (const request of data) {
+    const rec = asRecord(request)
+    const id = rec?.id
+    const owner = rec?.sessionID ?? rec?.sessionId
+    if (typeof id !== "string" || !id || owner !== sessionId) continue
+    await authed(
+      baseUrl,
+      "POST",
+      `/session/${encodeURIComponent(sessionId)}/permissions/${encodeURIComponent(id)}`,
+      {
+        password,
+        timeoutMs: 8000,
+        query: directoryQuery(directory),
+        body: { response: "once" },
+      },
+    )
+  }
+}
+
 export async function fetchLatestAssistantText(
   baseUrl: string,
   sessionId: string,
   password?: string,
+  api?: OpencodeApi,
 ): Promise<string> {
-  const listed = await authed(baseUrl, "GET", `/api/session/${encodeURIComponent(sessionId)}/message`, {
-    password,
-    timeoutMs: 15000,
-    query: { type: "assistant", order: "desc", limit: "5" },
-  })
-  if (listed.status !== 200) return ""
-  const data = unwrapData(listed.body)
-  return Array.isArray(data) ? textFromAssistantMessages(data) : ""
+  if (api !== "v1") {
+    const listed = await authed(baseUrl, "GET", `/api/session/${encodeURIComponent(sessionId)}/message`, {
+      password,
+      timeoutMs: 15000,
+      query: { type: "assistant", order: "desc", limit: "5" },
+    })
+    if (listed.status === 200) {
+      const data = unwrapData(listed.body)
+      return Array.isArray(data) ? textFromAssistantMessages(data) : ""
+    }
+    if (api === "v2") return ""
+  }
+  const envelopes = await listV1Messages(baseUrl, sessionId, password, undefined)
+  for (let i = envelopes.length - 1; i >= 0; i--) {
+    if (envelopes[i].info.role !== "assistant") continue
+    const text = textFromParts(envelopes[i].parts)
+    if (text.trim()) return text
+  }
+  return ""
 }
 
 async function replyPendingPermissions(baseUrl: string, sessionId: string, password?: string): Promise<void> {
@@ -514,6 +649,136 @@ export async function runOpencodeV2(opts: {
   return { code: settled ? 0 : 124, text, sessionId, costUsd, usage }
 }
 
+/**
+ * One OpenCode 1 session: `POST /session`, `POST /session/{id}/prompt_async`,
+ * then poll `/session/{id}/message` until the new assistant message is finalized.
+ */
+export async function runOpencodeV1(opts: {
+  baseUrl: string
+  password?: string
+  model: string
+  variant?: string
+  agent?: string
+  title?: string
+  prompt: string
+  directory: string
+  timeoutMs: number
+  onSession?: (sessionId: string) => void
+}): Promise<V2RunResult> {
+  const fail = (error: string, sessionId: string | null = null, code = 1): V2RunResult => ({
+    code,
+    text: "",
+    sessionId,
+    costUsd: null,
+    error,
+  })
+  let ref: { providerID: string; id: string }
+  try {
+    ref = splitProviderModel(opts.model)
+  } catch (err) {
+    return fail((err as Error).message)
+  }
+  const directory = opts.directory
+  const created = await authed(opts.baseUrl, "POST", "/session", {
+    password: opts.password,
+    timeoutMs: 20000,
+    query: directoryQuery(directory),
+    body: opts.title ? { title: opts.title } : {},
+  })
+  if (created.networkError || created.status >= 400 || created.status === 0) {
+    return fail(`session create: ${created.networkError || errorMessage(created.body, created.status)}`)
+  }
+  const sessionId = sessionIdOf(created.body)
+  if (!sessionId) return fail("session create returned no id")
+  opts.onSession?.(sessionId)
+
+  const prior = new Set(
+    (await listV1Messages(opts.baseUrl, sessionId, opts.password, directory))
+      .filter((env) => env.info.role === "assistant" && env.info.id)
+      .map((env) => env.info.id as string),
+  )
+  const promptBody: Record<string, unknown> = {
+    parts: [{ type: "text", text: opts.prompt }],
+    model: { providerID: ref.providerID, modelID: ref.id },
+  }
+  if (opts.agent) promptBody.agent = opts.agent
+  if (opts.variant) promptBody.variant = opts.variant
+  const deadline = Date.now() + Math.max(1000, opts.timeoutMs)
+  const prompted = await authed(
+    opts.baseUrl,
+    "POST",
+    `/session/${encodeURIComponent(sessionId)}/prompt_async`,
+    {
+      password: opts.password,
+      timeoutMs: Math.min(20000, deadline - Date.now()),
+      query: directoryQuery(directory),
+      body: promptBody,
+    },
+  )
+  if (prompted.networkError || prompted.status >= 400) {
+    return fail(
+      `prompt: ${prompted.networkError || errorMessage(prompted.body, prompted.status)}`,
+      sessionId,
+    )
+  }
+
+  let settled = false
+  let latest: V1Envelope | null = null
+  let stable: { signature: string; at: number } | null = null
+  while (Date.now() < deadline) {
+    await replyPendingPermissionsV1(opts.baseUrl, sessionId, opts.password, directory)
+    const envelopes = await listV1Messages(opts.baseUrl, sessionId, opts.password, directory)
+    const candidate = lastNewAssistant(envelopes, prior)
+    latest = candidate
+    if (candidate && v1TurnFinished(candidate)) {
+      settled = true
+      break
+    }
+    const text = candidate ? textFromParts(candidate.parts).trim() : ""
+    if (candidate && text && !v1HasActiveTool(candidate.parts)) {
+      const signature = `${candidate.info.id}\n${text}`
+      if (stable?.signature === signature && Date.now() - stable.at >= V1_STABLE_MS) {
+        settled = true
+        break
+      }
+      if (stable?.signature !== signature) stable = { signature, at: Date.now() }
+    } else {
+      stable = null
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  if (!settled) {
+    await authed(opts.baseUrl, "POST", `/session/${encodeURIComponent(sessionId)}/abort`, {
+      password: opts.password,
+      timeoutMs: 8000,
+      query: directoryQuery(directory),
+    })
+    await new Promise((r) => setTimeout(r, 400))
+    latest = lastNewAssistant(
+      await listV1Messages(opts.baseUrl, sessionId, opts.password, directory),
+      prior,
+    ) ?? latest
+  }
+
+  const text = latest ? textFromParts(latest.parts) : ""
+  const costUsd = asNumber(latest?.info.cost)
+  const usage =
+    latest?.info.tokens && typeof latest.info.tokens === "object"
+      ? (latest.info.tokens as Record<string, unknown>)
+      : undefined
+  if (!text.trim()) {
+    return {
+      code: settled ? 1 : 124,
+      text,
+      sessionId,
+      costUsd,
+      usage,
+      error: settled ? "provider returned no text" : `timed out after ${opts.timeoutMs}ms`,
+    }
+  }
+  return { code: settled ? 0 : 124, text, sessionId, costUsd, usage }
+}
+
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer()
@@ -532,7 +797,7 @@ function redactServerLog(text: string): string {
 
 /** Start `opencode serve` on a random port and tear it down when `fn` finishes. */
 export async function withEphemeralServer<T>(
-  fn: (ctx: { baseUrl: string; password: string }) => Promise<T>,
+  fn: (ctx: { baseUrl: string; password?: string; api: OpencodeApi }) => Promise<T>,
 ): Promise<T> {
   const port = await freePort()
   const child: ChildProcess = spawn("opencode", ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
@@ -560,24 +825,51 @@ export async function withEphemeralServer<T>(
   try {
     const readyAt = Date.now() + 20000
     let lastError = "server did not become ready"
+    let api: OpencodeApi | undefined
+    const providersReady = (result: HttpResult): boolean =>
+      result.status === 200 &&
+      !isHtml(result.contentType, result.body) &&
+      !!asRecord(result.body) &&
+      "providers" in (result.body as object)
     while (Date.now() < readyAt) {
       if (child.exitCode != null) {
         throw new Error(`opencode serve exited ${child.exitCode}: ${redactServerLog(log).slice(0, 400)}`)
       }
-      if (password) {
-        const info = await request(baseUrl, "GET", "/api/info", { password, timeoutMs: 1000 })
-        if (info.status === 200) break
+      const info = await request(baseUrl, "GET", "/api/info", {
+        password: password || undefined,
+        timeoutMs: 1000,
+      })
+      if (
+        info.status === 200 &&
+        !isHtml(info.contentType, info.body) &&
+        info.body &&
+        typeof info.body === "object"
+      ) {
+        api = "v2"
+        break
+      }
+      // v2 prints a password and answers 401 until then. v1 serves the UI at
+      // /api/info and the catalog at /config/providers, with no password.
+      if (info.status !== 401 && !info.networkError) {
+        const providers = await request(baseUrl, "GET", "/config/providers", { timeoutMs: 1000 })
+        if (providersReady(providers)) {
+          api = "v1"
+          break
+        }
+        lastError = providers.networkError || errorMessage(providers.body, providers.status)
+      } else {
         lastError = info.networkError || errorMessage(info.body, info.status)
       }
       await new Promise((r) => setTimeout(r, 150))
     }
-    if (!password) throw new Error(`opencode serve printed no password: ${redactServerLog(log).slice(0, 400)}`)
-    const info = await request(baseUrl, "GET", "/api/info", { password, timeoutMs: 2000 })
-    if (info.status !== 200) {
-      throw new Error(`opencode serve not ready (${lastError})`)
+    if (!api) {
+      const why = password
+        ? lastError
+        : `opencode serve printed no password: ${redactServerLog(log).slice(0, 400)}`
+      throw new Error(`opencode serve not ready (${why})`)
     }
-    rememberPassword(baseUrl, password)
-    return await fn({ baseUrl, password })
+    rememberPassword(baseUrl, password || undefined)
+    return await fn({ baseUrl, password: password || undefined, api })
   } finally {
     stop()
   }

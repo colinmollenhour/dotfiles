@@ -4,6 +4,7 @@ import {
   assistantTextFromMessage,
   modelsFromV1Providers,
   modelsFromV2Catalog,
+  runOpencodeV1,
   runOpencodeV2,
   splitProviderModel,
   textFromAssistantMessages,
@@ -103,6 +104,77 @@ describe("runOpencodeV2", () => {
       expect(result.text).toBe("OPENCODE_SMOKE_OK")
       expect(result.sessionId).toBe("ses_unit")
       expect(result.costUsd).toBe(0.02)
+    } finally {
+      server.stop(true)
+    }
+  })
+})
+
+describe("runOpencodeV1", () => {
+  test("posts prompt_async and reads the finished assistant message", async () => {
+    let prompted = false
+    let replied = false
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const url = new URL(req.url)
+        if (req.method === "POST" && url.pathname === "/session") {
+          return Response.json({ id: "ses_v1" })
+        }
+        if (req.method === "GET" && url.pathname === "/session/ses_v1/message") {
+          if (!prompted) return Response.json([])
+          return Response.json([
+            {
+              info: {
+                id: "msg_v1",
+                role: "assistant",
+                cost: 0.04,
+                tokens: { output: 2 },
+                finish: "stop",
+                time: { completed: Date.now() },
+              },
+              parts: [{ type: "text", text: "OPENCODE_SMOKE_OK" }],
+            },
+          ])
+        }
+        if (req.method === "POST" && url.pathname === "/session/ses_v1/prompt_async") {
+          prompted = true
+          const body = await req.json()
+          expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-6.1-sol" })
+          expect(body.parts).toEqual([{ type: "text", text: "hello" }])
+          expect(body.variant).toBe("high")
+          expect(url.searchParams.get("directory")).toBe("/tmp")
+          return new Response(null, { status: 204 })
+        }
+        if (url.pathname === "/permission") {
+          return Response.json([{ id: "perm_1", sessionID: "ses_v1" }, { id: "perm_other", sessionID: "ses_other" }])
+        }
+        if (req.method === "POST" && url.pathname.startsWith("/session/") && url.pathname.includes("/permissions/")) {
+          expect(url.pathname).toBe("/session/ses_v1/permissions/perm_1")
+          replied = true
+          const body = await req.json()
+          expect(body).toEqual({ response: "once" })
+          return Response.json({})
+        }
+        return new Response(`nope ${url.pathname}`, { status: 404 })
+      },
+    })
+    try {
+      const result = await runOpencodeV1({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        model: "openai/gpt-6.1-sol",
+        variant: "high",
+        prompt: "hello",
+        directory: "/tmp",
+        timeoutMs: 5000,
+        title: "unit",
+      })
+      expect(prompted).toBe(true)
+      expect(replied).toBe(true)
+      expect(result.code).toBe(0)
+      expect(result.text).toBe("OPENCODE_SMOKE_OK")
+      expect(result.sessionId).toBe("ses_v1")
+      expect(result.costUsd).toBe(0.04)
     } finally {
       server.stop(true)
     }

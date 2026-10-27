@@ -130,7 +130,7 @@ interface SlotUsage {
   cost_usd: number | null
   cost_microdollars: number | null
   has_cost: boolean
-  cost_source: "agentsview" | "grok_json" | "meta" | "occtl" | "unavailable" | "none"
+  cost_source: "agentsview" | "grok_json" | "meta" | "occtl" | "opencode_v1" | "opencode_v2" | "unavailable" | "none"
   total_output_tokens: number | null
   peak_context_tokens: number | null
   /** True when agentsview reported a peak (including 0). */
@@ -1307,7 +1307,12 @@ Parents are discovered from agent parent_session_id, run-dir mentions, or --pare
       costFields.has_cost = true
       const src = meta.cost_source
       costFields.cost_source =
-        src === "grok_json" || src === "occtl" || src === "meta" || src === "agentsview"
+        src === "grok_json" ||
+        src === "occtl" ||
+        src === "opencode_v1" ||
+        src === "opencode_v2" ||
+        src === "meta" ||
+        src === "agentsview"
           ? src
           : sidecarUsage?.total_cost_usd != null
             ? "grok_json"
