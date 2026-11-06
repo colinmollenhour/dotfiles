@@ -84,7 +84,7 @@ const HARNESS_FOOTER =
 
 const DEFAULT_OPENCODE_CONCURRENCY = 3
 const DEFAULT_GROK_CONCURRENCY = 2
-const DEFAULT_GROK_CLI_MODEL = "grok-4.6"
+const DEFAULT_GROK_CLI_MODEL = "grok-4.7"
 const DEFAULT_SMOKE_TIMEOUT_MS = 45_000
 const DEFAULT_SLOT_TIMEOUT_MS = 1_200_000
 const DEFAULT_GROK_TIMEOUT_MS = 1_200_000
@@ -1312,7 +1312,9 @@ async function launchSlotInner(
       grokError = `Grok terminated with exit 143 after ${Math.round(wallMs(startedAt, nowIso()) || 0)}ms (${grokProgressSummary(capturedGrokProgress)})`
     }
     const grok = parseGrokStdout(r.stdout)
-    if (!isRich(grok.text) && r.code !== 0 && /too_many_requests|rate.?limit|\b429\b/i.test(`${r.stderr}\n${r.stdout}`)) {
+    if (!isRich(grok.text) && r.code !== 0 && /not authenticated|login required|unauthorized|\b401\b/i.test(`${r.stderr}\n${r.stdout}`)) {
+      grokCircuit.open_reason = "Grok CLI is not authenticated; remaining Grok slots were not launched. Use an OpenCode xai/grok-4.7 slot or restore Grok CLI login"
+    } else if (!isRich(grok.text) && r.code !== 0 && /too_many_requests|rate.?limit|\b429\b/i.test(`${r.stderr}\n${r.stdout}`)) {
       grokCircuit.open_reason = "Grok CLI returned a rate limit error; remaining Grok slots were not launched"
     } else if (!isRich(grok.text) && r.code === 143 && (wallMs(startedAt, nowIso()) || 0) < GROK_FAST_FAILURE_MS) {
       grokCircuit.fast_failures++

@@ -63,14 +63,14 @@ The host harness (you, the one running this skill right now) limits which models
 | Opus | `colin-mbot-opus` | `anthropic/claude-opus-5-5` |
 | Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
-| Grok | `colin-mbot-grok` | `xai/grok-4.6` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
+| Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
 | GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 
 Do not hand-pick `build` or `general`. Fall back to a first-party CLI only when the profile pins one or the `colin-mbot-*` agent is not installed (`~/.opencode/agents/<name>.md`). Note that a containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — check `command -v` before planning a CLI route.
 
 When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
 
-When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.6`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok` — **or** the host is OpenCode, where `colin-mbot-grok` wins, or the `grok` CLI is not installed.
+When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.7`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok` — **or** the host is OpenCode, where `colin-mbot-grok` wins, or the `grok` CLI is not installed or authenticated.
 
 
 ### Pi
@@ -275,7 +275,7 @@ Write the full task to a prompt file, then:
 
 ```bash
 grok --prompt-file .tmp/<run-id>/grok.md \
-  -m grok-4.6 \
+  -m grok-4.7 \
   --always-approve \
   --output-format json \
   --session-id <uuid> \
@@ -290,7 +290,7 @@ Guidelines:
 
 - Prefer `--prompt-file` over `-p` for any non-trivial MBOT prompt (same reliability reason as OpenCode `--file`).
 - Use `--always-approve` so unattended batch runs never block on tool permission prompts.
-- `mbot-run` pins direct Grok CLI slots to `grok-4.6` with `-m` unless `provider_model_id` explicitly names another Grok model. Check availability with `grok models`.
+- `mbot-run` pins direct Grok CLI slots to `grok-4.7` with `-m` unless `provider_model_id` explicitly names another Grok model. Check availability and authentication with `grok models`. If unauthenticated, route the slot through OpenCode with `xai/grok-4.7`.
 - Direct Grok CLI reviews default to 20 minutes per slot; `grok_timeout_ms` on the plan or `timeout_ms` on a slot overrides that budget. The default barrier deadline covers concurrency waves when `--timeout-ms` is omitted.
 - A timed-out slot records Grok session loop/tool progress in its meta; three rapid exit-143 failures or a rate-limit error stop new Grok slots in that launch.
 - Map profile effort prose: `"max" thinking` / `xhigh` → `--reasoning-effort max` (alias of `xhigh`); `"high"` → `high`.

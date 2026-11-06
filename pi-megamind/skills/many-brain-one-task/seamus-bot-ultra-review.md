@@ -74,7 +74,7 @@ Check your tool surface — never assume.
 - GPT goes through `openai`, not OpenCode Zen.
 - `claude-code/opus` is the parent harness model — never a participant.
 - `"concurrency": 3` (4 max): all slots, and an OpenCode parent, share one server. Wall-clock
-  20 min per slot (`--timeout-ms 1200000`). Use `xai/grok-4.6` for Grok slots. If Grok returns
+  20 min per slot (`--timeout-ms 1200000`). Use `xai/grok-4.7` for Grok slots. If Grok returns
   empty output or times out, fail over to Opus 5.5 rather than retrying on Grok.
 - `plan.json` `"attach": "http://127.0.0.1:4096"` (the bot serve already in
   `OPENCODE_SERVER_HOST`/`PORT`). Never retarget to the personal server (`:4095`,

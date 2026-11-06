@@ -26,7 +26,7 @@ Headless mode is triggered by `-p` / `--single`, `--prompt-file`, or `--prompt-j
 
 ```bash
 grok --prompt-file .tmp/<run-id>/grok.md \
-  -m grok-4.6 \
+  -m grok-4.7 \
   --always-approve \
   --output-format plain \
   --reasoning-effort high \
@@ -76,7 +76,7 @@ Resolve live ids with `grok models`. Common values:
 
 | Flag value | Notes |
 | --- | --- |
-| `grok-4.6` | Preferred model for MBOT Grok CLI slots; verify availability with `grok models`. |
+| `grok-4.7` | Preferred model for MBOT Grok CLI slots; verify availability and authentication with `grok models`. |
 | `grok-composer-2.5-fast` | Faster / lighter when listed |
 
 Do not invent model strings; prefer the exact id printed by `grok models`.
