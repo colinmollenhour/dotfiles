@@ -369,6 +369,45 @@ describe("barrier failure handling", () => {
     expect(summary.counts.failed).toBe(1)
   })
 
+  test("default barrier deadline covers Grok concurrency waves", () => {
+    const runDir = join(TMP, "barrier-grok-budget")
+    mkdirSync(join(runDir, "results"), { recursive: true })
+    const slots = Array.from({ length: 3 }, (_, i) => ({
+      slot: `grok-${i}`, harness: "grok", planned_model: "grok-4.6",
+      prompt: "prompts/p.md", out: `results/grok-${i}.out`,
+    }))
+    writeFileSync(join(runDir, "plan.json"), JSON.stringify({ run_dir: runDir, slots }))
+    for (const slot of slots) {
+      writeFileSync(join(runDir, "results", `${slot.slot}.meta.json`), JSON.stringify({
+        ...slot, status: "failed", terminal: true, error: "test failure", exit: 1,
+      }))
+    }
+    const r = Bun.spawnSync(["bun", SCRIPT, "barrier", "--run-dir", runDir], {
+      stdout: "pipe", stderr: "pipe",
+    })
+    expect(r.exitCode, r.stderr.toString()).toBe(1)
+    expect(JSON.parse(r.stdout.toString()).timeout_ms).toBe(2_520_000)
+  })
+
+  test("barrier timeout reports current metas instead of stale state", () => {
+    const runDir = join(TMP, "barrier-current-timeout")
+    mkdirSync(join(runDir, "results"), { recursive: true })
+    writeFileSync(join(runDir, "plan.json"), JSON.stringify({ run_dir: runDir, slots: [slot("a"), slot("b")] }))
+    writeFileSync(join(runDir, "results", "a.meta.json"), JSON.stringify({
+      ...slot("a"), status: "running", terminal: false,
+    }))
+    writeFileSync(join(runDir, "results", "b.meta.json"), JSON.stringify({
+      ...slot("b"), status: "ok", terminal: true,
+    }))
+    const r = Bun.spawnSync(
+      ["bun", SCRIPT, "barrier", "--run-dir", runDir, "--timeout-ms", "150", "--poll-ms", "25"],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    expect(r.exitCode, r.stderr.toString()).toBe(1)
+    const summary = JSON.parse(r.stdout.toString())
+    expect(summary.slots.map((s: { status: string }) => s.status)).toEqual(["running", "ok"])
+  })
+
   test("marks pending slots failed when the launcher process dies", () => {
     const runDir = join(TMP, "barrier-dead-launcher")
     mkdirSync(join(runDir, "results"), { recursive: true })
@@ -835,24 +874,155 @@ setTimeout(() => {
     }
   })
 
-  test("Grok slots default to 480_000 ms timeout to prevent 20-min stalls", async () => {
-    const runDir = join(TMP, "grok-timeout-test")
-    const plan = {
+  test("direct Grok slots pin grok-4.6 and record the actual model", async () => {
+    const runDir = join(TMP, "grok-model-test")
+    const binDir = join(runDir, "bin")
+    mkdirSync(join(runDir, "prompts"), { recursive: true })
+    mkdirSync(binDir, { recursive: true })
+    writeFileSync(join(runDir, "prompts", "p.md"), "Review this.\n")
+    const binary = join(binDir, "grok")
+    writeFileSync(binary, `#!/usr/bin/env bun
+import { writeFileSync } from "node:fs"
+writeFileSync(process.env.MBOT_TEST_ARGS, JSON.stringify(process.argv))
+console.log(JSON.stringify({ text: "word ".repeat(80) + "\\nVERDICT: no issues", sessionId: "test-session", total_cost_usd: 0.01 }))
+`)
+    chmodSync(binary, 0o755)
+    const argsPath = join(runDir, "args.json")
+    const planPath = join(runDir, "plan.json")
+    writeFileSync(planPath, JSON.stringify({
       run_dir: runDir,
-      slots: [
-        {
-          slot: "grok-craft",
-          harness: "grok",
-          planned_model: "grok-4.7",
-          prompt: "prompts/p.md",
-          out: "results/r.out",
-        },
-      ],
-    }
-    await Bun.write(join(runDir, "plan.json"), JSON.stringify(plan))
-    // Run mbot-run launch against an empty external/dummy without hanging
-    // or verify plan serialization
-    expect(plan.slots[0].harness).toBe("grok")
-  })
+      slots: [{ slot: "grok-review", harness: "grok", planned_model: "grok-4.7",
+        prompt: "prompts/p.md", out: "results/grok.out" }],
+    }))
+    const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH || ""}`, MBOT_TEST_ARGS: argsPath },
+      stdout: "pipe", stderr: "pipe",
+    })
+    const stdout = await new Response(proc.stdout).text()
+    const stderr = await new Response(proc.stderr).text()
+    expect(await proc.exited, stderr || stdout).toBe(0)
+    const args = JSON.parse(readFileSync(argsPath, "utf8")) as string[]
+    expect(args.slice(args.indexOf("-m"), args.indexOf("-m") + 2)).toEqual(["-m", "grok-4.6"])
+    const meta = JSON.parse(readFileSync(join(runDir, "results", "grok.meta.json"), "utf8"))
+    expect(meta.planned_model).toBe("grok-4.7")
+    expect(meta.actual_model).toBe("grok-4.6")
+    expect(meta.status).toBe("ok")
+  }, 8000)
+
+  test("a timed-out Grok slot records trace progress instead of only exit 124", async () => {
+    const runDir = join(TMP, "grok-timeout-test")
+    const binDir = join(runDir, "bin")
+    mkdirSync(join(runDir, "prompts"), { recursive: true })
+    mkdirSync(binDir, { recursive: true })
+    writeFileSync(join(runDir, "prompts", "p.md"), "Review this.\n")
+    const binary = join(binDir, "grok")
+    writeFileSync(binary, `#!/usr/bin/env bun
+import { mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+const id = process.argv[process.argv.indexOf("--session-id") + 1]
+const dir = join(process.env.GROK_HOME, "sessions", encodeURIComponent(process.cwd()), id)
+mkdirSync(dir, { recursive: true })
+writeFileSync(join(dir, "summary.json"), "{}")
+writeFileSync(join(dir, "events.jsonl"), [
+  JSON.stringify({ type: "loop_started", ts: new Date().toISOString() }),
+  JSON.stringify({ type: "tool_started", ts: new Date().toISOString() }),
+  JSON.stringify({ type: "phase_changed", phase: "waiting_for_model", ts: new Date().toISOString() }),
+].join("\\n") + "\\n")
+setInterval(() => {}, 1000)
+`)
+    chmodSync(binary, 0o755)
+    const planPath = join(runDir, "plan.json")
+    writeFileSync(planPath, JSON.stringify({
+      run_dir: runDir,
+      slots: [{ slot: "grok-craft", harness: "grok", planned_model: "grok-4.6", timeout_ms: 1000,
+        prompt: "prompts/p.md", out: "results/r.out" }],
+    }))
+    const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH || ""}`, GROK_HOME: join(runDir, "grok-home") },
+      stdout: "pipe", stderr: "pipe",
+    })
+    const stdout = await new Response(proc.stdout).text()
+    const stderr = await new Response(proc.stderr).text()
+    expect(await proc.exited, stderr || stdout).toBe(1)
+    const meta = JSON.parse(readFileSync(join(runDir, "results", "r.meta.json"), "utf8"))
+    expect(meta.status).toBe("timeout")
+    expect(meta.exit).toBe(124)
+    expect(meta.error).toContain("Grok timed out after 1000ms")
+    expect(meta.grok_progress).toMatchObject({ loops: 1, tool_calls: 1, last_phase: "waiting_for_model" })
+  }, 8000)
+
+  test("Grok circuit stops launching after three rapid exit-143 failures", async () => {
+    const runDir = join(TMP, "grok-circuit-test")
+    const binDir = join(runDir, "bin")
+    mkdirSync(join(runDir, "prompts"), { recursive: true })
+    mkdirSync(binDir, { recursive: true })
+    writeFileSync(join(runDir, "prompts", "p.md"), "Review this.\n")
+    const binary = join(binDir, "grok")
+    writeFileSync(binary, `#!/usr/bin/env bun
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+const path = process.env.MBOT_TEST_ATTEMPTS
+const count = (existsSync(path) ? Number(readFileSync(path, "utf8")) : 0) + 1
+writeFileSync(path, String(count))
+process.exit(143)
+`)
+    chmodSync(binary, 0o755)
+    const attempts = join(runDir, "attempts")
+    const planPath = join(runDir, "plan.json")
+    writeFileSync(planPath, JSON.stringify({
+      run_dir: runDir,
+      concurrency: 1,
+      slots: Array.from({ length: 5 }, (_, i) => ({
+        slot: `grok-${i}`, harness: "grok", planned_model: "grok-4.6",
+        prompt: "prompts/p.md", out: `results/grok-${i}.out`,
+      })),
+    }))
+    const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH || ""}`, MBOT_TEST_ATTEMPTS: attempts },
+      stdout: "pipe", stderr: "pipe",
+    })
+    const stdout = await new Response(proc.stdout).text()
+    const stderr = await new Response(proc.stderr).text()
+    expect(await proc.exited, stderr || stdout).toBe(1)
+    expect(readFileSync(attempts, "utf8")).toBe("3")
+    const summary = JSON.parse(stdout)
+    expect(summary.counts.failed).toBe(5)
+    const last = JSON.parse(readFileSync(join(runDir, "results", "grok-4.meta.json"), "utf8"))
+    expect(last.error).toContain("remaining Grok slots were not launched")
+  }, 8000)
+
+  test("Grok rate limits stop subsequent Grok slots", async () => {
+    const runDir = join(TMP, "grok-rate-limit-test")
+    const binDir = join(runDir, "bin")
+    mkdirSync(join(runDir, "prompts"), { recursive: true })
+    mkdirSync(binDir, { recursive: true })
+    writeFileSync(join(runDir, "prompts", "p.md"), "Review this.\n")
+    const binary = join(binDir, "grok")
+    writeFileSync(binary, `#!/usr/bin/env bun
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+const path = process.env.MBOT_TEST_ATTEMPTS
+writeFileSync(path, String((existsSync(path) ? Number(readFileSync(path, "utf8")) : 0) + 1))
+console.error("Error: too_many_requests")
+process.exit(1)
+`)
+    chmodSync(binary, 0o755)
+    const attempts = join(runDir, "attempts")
+    const planPath = join(runDir, "plan.json")
+    writeFileSync(planPath, JSON.stringify({
+      run_dir: runDir,
+      concurrency: 1,
+      slots: [0, 1].map((i) => ({ slot: `grok-${i}`, harness: "grok", planned_model: "grok-4.6",
+        prompt: "prompts/p.md", out: `results/grok-${i}.out` })),
+    }))
+    const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH || ""}`, MBOT_TEST_ATTEMPTS: attempts },
+      stdout: "pipe", stderr: "pipe",
+    })
+    const stdout = await new Response(proc.stdout).text()
+    const stderr = await new Response(proc.stderr).text()
+    expect(await proc.exited, stderr || stdout).toBe(1)
+    expect(readFileSync(attempts, "utf8")).toBe("1")
+    const blocked = JSON.parse(readFileSync(join(runDir, "results", "grok-1.meta.json"), "utf8"))
+    expect(blocked.error).toContain("rate limit")
+  }, 8000)
 })
 

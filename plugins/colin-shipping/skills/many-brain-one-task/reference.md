@@ -63,14 +63,14 @@ The host harness (you, the one running this skill right now) limits which models
 | Opus | `colin-mbot-opus` | `anthropic/claude-opus-5-5` |
 | Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
-| Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
+| Grok | `colin-mbot-grok` | `xai/grok-4.6` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
 | GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 
 Do not hand-pick `build` or `general`. Fall back to a first-party CLI only when the profile pins one or the `colin-mbot-*` agent is not installed (`~/.opencode/agents/<name>.md`). Note that a containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — check `command -v` before planning a CLI route.
 
 When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
 
-When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.7`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok` — **or** the host is OpenCode, where `colin-mbot-grok` wins, or the `grok` CLI is not installed.
+When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.6`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok` — **or** the host is OpenCode, where `colin-mbot-grok` wins, or the `grok` CLI is not installed.
 
 
 ### Pi
@@ -275,6 +275,7 @@ Write the full task to a prompt file, then:
 
 ```bash
 grok --prompt-file .tmp/<run-id>/grok.md \
+  -m grok-4.6 \
   --always-approve \
   --output-format json \
   --session-id <uuid> \
@@ -289,7 +290,9 @@ Guidelines:
 
 - Prefer `--prompt-file` over `-p` for any non-trivial MBOT prompt (same reliability reason as OpenCode `--file`).
 - Use `--always-approve` so unattended batch runs never block on tool permission prompts.
-- Pass `-m <model>` / `--model` only when the profile pins one (resolve with `grok models`; default is usually `grok-4.7`).
+- `mbot-run` pins direct Grok CLI slots to `grok-4.6` with `-m` unless `provider_model_id` explicitly names another Grok model. Check availability with `grok models`.
+- Direct Grok CLI reviews default to 20 minutes per slot; `grok_timeout_ms` on the plan or `timeout_ms` on a slot overrides that budget. The default barrier deadline covers concurrency waves when `--timeout-ms` is omitted.
+- A timed-out slot records Grok session loop/tool progress in its meta; three rapid exit-143 failures or a rate-limit error stop new Grok slots in that launch.
 - Map profile effort prose: `"max" thinking` / `xhigh` → `--reasoning-effort max` (alias of `xhigh`); `"high"` → `high`.
 - For pure critique/review/opinion tasks, add `--disallowed-tools Agent` or `--no-subagents` so the child does not spawn nested agents.
 - Treat success as exit `0` **and** non-whitespace stdout. On failure, record stderr and substitute a backup if configured.
@@ -398,13 +401,9 @@ Use this only when `botctl` is unavailable or the profile explicitly requires he
 The parent session never shells out to `opencode` for MBOT/MBOD slots. Write a `plan.json` with `harness: "opencode"` (or `"occtl"`, the same path; `actual_harness` is `opencode-v1` or `opencode-v2`) and run:
 
 ```bash
-# Claude Code host (blocking launch — give Bash timeout: 1320000):
-bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json
-bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
-
-# OpenCode host — MUST detach (120s bash timeout otherwise kills the child `opencode serve`):
+# Every host: detach long or multi-wave launches so the host shell timeout cannot interrupt them.
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json --detach
-bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id> --timeout-ms 1200000
+bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id>
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
 bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" candidates --run-dir .tmp/<run-id>
 ```
@@ -418,7 +417,9 @@ Launching a later phase plan (`plan-integration.json`, `plan-validate.json`) **m
 
 Do not cache a transport choice in the parent and do not preflight the server yourself. Timeout recovery (read the latest assistant message after a thin `.out`) is inside `launch` and `harvest`.
 
-Default OpenCode wall-clock: **20 minutes** (`timeout_ms: 1200000` on the plan). `mbot-run` stops the session after that. If you ever wrap a **blocking** `mbot-run launch` in the host Bash tool, give Bash **22 minutes** (`timeout: 1320000`) so sidecars flush. On OpenCode, do not wrap a blocking launch at all — use `--detach` (new process group) then `barrier`. `setsid`/`nohup` from the parent is obsolete.
+Default OpenCode and direct Grok CLI wall-clock: **20 minutes per slot**. `mbot-run` stops a slot after its own budget. Use `--detach` and `barrier` for multi-wave plans; a blocking launch needs a host Bash timeout longer than the full batch duration. `setsid`/`nohup` from the parent is obsolete.
+
+When `barrier --timeout-ms` is omitted, `mbot-run` budgets the latest launched slots by their per-slot timeout and concurrency, plus two minutes for setup and cleanup. Keep an explicit barrier timeout above the expected total for all waves.
 
 Exit **124** with a rich body (VERDICT / ISSUE / `BEGIN_MBOD_JSON` / ≥2KB) is **success**. Harvest records `recovered: true` when it salvaged the body from the session after a timeout.
 

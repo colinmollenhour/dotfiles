@@ -83,9 +83,13 @@ const HARNESS_FOOTER =
   "Emit the COMPLETE result as your final assistant message. Do not use the Write tool on the --out path; the harness captures your final message into that file."
 
 const DEFAULT_OPENCODE_CONCURRENCY = 3
+const DEFAULT_GROK_CONCURRENCY = 2
+const DEFAULT_GROK_CLI_MODEL = "grok-4.6"
 const DEFAULT_SMOKE_TIMEOUT_MS = 45_000
 const DEFAULT_SLOT_TIMEOUT_MS = 1_200_000
-const DEFAULT_GROK_TIMEOUT_MS = 480_000 // 8 minutes cap for Grok slots (avoids 20-min stalls)
+const DEFAULT_GROK_TIMEOUT_MS = 1_200_000
+const GROK_FAST_FAILURE_MS = 30_000
+const GROK_FAST_FAILURE_LIMIT = 3
 const LAUNCH_HEARTBEAT_MS = 2000
 const LAUNCH_STALE_MS = 30_000
 
@@ -181,12 +185,26 @@ interface Meta {
   cost_usd?: number | null
   cost_source?: "grok_json" | "occtl" | "opencode_v1" | "opencode_v2" | "agentsview" | "unavailable" | "none"
   usage?: Record<string, unknown>
+  grok_progress?: GrokProgress
   bytes?: number
   markers?: { verdict: number; issue: number }
   status: SlotStatus
   error?: string
   terminal?: boolean
   recovered?: boolean
+}
+
+interface GrokProgress {
+  loops: number
+  tool_calls: number
+  first_token: boolean
+  last_phase?: string
+  last_event_at?: string
+}
+
+interface GrokCircuit {
+  fast_failures: number
+  open_reason?: string
 }
 
 interface UltraReviewIdentity {
@@ -356,7 +374,7 @@ function xdgDataHome(): string {
 }
 
 function grokSessionsRoot(): string {
-  return join(homedir(), ".grok", "sessions")
+  return join(process.env.GROK_HOME || join(homedir(), ".grok"), "sessions")
 }
 
 /** Locate the on-disk OpenCode session JSON for agentsview sync. */
@@ -404,6 +422,34 @@ function findGrokSessionFile(
     /* ignore */
   }
   return null
+}
+
+function grokProgressFor(sessionId: string, cwd: string): GrokProgress | undefined {
+  const summary = findGrokSessionFile(sessionId, cwd)
+  if (!summary) return undefined
+  const eventsPath = join(dirname(summary), "events.jsonl")
+  if (!existsSync(eventsPath)) return undefined
+  const progress: GrokProgress = { loops: 0, tool_calls: 0, first_token: false }
+  try {
+    for (const line of readFileSync(eventsPath, "utf8").split("\n")) {
+      if (!line) continue
+      let event: { type?: string; phase?: string; ts?: string }
+      try { event = JSON.parse(line) } catch { continue }
+      if (event.type === "loop_started") progress.loops++
+      else if (event.type === "tool_started") progress.tool_calls++
+      else if (event.type === "first_token") progress.first_token = true
+      else if (event.type === "phase_changed") progress.last_phase = event.phase
+      if (event.ts) progress.last_event_at = event.ts
+    }
+    return progress
+  } catch {
+    return undefined
+  }
+}
+
+function grokProgressSummary(progress: GrokProgress | undefined): string {
+  if (!progress) return "no session trace"
+  return `${progress.loops} loops, ${progress.tool_calls} tool calls, last phase ${progress.last_phase || "unknown"}`
 }
 
 function resolveSessionFile(
@@ -637,7 +683,7 @@ function runCmd(
   cmd: string,
   args: string[],
   opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
-): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean }> {
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; signal?: NodeJS.Signals }> {
   return new Promise((resolvePromise) => {
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
@@ -648,12 +694,13 @@ function runCmd(
     let stderr = ""
     let timedOut = false
     let closed = false
+    let killTimer: NodeJS.Timeout | undefined
     const timer =
       opts.timeoutMs && opts.timeoutMs > 0
         ? setTimeout(() => {
             timedOut = true
             child.kill("SIGTERM")
-            setTimeout(() => {
+            killTimer = setTimeout(() => {
               if (!closed) child.kill("SIGKILL")
             }, 5000).unref()
           }, opts.timeoutMs)
@@ -667,12 +714,15 @@ function runCmd(
     child.on("error", (err) => {
       closed = true
       if (timer) clearTimeout(timer)
+      if (killTimer) clearTimeout(killTimer)
       resolvePromise({ code: 127, stdout, stderr: err.message + "\n" + stderr, timedOut })
     })
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       closed = true
       if (timer) clearTimeout(timer)
-      resolvePromise({ code: timedOut ? 124 : (code ?? 1), stdout, stderr, timedOut })
+      if (killTimer) clearTimeout(killTimer)
+      const signalCode = signal === "SIGTERM" ? 143 : signal === "SIGINT" ? 130 : 1
+      resolvePromise({ code: timedOut ? 124 : (code ?? signalCode), stdout, stderr, timedOut, signal: signal || undefined })
     })
   })
 }
@@ -1026,9 +1076,10 @@ async function launchSlot(
   plan: Plan,
   slot: Slot,
   preflight: OpencodePreflight | null,
+  grokCircuit: GrokCircuit,
 ): Promise<Meta> {
   try {
-    return await launchSlotInner(plan, slot, preflight)
+    return await launchSlotInner(plan, slot, preflight, grokCircuit)
   } catch (error) {
     const runDir = resolve(plan.run_dir)
     const projectDir = inferProjectDir(runDir, plan.project_dir)
@@ -1069,6 +1120,7 @@ async function launchSlotInner(
   plan: Plan,
   slot: Slot,
   preflight: OpencodePreflight | null,
+  grokCircuit: GrokCircuit,
 ): Promise<Meta> {
   const runDir = resolve(plan.run_dir)
   const projectDir = inferProjectDir(runDir, plan.project_dir)
@@ -1198,6 +1250,16 @@ async function launchSlotInner(
     }
   }
 
+  if (slot.harness === "grok" && grokCircuit.open_reason) {
+    return finish({
+      ...baseMeta,
+      status: "failed",
+      error: grokCircuit.open_reason,
+      exit: 1,
+      terminal: true,
+    })
+  }
+
   writeJson(metaPath, baseMeta)
 
   const slotDefaultTimeout = isGrokSlot(slot)
@@ -1213,11 +1275,15 @@ async function launchSlotInner(
   let capturedCostUsd: number | null = null
   let capturedCostSource: Meta["cost_source"]
   let capturedUsage: Record<string, unknown> | undefined
+  let capturedGrokProgress: GrokProgress | undefined
+  let grokError: string | undefined
   let capturedApi: OpencodeApi | undefined
   let attachFallback: string | undefined
 
   if (slot.harness === "grok") {
     actualHarness = "grok"
+    actualModel = (slot.provider_model_id || DEFAULT_GROK_CLI_MODEL).replace(/^xai\//, "")
+    writeFileSync(errPath, "")
     const grokSessionId = randomUUID()
     writeSessionSidecar(outPath, grokSessionId)
     capturedSessionId = grokSessionId
@@ -1233,12 +1299,29 @@ async function launchSlotInner(
       slot.variant === "max" || slot.variant === "xhigh" ? "max" : "high",
       "--disallowed-tools",
       "Agent",
+      "-m",
+      actualModel,
     ]
-    if (slot.provider_model_id) args.push("-m", slot.provider_model_id)
     const r = await runCmd("grok", args, { cwd: projectDir, timeoutMs })
     code = r.code
     stderr = r.stderr
+    capturedGrokProgress = grokProgressFor(grokSessionId, projectDir)
+    if (r.code === 124) {
+      grokError = `Grok timed out after ${timeoutMs}ms (${grokProgressSummary(capturedGrokProgress)})`
+    } else if (r.code === 143) {
+      grokError = `Grok terminated with exit 143 after ${Math.round(wallMs(startedAt, nowIso()) || 0)}ms (${grokProgressSummary(capturedGrokProgress)})`
+    }
     const grok = parseGrokStdout(r.stdout)
+    if (!isRich(grok.text) && r.code !== 0 && /too_many_requests|rate.?limit|\b429\b/i.test(`${r.stderr}\n${r.stdout}`)) {
+      grokCircuit.open_reason = "Grok CLI returned a rate limit error; remaining Grok slots were not launched"
+    } else if (!isRich(grok.text) && r.code === 143 && (wallMs(startedAt, nowIso()) || 0) < GROK_FAST_FAILURE_MS) {
+      grokCircuit.fast_failures++
+      if (grokCircuit.fast_failures >= GROK_FAST_FAILURE_LIMIT) {
+        grokCircuit.open_reason = `${grokCircuit.fast_failures} Grok CLI runs exited 143 within ${GROK_FAST_FAILURE_MS}ms of starting; remaining Grok slots were not launched`
+      }
+    } else {
+      grokCircuit.fast_failures = 0
+    }
     writeFileSync(outPath, grok.text)
     if (stderr) writeFileSync(errPath, stderr)
     if (grok.parsed) {
@@ -1435,6 +1518,7 @@ async function launchSlotInner(
     cost_usd: capturedCostUsd,
     cost_source: capturedCostSource,
     usage: capturedUsage,
+    grok_progress: capturedGrokProgress,
     recovered: recovered.recovered || undefined,
     attach_fallback: attachFallback,
     terminal: isTerminal(status),
@@ -1442,6 +1526,7 @@ async function launchSlotInner(
       status === "ok"
         ? undefined
         : stderr.trim().slice(0, 500) ||
+          grokError ||
           (status === "empty" ? "empty body (fail-closed)" : `exit ${code}`),
   })
 }
@@ -1604,6 +1689,7 @@ async function cmdLaunchBody(plan: Plan, runDir: string): Promise<void> {
   const hasOpencode = plan.slots.some(
     (s) => (s.harness === "opencode" || s.harness === "occtl") && !s.skip,
   )
+  const hasGrok = plan.slots.some((s) => s.harness === "grok" && !s.skip)
 
   // Preflight OpenCode on every launch. The default probe costs milliseconds,
   // so re-checking beats trusting a preflight from an earlier launch.
@@ -1633,10 +1719,11 @@ async function cmdLaunchBody(plan: Plan, runDir: string): Promise<void> {
   const usingAttach = preflight?.mode === "attach"
   const concurrency =
     plan.concurrency ??
-    (hasOpencode ? (usingAttach ? DEFAULT_OPENCODE_CONCURRENCY : 4) : 8)
+    (hasOpencode ? (usingAttach ? DEFAULT_OPENCODE_CONCURRENCY : 4) : hasGrok ? DEFAULT_GROK_CONCURRENCY : 8)
 
+  const grokCircuit: GrokCircuit = { fast_failures: 0 }
   const metas = await mapPool(plan.slots, concurrency, (slot) =>
-    launchSlot(plan, slot, preflight),
+    launchSlot(plan, slot, preflight, grokCircuit),
   )
 
   for (const m of metas) {
@@ -1671,6 +1758,7 @@ async function cmdLaunchBody(plan: Plan, runDir: string): Promise<void> {
       wall_ms: m.wall_ms,
       cost_usd: m.cost_usd,
       cost_source: m.cost_source,
+      grok_progress: m.grok_progress,
       error: m.error,
     })),
     counts: {
@@ -1882,6 +1970,7 @@ async function cmdHarvest(runDir: string): Promise<void> {
       session_id: m.session_id,
       wall_ms: m.wall_ms,
       cost_usd: m.cost_usd,
+      grok_progress: m.grok_progress,
       error: m.error,
     })),
     totals: {
@@ -1920,6 +2009,7 @@ function cmdStatus(runDir: string): void {
       attach_mode: m.attach_mode,
       bytes: m.bytes,
       markers: m.markers,
+      grok_progress: m.grok_progress,
     })),
   }
   if (existsSync(preflightPath)) out.opencode_preflight = readJson(preflightPath)
@@ -1941,51 +2031,62 @@ function cmdStatus(runDir: string): void {
  * Fail-closed wait: every planned slot is terminal (ok/failed/timeout/empty/skipped/external).
  * Does NOT hang on empty files — uses meta.status when present.
  */
-async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Promise<void> {
+function defaultBarrierTimeoutMs(plan: Plan): number {
+  const runnable = plan.slots.filter((slot) => !slot.skip && slot.harness !== "external")
+  if (!runnable.length) return DEFAULT_SLOT_TIMEOUT_MS
+  const hasOpencode = runnable.some((slot) => slot.harness === "opencode" || slot.harness === "occtl")
+  const hasGrok = runnable.some((slot) => slot.harness === "grok")
+  const concurrency = Math.max(1, plan.concurrency ?? (hasOpencode ? DEFAULT_OPENCODE_CONCURRENCY : hasGrok ? DEFAULT_GROK_CONCURRENCY : 8))
+  const longestSlotMs = Math.max(...runnable.map((slot) => slot.timeout_ms ?? (
+    isGrokSlot(slot) ? plan.grok_timeout_ms ?? DEFAULT_GROK_TIMEOUT_MS : plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS
+  )))
+  return Math.max(DEFAULT_SLOT_TIMEOUT_MS, Math.ceil(runnable.length / concurrency) * longestSlotMs + 120_000)
+}
+
+function refreshBarrierState(state: State, plan: Plan, runDir: string, projectDir: string): void {
+  for (const slot of plan.slots) {
+    const outPath = abs(runDir, slot.out, projectDir)
+    const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
+    if (existsSync(metaPath)) {
+      try { state.slots[slot.slot] = readJson<Meta>(metaPath) } catch { /* keep prior state */ }
+    } else if (existsSync(outPath)) {
+      try {
+        const body = readFileSync(outPath, "utf8")
+        if (isRich(body) || body.trim()) {
+          state.slots[slot.slot] = {
+            slot: slot.slot,
+            planned_model: slot.planned_model,
+            actual_model: slot.planned_model,
+            harness: slot.harness,
+            backup_used: false,
+            prompt: abs(runDir, slot.prompt, projectDir),
+            out: outPath,
+            status: isRich(body) ? "ok" : "empty",
+            terminal: true,
+            bytes: body.length,
+            markers: countMarkers(body),
+          }
+        }
+      } catch { /* keep prior state */ }
+    }
+  }
+}
+
+async function cmdBarrier(runDir: string, requestedTimeoutMs: number | undefined, pollMs: number): Promise<void> {
   const absDir = resolve(runDir)
   const planPath = join(absDir, "plan.json")
   if (!existsSync(planPath)) die(`plan.json missing in ${absDir} — launch first`)
   const plan = readJson<Plan>(planPath)
+  let latestPlan = plan
+  try { latestPlan = readJson<Plan>(join(absDir, "plan-launched.json")) } catch { /* use registry */ }
+  const timeoutMs = requestedTimeoutMs ?? defaultBarrierTimeoutMs(latestPlan)
   const projectDir = inferProjectDir(absDir, plan.project_dir)
   const expected = plan.slots.map((s) => s.slot)
   const t0 = Date.now()
 
   while (Date.now() - t0 < timeoutMs) {
     const state = loadState(absDir)
-    // refresh from disk metas
-    for (const s of plan.slots) {
-      const outPath = abs(absDir, s.out, projectDir)
-      const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
-      if (existsSync(metaPath)) {
-        try {
-          state.slots[s.slot] = readJson<Meta>(metaPath)
-        } catch {
-          /* ignore */
-        }
-      } else if (existsSync(outPath)) {
-        // body appeared without meta yet
-        try {
-          const body = readFileSync(outPath, "utf8")
-          if (isRich(body) || body.trim()) {
-            state.slots[s.slot] = {
-              slot: s.slot,
-              planned_model: s.planned_model,
-              actual_model: s.planned_model,
-              harness: s.harness,
-              backup_used: false,
-              prompt: abs(absDir, s.prompt, projectDir),
-              out: outPath,
-              status: isRich(body) ? "ok" : "empty",
-              terminal: true,
-              bytes: body.length,
-              markers: countMarkers(body),
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-    }
+    refreshBarrierState(state, plan, absDir, projectDir)
 
     const collectStatuses = () => expected.map((id) => {
       const slot = plan.slots.find((s) => s.slot === id)!
@@ -2035,6 +2136,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
         ok,
         run_dir: absDir,
         elapsed_ms: Date.now() - t0,
+        timeout_ms: timeoutMs,
         error: launchError || (ok ? undefined : "one or more slots failed"),
         slots: statuses,
         counts: {
@@ -2053,6 +2155,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
 
   // timeout — dump current state fail-closed
   const state = loadState(absDir)
+  refreshBarrierState(state, plan, absDir, projectDir)
   const statuses = expected.map((id) => {
     const slot = plan.slots.find((s) => s.slot === id)!
     const m = state.slots[id]
@@ -2069,6 +2172,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
     ok: false,
     run_dir: absDir,
     elapsed_ms: Date.now() - t0,
+    timeout_ms: timeoutMs,
     error: `barrier timeout after ${timeoutMs}ms`,
     slots: statuses,
   }
@@ -2227,7 +2331,7 @@ async function main(): Promise<void> {
     cmdStatus(values["run-dir"])
   } else if (command === "barrier") {
     if (!values["run-dir"]) die("--run-dir is required")
-    const timeoutMs = values["timeout-ms"] ? Number(values["timeout-ms"]) : DEFAULT_SLOT_TIMEOUT_MS
+    const timeoutMs = values["timeout-ms"] ? Number(values["timeout-ms"]) : undefined
     const pollMs = values["poll-ms"] ? Number(values["poll-ms"]) : 5000
     await cmdBarrier(values["run-dir"], timeoutMs, pollMs)
   } else if (command === "version") {

@@ -38,15 +38,16 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
      --attach http://127.0.0.1:4096 \
      --model openai/gpt-6.1-sol
 
-   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json
-   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id> --timeout-ms 1200000
+   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" launch --plan .tmp/<run-id>/plan.json --detach
+   bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" barrier --run-dir .tmp/<run-id>
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" harvest --run-dir .tmp/<run-id>
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" candidates --run-dir .tmp/<run-id>
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
    ```
-   **OpenCode host:** `launch --detach` then `barrier` — a shell timeout can interrupt a blocking launch before server cleanup. **Claude Code host:** blocking `launch` is fine; pass Bash `timeout: 1320000` (22 min). `barrier` exits nonzero when any slot failed or the launcher died.
-   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). Already-set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` win over that attach URL. GPT OpenCode slots default `--variant high` and `--agent colin-mbot-gpt-sol`; **every other family must set `"agent"` and `"model"` on the slot** (`colin-mbot-opus` + `anthropic/claude-opus-5-5`, `colin-mbot-grok` + `xai/grok-4.7`, …). Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
+   Use `launch --detach` then `barrier` for multi-slot or long-running plans on every host. A shell timeout can interrupt a blocking launch before server cleanup. A blocking single-wave launch needs a host Bash timeout longer than its slot budget. `barrier` exits nonzero when any slot failed or the launcher died.
+   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). Already-set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` win over that attach URL. GPT OpenCode slots default `--variant high` and `--agent colin-mbot-gpt-sol`; **every other family must set `"agent"` and `"model"` on the slot** (`colin-mbot-opus` + `anthropic/claude-opus-5-5`, `colin-mbot-grok` + `xai/grok-4.6`, …). Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
    Local OpenCode server readiness defaults to 30 seconds; set `"opencode_ready_timeout_ms"` on the plan or a slot when cold starts need longer.
+   Direct Grok CLI slots pin `grok-4.6`, allow 20 minutes each by default, and use concurrency 2 when no other harness sets the default. Use `"grok_timeout_ms"` on the plan or `"timeout_ms"` on a slot to override. Omit `barrier --timeout-ms` to let it budget all concurrency waves.
    Meta records `actual_harness` (`opencode-v1` or `opencode-v2`, never the `occtl` alias), `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and `cost_usd` (Grok JSON, or the OpenCode session cost). Harvest salvages a timed-out session from its latest assistant message and **must not** overwrite per-slot `ended_at`.
 6. **Summarize from disk** — read `harvest.json` / `results/*.meta.json` / `agentsview-usage.json` only. Never paste full `.out` bodies into chat. Attribute via `meta.actual_model`. `mbot-run usage` talks to agentsview over `AGENTSVIEW_URL` (HTTP) when the CLI is not on PATH.
 
