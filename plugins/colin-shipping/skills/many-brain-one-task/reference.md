@@ -119,6 +119,8 @@ Profiles may include an attach directive instructing every OpenCode invocation t
 
 **Password:** optional. Put it on the plan (`"password"`) or in `OPENCODE_SERVER_PASSWORD`.
 
+**Local server readiness:** `opencode serve` has 30 seconds to become ready by default. Set `"opencode_ready_timeout_ms"` on the plan or an individual slot to override it. For a deep smoke, use `--ready-timeout-ms N`.
+
 **Plumbing the directive:** put `attach` on `plan.json` (e.g. `"attach": "http://127.0.0.1:4096"`) so `mbot-run` stays in attach mode and does not start a local `opencode serve`. Already-set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` win over that URL; otherwise `mbot-run` dials the attach URL. Do not drive the server from the parent session.
 
 ### Resolving OpenCode model names

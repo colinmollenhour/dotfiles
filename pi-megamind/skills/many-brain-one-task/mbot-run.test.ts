@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -343,6 +343,80 @@ describe("mbot-run launch path + plan merge (external slots, no models)", () => 
   })
 })
 
+describe("barrier failure handling", () => {
+  const slot = (name: string) => ({
+    slot: name,
+    harness: "opencode",
+    planned_model: "openai/gpt-6.1-sol",
+    prompt: `prompts/${name}.md`,
+    out: `results/${name}.out`,
+  })
+
+  test("returns failure when all slots are terminal but one failed", () => {
+    const runDir = join(TMP, "barrier-failed-terminal")
+    mkdirSync(join(runDir, "results"), { recursive: true })
+    writeFileSync(join(runDir, "plan.json"), JSON.stringify({ run_dir: runDir, slots: [slot("a")] }))
+    writeFileSync(join(runDir, "results", "a.meta.json"), JSON.stringify({
+      ...slot("a"), status: "failed", terminal: true, error: "server exited", exit: 1,
+    }))
+    const r = Bun.spawnSync(
+      ["bun", SCRIPT, "barrier", "--run-dir", runDir, "--timeout-ms", "2000", "--poll-ms", "20"],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    expect(r.exitCode, r.stderr.toString()).toBe(1)
+    const summary = JSON.parse(r.stdout.toString())
+    expect(summary.ok).toBe(false)
+    expect(summary.counts.failed).toBe(1)
+  })
+
+  test("marks pending slots failed when the launcher process dies", () => {
+    const runDir = join(TMP, "barrier-dead-launcher")
+    mkdirSync(join(runDir, "results"), { recursive: true })
+    writeFileSync(join(runDir, "plan.json"), JSON.stringify({ run_dir: runDir, slots: [slot("a"), slot("b")] }))
+    writeFileSync(join(runDir, "results", "a.meta.json"), JSON.stringify({
+      ...slot("a"), status: "running", terminal: false, started_at: new Date().toISOString(),
+    }))
+    writeFileSync(join(runDir, "launch-heartbeat.json"), JSON.stringify({
+      id: "dead-launcher", pid: 999_999_999, status: "running",
+      started_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }))
+    const r = Bun.spawnSync(
+      ["bun", SCRIPT, "barrier", "--run-dir", runDir, "--timeout-ms", "2000", "--poll-ms", "20"],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    expect(r.exitCode, r.stderr.toString()).toBe(1)
+    const summary = JSON.parse(r.stdout.toString())
+    expect(summary.elapsed_ms).toBeLessThan(1000)
+    expect(summary.slots.map((s: { status: string }) => s.status)).toEqual(["failed", "failed"])
+    for (const name of ["a", "b"]) {
+      const meta = JSON.parse(readFileSync(join(runDir, "results", `${name}.meta.json`), "utf8"))
+      expect(meta.terminal).toBe(true)
+      expect(meta.error).toContain("launcher process")
+    }
+  })
+
+  test("detects a detached launcher that died before its first heartbeat", () => {
+    const runDir = join(TMP, "barrier-dead-starting-launcher")
+    mkdirSync(runDir, { recursive: true })
+    writeFileSync(join(runDir, "plan.json"), JSON.stringify({ run_dir: runDir, slots: [slot("a")] }))
+    writeFileSync(join(runDir, "launch.pid"), "999999999\n")
+    const startedAt = new Date(Date.now() - 3000).toISOString()
+    writeFileSync(join(runDir, "launch-heartbeat.json"), JSON.stringify({
+      id: "dead-before-start", pid: 0, status: "starting",
+      started_at: startedAt, updated_at: startedAt,
+    }))
+    const r = Bun.spawnSync(
+      ["bun", SCRIPT, "barrier", "--run-dir", runDir, "--timeout-ms", "2000", "--poll-ms", "20"],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    expect(r.exitCode, r.stderr.toString()).toBe(1)
+    const summary = JSON.parse(r.stdout.toString())
+    expect(summary.elapsed_ms).toBeLessThan(1000)
+    expect(summary.slots[0].status).toBe("failed")
+    expect(summary.slots[0].error).toContain("launcher process")
+  })
+})
+
 describe("collectCandidates", () => {
   test("ids are per-slot and actual_model is populated", () => {
     const repo = join(TMP, "cand-repo")
@@ -542,6 +616,114 @@ describe("opencode preflight", () => {
       server.stop(true)
     }
   })
+
+  test("launch records a thrown slot as failed and continues the batch", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        const path = new URL(req.url).pathname
+        if (path === "/api/info") return Response.json({ version: "2.2.5" })
+        if (path === "/api/model") {
+          return Response.json({ data: [{ providerID: "openai", modelID: "gpt-6.1-sol" }] })
+        }
+        return new Response("nope", { status: 404 })
+      },
+    })
+    try {
+      const runDir = join(TMP, "launch-slot-exception")
+      mkdirSync(join(runDir, "prompts", "directory-prompt"), { recursive: true })
+      const planPath = join(runDir, "plan.json")
+      writeFileSync(planPath, JSON.stringify({
+        run_dir: runDir,
+        attach: `http://127.0.0.1:${server.port}`,
+        opencode_mode: "attach",
+        concurrency: 1,
+        slots: [
+          {
+            slot: "throws",
+            harness: "opencode",
+            planned_model: "openai/gpt-6.1-sol",
+            agent: "",
+            prompt: "prompts/directory-prompt",
+            out: "results/throws.out",
+          },
+          {
+            slot: "continues",
+            harness: "grok",
+            planned_model: "xai/grok-4.7",
+            skip: true,
+            prompt: "prompts/unused.md",
+            out: "results/continues.out",
+          },
+        ],
+      }))
+      const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const stdout = await new Response(proc.stdout).text()
+      const stderr = await new Response(proc.stderr).text()
+      expect(await proc.exited, stderr || stdout).toBe(1)
+      const summary = JSON.parse(stdout)
+      expect(summary.slots.map((slot: { slot: string; status: string }) => [slot.slot, slot.status])).toEqual([
+        ["throws", "failed"],
+        ["continues", "skipped"],
+      ])
+      const failed = JSON.parse(readFileSync(join(runDir, "results", "throws.meta.json"), "utf8"))
+      expect(failed.terminal).toBe(true)
+      expect(failed.exit).toBe(1)
+      expect(failed.error).toContain("EISDIR")
+      const continued = JSON.parse(readFileSync(join(runDir, "results", "continues.meta.json"), "utf8"))
+      expect(continued.terminal).toBe(true)
+      const heartbeat = JSON.parse(readFileSync(join(runDir, "launch-heartbeat.json"), "utf8"))
+      expect(heartbeat.status).toBe("complete")
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test("local launch honors the plan readiness timeout", async () => {
+    const runDir = join(TMP, "launch-readiness-timeout")
+    const binDir = join(runDir, "bin")
+    mkdirSync(join(runDir, "prompts"), { recursive: true })
+    mkdirSync(binDir, { recursive: true })
+    writeFileSync(join(runDir, "prompts", "slow.md"), "Review this.\n")
+    const binary = join(binDir, "opencode")
+    writeFileSync(binary, `#!/usr/bin/env bun
+if (process.argv.includes("--version")) {
+  console.log("opencode v2.2.5")
+  process.exit(0)
+}
+setTimeout(() => {
+  const port = Number(process.argv[process.argv.indexOf("--port") + 1])
+  Bun.serve({ hostname: "127.0.0.1", port, fetch: () => Response.json({ version: "2.2.5" }) })
+}, 2500)
+`)
+    chmodSync(binary, 0o755)
+    const planPath = join(runDir, "plan.json")
+    writeFileSync(planPath, JSON.stringify({
+      run_dir: runDir,
+      opencode_mode: "local",
+      opencode_ready_timeout_ms: 1000,
+      slots: [{
+        slot: "slow", harness: "opencode", planned_model: "openai/gpt-6.1-sol",
+        agent: "", prompt: "prompts/slow.md", out: "results/slow.out",
+      }],
+    }))
+    const started = Date.now()
+    const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH || ""}` },
+      stdout: "pipe", stderr: "pipe",
+    })
+    const stdout = await new Response(proc.stdout).text()
+    const stderr = await new Response(proc.stderr).text()
+    expect(await proc.exited, stderr || stdout).toBe(1)
+    expect(Date.now() - started).toBeLessThan(3000)
+    const meta = JSON.parse(readFileSync(join(runDir, "results", "slow.meta.json"), "utf8"))
+    expect(meta.status).toBe("failed")
+    expect(meta.terminal).toBe(true)
+    expect(meta.error).toContain("opencode serve not ready")
+  }, 8000)
 
   test("smoke picks attach from the HTTP probe without a model call", async () => {
     const server = Bun.serve({

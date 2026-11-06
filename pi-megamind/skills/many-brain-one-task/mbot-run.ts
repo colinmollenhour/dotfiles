@@ -52,7 +52,9 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs"
 import { homedir } from "node:os"
@@ -84,6 +86,8 @@ const DEFAULT_OPENCODE_CONCURRENCY = 3
 const DEFAULT_SMOKE_TIMEOUT_MS = 45_000
 const DEFAULT_SLOT_TIMEOUT_MS = 1_200_000
 const DEFAULT_GROK_TIMEOUT_MS = 480_000 // 8 minutes cap for Grok slots (avoids 20-min stalls)
+const LAUNCH_HEARTBEAT_MS = 2000
+const LAUNCH_STALE_MS = 30_000
 
 type OpencodeMode = "auto" | "attach" | "local" | "skip"
 type SlotStatus =
@@ -112,6 +116,8 @@ interface Slot {
   backup_used?: boolean
   skip?: boolean
   timeout_ms?: number
+  /** Time allowed for a local `opencode serve` to become ready. */
+  opencode_ready_timeout_ms?: number
 }
 
 function isGrokSlot(slot: Slot): boolean {
@@ -130,6 +136,8 @@ interface Plan {
   attach?: string
   password?: string
   timeout_ms?: number
+  /** Default readiness time for locally spawned OpenCode servers. */
+  opencode_ready_timeout_ms?: number
   grok_timeout_ms?: number
   concurrency?: number
   /** Force OpenCode transport. Default auto (probe then attach|local). */
@@ -197,6 +205,16 @@ interface State {
   opencode?: OpencodePreflight
   /** Frozen at first mbot-run command of the run. Do not overwrite later. */
   ultra_review?: UltraReviewIdentity
+}
+
+interface LaunchHeartbeat {
+  id: string
+  pid: number
+  status: "starting" | "running" | "complete" | "failed"
+  started_at: string
+  updated_at: string
+  finished_at?: string
+  error?: string
 }
 
 interface OpencodePreflight {
@@ -278,7 +296,15 @@ function readJson<T>(path: string): T {
 
 function writeJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(data, null, 2) + "\n")
+  const temp = `${path}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    const mode = existsSync(path) ? statSync(path).mode & 0o777 : 0o600
+    writeFileSync(temp, JSON.stringify(data, null, 2) + "\n", { mode })
+    renameSync(temp, path)
+  } catch (error) {
+    try { unlinkSync(temp) } catch { /* no temp file */ }
+    throw error
+  }
 }
 
 function nowIso(): string {
@@ -465,6 +491,69 @@ function saveState(state: State): void {
   writeJson(join(state.run_dir, "STATE.json"), state)
 }
 
+function launchHeartbeatPath(runDir: string): string {
+  return join(runDir, "launch-heartbeat.json")
+}
+
+function startLaunchHeartbeat(runDir: string): (status: "complete" | "failed", error?: string) => void {
+  const startedAt = nowIso()
+  const heartbeat: LaunchHeartbeat = {
+    id: process.env.MBOT_LAUNCH_ID || randomUUID(),
+    pid: process.pid,
+    status: "running",
+    started_at: startedAt,
+    updated_at: startedAt,
+  }
+  const update = () => {
+    heartbeat.updated_at = nowIso()
+    writeJson(launchHeartbeatPath(runDir), heartbeat)
+  }
+  update()
+  const timer = setInterval(() => {
+    try { update() } catch (error) { console.error(`mbot-run: heartbeat write failed: ${error}`) }
+  }, LAUNCH_HEARTBEAT_MS)
+  timer.unref()
+  return (status, error) => {
+    clearInterval(timer)
+    heartbeat.status = status
+    heartbeat.finished_at = nowIso()
+    heartbeat.error = error
+    update()
+  }
+}
+
+function launchFailureReason(runDir: string): string | undefined {
+  let heartbeat: LaunchHeartbeat
+  try {
+    heartbeat = readJson<LaunchHeartbeat>(launchHeartbeatPath(runDir))
+  } catch {
+    return undefined
+  }
+  if (heartbeat.status === "failed") return heartbeat.error || "launcher failed"
+  if (heartbeat.status !== "running" && heartbeat.status !== "starting") return undefined
+  const age = Date.now() - Date.parse(heartbeat.updated_at)
+  let pid = heartbeat.pid
+  if (heartbeat.status === "starting" && pid <= 0) {
+    if (!Number.isFinite(age) || age < LAUNCH_HEARTBEAT_MS) return undefined
+    try { pid = Number(readFileSync(join(runDir, "launch.pid"), "utf8").trim()) } catch { /* no pid yet */ }
+  }
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return Number.isFinite(age) && age > LAUNCH_STALE_MS ? "launcher never started" : undefined
+  }
+  let alive = false
+  try {
+    process.kill(pid, 0)
+    alive = true
+  } catch (error) {
+    alive = (error as NodeJS.ErrnoException).code === "EPERM"
+  }
+  if (!alive) return `launcher process ${pid} exited before completing the batch`
+  if (Number.isFinite(age) && age > LAUNCH_STALE_MS) {
+    return `launcher heartbeat is stale (${Math.round(age / 1000)}s)`
+  }
+  return undefined
+}
+
 function normalizeAttachUrl(attach?: string): string | undefined {
   if (!attach) return undefined
   const t = attach.trim()
@@ -594,15 +683,23 @@ async function mapPool<T, R>(
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length)
+  const errors: unknown[] = []
   let i = 0
   async function worker() {
     while (i < items.length) {
       const idx = i++
-      results[idx] = await fn(items[idx])
+      try {
+        results[idx] = await fn(items[idx])
+      } catch (error) {
+        errors.push(error)
+      }
     }
   }
   const n = Math.max(1, Math.min(concurrency, items.length || 1))
   await Promise.all(Array.from({ length: n }, () => worker()))
+  if (errors.length) {
+    throw new AggregateError(errors, `slot pool failed: ${errors.map((error) => String(error)).join("; ")}`)
+  }
   return results
 }
 
@@ -703,6 +800,7 @@ async function runOpencodeTurn(opts: {
   prompt: string
   directory: string
   timeoutMs: number
+  readinessTimeoutMs?: number
   api: OpencodeApi
   onSession?: (id: string) => void
 }): Promise<OpencodeTurn> {
@@ -724,7 +822,9 @@ async function runOpencodeTurn(opts: {
   }
   const { result, api } = opts.attach
     ? await run(opts.attach, opts.password, opts.api)
-    : await withEphemeralServer((ctx) => run(ctx.baseUrl, ctx.password, ctx.api))
+    : await withEphemeralServer((ctx) => run(ctx.baseUrl, ctx.password, ctx.api), {
+        readinessTimeoutMs: opts.readinessTimeoutMs,
+      })
   return {
     code: result.code,
     text: result.text,
@@ -743,6 +843,7 @@ async function smokeOpencode(opts: {
   model: string
   password?: string
   timeoutMs: number
+  readinessTimeoutMs?: number
   forceMode?: OpencodeMode
   /** Real model call instead of the HTTP/binary probe. */
   deep?: boolean
@@ -785,6 +886,7 @@ async function smokeOpencode(opts: {
         attach: target === "attach" ? attachUrl : undefined,
         password: opts.password,
         timeoutMs: opts.timeoutMs,
+        readinessTimeoutMs: opts.readinessTimeoutMs,
         tag: target,
         transport,
       })
@@ -857,6 +959,7 @@ async function runSmokeOnce(opts: {
   attach?: string
   password?: string
   timeoutMs: number
+  readinessTimeoutMs?: number
   tag: string
   transport: OpencodeTransport
 }): Promise<{ ok: boolean; ms: number; error?: string; api?: OpencodeApi }> {
@@ -876,6 +979,7 @@ async function runSmokeOnce(opts: {
     prompt: promptText,
     directory: opts.runDir,
     timeoutMs: opts.timeoutMs,
+    readinessTimeoutMs: opts.readinessTimeoutMs,
     title: "mbot-run smoke",
     api: opts.transport === "opencode-v1" ? "v1" : "v2",
     onSession: (id) => writeSessionSidecar(out, id),
@@ -919,6 +1023,49 @@ function readTextSafe(path: string): string {
 }
 
 async function launchSlot(
+  plan: Plan,
+  slot: Slot,
+  preflight: OpencodePreflight | null,
+): Promise<Meta> {
+  try {
+    return await launchSlotInner(plan, slot, preflight)
+  } catch (error) {
+    const runDir = resolve(plan.run_dir)
+    const projectDir = inferProjectDir(runDir, plan.project_dir)
+    const promptPath = abs(runDir, slot.prompt, projectDir)
+    const outPath = abs(runDir, slot.out, projectDir)
+    const metaPath = outPath.replace(/\.out$/, "") + ".meta.json"
+    let running: Meta | null = null
+    try {
+      if (existsSync(metaPath)) running = readJson<Meta>(metaPath)
+    } catch {
+      // A damaged meta file must not abort the other slots.
+    }
+    const endedAt = nowIso()
+    const startedAt = running?.started_at || endedAt
+    const failed: Meta = {
+      slot: slot.slot,
+      planned_model: slot.planned_model,
+      actual_model: slot.planned_model,
+      harness: slot.harness,
+      backup_used: Boolean(slot.backup_used),
+      prompt: promptPath,
+      out: outPath,
+      ...running,
+      started_at: startedAt,
+      ended_at: endedAt,
+      wall_ms: wallMs(startedAt, endedAt),
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+      exit: 1,
+      terminal: true,
+    }
+    writeJson(metaPath, failed)
+    return failed
+  }
+}
+
+async function launchSlotInner(
   plan: Plan,
   slot: Slot,
   preflight: OpencodePreflight | null,
@@ -1189,6 +1336,7 @@ async function launchSlot(
         prompt: promptText,
         directory: projectDir,
         timeoutMs,
+        readinessTimeoutMs: slot.opencode_ready_timeout_ms ?? plan.opencode_ready_timeout_ms,
         api: transport === "opencode-v1" ? "v1" : "v2",
         onSession: (id) => {
           capturedSessionId = id
@@ -1331,6 +1479,7 @@ async function cmdSmoke(opts: {
   model?: string
   password?: string
   timeoutMs?: number
+  readinessTimeoutMs?: number
   mode?: OpencodeMode
   deep?: boolean
 }): Promise<void> {
@@ -1342,6 +1491,7 @@ async function cmdSmoke(opts: {
     model: opts.model || "openai/gpt-6.1-sol",
     password: opts.password,
     timeoutMs: opts.timeoutMs ?? DEFAULT_SMOKE_TIMEOUT_MS,
+    readinessTimeoutMs: opts.readinessTimeoutMs,
     forceMode: opts.mode,
     deep: opts.deep,
   })
@@ -1388,13 +1538,22 @@ function cmdLaunchDetach(planPath: string): void {
   mkdirSync(runDir, { recursive: true })
   const logPath = join(runDir, "launch-detach.log")
   const pidPath = join(runDir, "launch.pid")
+  const launchId = randomUUID()
+  const startedAt = nowIso()
+  writeJson(launchHeartbeatPath(runDir), {
+    id: launchId,
+    pid: 0,
+    status: "starting",
+    started_at: startedAt,
+    updated_at: startedAt,
+  } satisfies LaunchHeartbeat)
   const fd = openSync(logPath, "a")
   const script = fileURLToPath(import.meta.url)
   const child = spawn(process.execPath, [script, "launch", "--plan", absPlan], {
     detached: true,
     stdio: ["ignore", fd, fd],
     cwd: process.cwd(),
-    env: process.env,
+    env: { ...process.env, MBOT_LAUNCH_ID: launchId },
   })
   closeSync(fd)
   if (child.pid == null) die("failed to spawn detached launch")
@@ -1429,6 +1588,19 @@ async function cmdLaunch(planPath: string): Promise<void> {
   plan.project_dir = inferProjectDir(runDir, plan.project_dir)
   mergePlanRegistry(runDir, plan)
 
+  const finishHeartbeat = startLaunchHeartbeat(runDir)
+  let failure: string | undefined
+  try {
+    await cmdLaunchBody(plan, runDir)
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error)
+    throw error
+  } finally {
+    finishHeartbeat(failure ? "failed" : "complete", failure)
+  }
+}
+
+async function cmdLaunchBody(plan: Plan, runDir: string): Promise<void> {
   const hasOpencode = plan.slots.some(
     (s) => (s.harness === "opencode" || s.harness === "occtl") && !s.skip,
   )
@@ -1444,6 +1616,7 @@ async function cmdLaunch(planPath: string): Promise<void> {
       model: ocSlot?.provider_model_id || ocSlot?.planned_model || "openai/gpt-6.1-sol",
       password: plan.password,
       timeoutMs: plan.smoke_timeout_ms ?? DEFAULT_SMOKE_TIMEOUT_MS,
+      readinessTimeoutMs: plan.opencode_ready_timeout_ms,
       forceMode: plan.opencode_mode || "auto",
       deep: plan.smoke_deep,
     })
@@ -1514,7 +1687,7 @@ async function cmdLaunch(planPath: string): Promise<void> {
   process.stdout.write(JSON.stringify(summary, null, 2) + "\n")
   // Exit 0 if all terminal (even with failures) when at least one ok/external — callers use counts
   // Exit 1 only if any non-terminal left (should not happen after launch)
-  process.exit(metas.every((m) => m.terminal) ? (ok ? 0 : 1) : 1)
+  process.exitCode = metas.every((m) => m.terminal) && ok ? 0 : 1
 }
 
 async function harvestOne(
@@ -1814,7 +1987,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
       }
     }
 
-    const statuses = expected.map((id) => {
+    const collectStatuses = () => expected.map((id) => {
       const slot = plan.slots.find((s) => s.slot === id)!
       const m = state.slots[id]
       const outPath = abs(absDir, slot.out, projectDir)
@@ -1822,12 +1995,47 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
       const terminal = barrierSlotTerminal(slot, m, outPath)
       return { slot: id, status: m.status, terminal, bytes: m.bytes ?? outBytes(outPath, m), error: m.error }
     })
+    let statuses = collectStatuses()
+    const launchError = statuses.every((s) => s.terminal) ? undefined : launchFailureReason(absDir)
+    if (launchError) {
+      for (const slot of plan.slots) {
+        const outPath = abs(absDir, slot.out, projectDir)
+        const existing = state.slots[slot.slot]
+        if (isExternalSlot(slot, existing) || barrierSlotTerminal(slot, existing, outPath)) continue
+        const endedAt = nowIso()
+        const startedAt = existing?.started_at || endedAt
+        const failed: Meta = {
+          slot: slot.slot,
+          planned_model: slot.planned_model,
+          actual_model: slot.planned_model,
+          harness: slot.harness,
+          backup_used: Boolean(slot.backup_used),
+          prompt: abs(absDir, slot.prompt, projectDir),
+          out: outPath,
+          ...existing,
+          started_at: startedAt,
+          ended_at: endedAt,
+          wall_ms: wallMs(startedAt, endedAt),
+          status: "failed",
+          terminal: true,
+          exit: 1,
+          error: launchError,
+        }
+        state.slots[slot.slot] = failed
+        writeJson(outPath.replace(/\.out$/, "") + ".meta.json", failed)
+      }
+      statuses = collectStatuses()
+    }
     const allTerminal = statuses.every((s) => s.terminal)
-    if (allTerminal) {
+    if (allTerminal || launchError) {
+      const ok = allTerminal && statuses.every((s) =>
+        s.status === "ok" || s.status === "external" || s.status === "skipped",
+      )
       const summary = {
-        ok: true,
+        ok,
         run_dir: absDir,
         elapsed_ms: Date.now() - t0,
+        error: launchError || (ok ? undefined : "one or more slots failed"),
         slots: statuses,
         counts: {
           ok: statuses.filter((s) => s.status === "ok" || s.status === "external").length,
@@ -1838,7 +2046,7 @@ async function cmdBarrier(runDir: string, timeoutMs: number, pollMs: number): Pr
       }
       writeJson(join(absDir, "barrier.json"), summary)
       process.stdout.write(JSON.stringify(summary, null, 2) + "\n")
-      process.exit(0)
+      process.exit(ok ? 0 : 1)
     }
     await new Promise((r) => setTimeout(r, pollMs))
   }
@@ -1930,7 +2138,7 @@ async function main(): Promise<void> {
   if (!command || command === "-h" || command === "--help") {
     process.stdout.write(`Usage:
   mbot-run.ts init --run-dir <dir>
-  mbot-run.ts smoke --run-dir <dir> [--attach URL] [--model ID] [--mode auto|attach|local|skip] [--deep]
+  mbot-run.ts smoke --run-dir <dir> [--attach URL] [--model ID] [--mode auto|attach|local|skip] [--deep] [--ready-timeout-ms N]
   mbot-run.ts launch --plan <plan.json> [--detach]
   mbot-run.ts harvest --run-dir <dir>
   mbot-run.ts candidates --run-dir <dir>
@@ -1953,6 +2161,7 @@ async function main(): Promise<void> {
       mode: { type: "string" },
       password: { type: "string" },
       "timeout-ms": { type: "string" },
+      "ready-timeout-ms": { type: "string" },
       "poll-ms": { type: "string" },
       "title-prefix": { type: "string" },
       since: { type: "string" },
@@ -1972,6 +2181,7 @@ async function main(): Promise<void> {
       mode?: string
       password?: string
       "timeout-ms"?: string
+      "ready-timeout-ms"?: string
       "poll-ms"?: string
       "title-prefix"?: string
       since?: string
@@ -1995,6 +2205,7 @@ async function main(): Promise<void> {
       model: values.model,
       password: values.password,
       timeoutMs: values["timeout-ms"] ? Number(values["timeout-ms"]) : undefined,
+      readinessTimeoutMs: values["ready-timeout-ms"] ? Number(values["ready-timeout-ms"]) : undefined,
       mode: (values.mode as OpencodeMode) || "auto",
       deep: values.deep,
     })

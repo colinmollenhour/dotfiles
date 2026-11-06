@@ -795,16 +795,51 @@ function redactServerLog(text: string): string {
   return text.replace(/server password \S+/g, "server password [redacted]")
 }
 
+class PortCollisionError extends Error {}
+
 /** Start `opencode serve` on a random port and tear it down when `fn` finishes. */
 export async function withEphemeralServer<T>(
   fn: (ctx: { baseUrl: string; password?: string; api: OpencodeApi }) => Promise<T>,
+  options: { readinessTimeoutMs?: number } = {},
+): Promise<T> {
+  const readinessTimeoutMs = options.readinessTimeoutMs ?? 30_000
+  if (!Number.isFinite(readinessTimeoutMs) || readinessTimeoutMs < 1000) {
+    throw new Error("opencode readinessTimeoutMs must be at least 1000")
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await withEphemeralServerOnce(fn, readinessTimeoutMs)
+    } catch (error) {
+      if (error instanceof PortCollisionError && attempt < 2) continue
+      throw error
+    }
+  }
+  throw new Error("opencode serve could not claim a free port")
+}
+
+async function withEphemeralServerOnce<T>(
+  fn: (ctx: { baseUrl: string; password?: string; api: OpencodeApi }) => Promise<T>,
+  readinessTimeoutMs: number,
 ): Promise<T> {
   const port = await freePort()
+  // A throwaway server needs its own password, not the parent session's.
+  const env = { ...process.env }
+  delete env.OPENCODE_PASSWORD
+  delete env.OPENCODE_SERVER_PASSWORD
   const child: ChildProcess = spawn("opencode", ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
     stdio: ["ignore", "pipe", "pipe"],
+    env,
   })
   let log = ""
   let password = ""
+  let spawnError: Error | undefined
+  let closed = false
+  child.on("error", (error) => {
+    spawnError = error
+  })
+  child.once("close", () => {
+    closed = true
+  })
   const onData = (buf: Buffer) => {
     log += buf.toString()
     if (log.length > 8000) log = log.slice(-8000)
@@ -814,17 +849,29 @@ export async function withEphemeralServer<T>(
   child.stdout?.on("data", onData)
   child.stderr?.on("data", onData)
   const baseUrl = `http://127.0.0.1:${port}`
-  const stop = () => {
-    if (child.exitCode == null && child.signalCode == null) {
-      child.kill("SIGTERM")
-      setTimeout(() => {
-        if (child.exitCode == null) child.kill("SIGKILL")
-      }, 2000).unref()
-    }
+  const stop = async () => {
+    if (closed) return
+    await new Promise<void>((resolve, reject) => {
+      const onClose = () => {
+        clearTimeout(killTimer)
+        clearTimeout(deadlineTimer)
+        resolve()
+      }
+      const killTimer = setTimeout(() => {
+        if (!closed && child.exitCode == null && child.signalCode == null) child.kill("SIGKILL")
+      }, 2000)
+      const deadlineTimer = setTimeout(() => {
+        child.off("close", onClose)
+        reject(new Error(`opencode serve did not exit after SIGKILL (pid ${child.pid})`))
+      }, 5000)
+      child.once("close", onClose)
+      if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM")
+    })
   }
   try {
-    const readyAt = Date.now() + 20000
+    const readyAt = Date.now() + readinessTimeoutMs
     let lastError = "server did not become ready"
+    let lastInfoStatus = 0
     let api: OpencodeApi | undefined
     const providersReady = (result: HttpResult): boolean =>
       result.status === 200 &&
@@ -832,13 +879,18 @@ export async function withEphemeralServer<T>(
       !!asRecord(result.body) &&
       "providers" in (result.body as object)
     while (Date.now() < readyAt) {
-      if (child.exitCode != null) {
-        throw new Error(`opencode serve exited ${child.exitCode}: ${redactServerLog(log).slice(0, 400)}`)
+      if (spawnError) throw new Error(`opencode serve failed to start: ${spawnError.message}`)
+      if (child.exitCode != null || child.signalCode != null) {
+        const detail = redactServerLog(log).slice(0, 400)
+        const message = `opencode serve exited ${child.exitCode ?? child.signalCode}: ${detail}`
+        if (/EADDRINUSE|address already in use/i.test(log)) throw new PortCollisionError(message)
+        throw new Error(message)
       }
       const info = await request(baseUrl, "GET", "/api/info", {
         password: password || undefined,
         timeoutMs: 1000,
       })
+      lastInfoStatus = info.status
       if (
         info.status === 200 &&
         !isHtml(info.contentType, info.body) &&
@@ -863,15 +915,17 @@ export async function withEphemeralServer<T>(
       await new Promise((r) => setTimeout(r, 150))
     }
     if (!api) {
-      const why = password
-        ? lastError
-        : `opencode serve printed no password: ${redactServerLog(log).slice(0, 400)}`
+      const why = lastInfoStatus === 401 && !password
+        ? "server requires a password it did not print; is OPENCODE_PASSWORD set in the environment?"
+        : password
+          ? lastError
+          : `opencode serve printed no password: ${redactServerLog(log).slice(0, 400)}`
       throw new Error(`opencode serve not ready (${why})`)
     }
     rememberPassword(baseUrl, password || undefined)
     return await fn({ baseUrl, password: password || undefined, api })
   } finally {
-    stop()
+    await stop()
   }
 }
 

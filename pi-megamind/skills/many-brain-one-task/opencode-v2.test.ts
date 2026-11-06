@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
 import { describe, expect, test } from "bun:test"
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   assistantTextFromMessage,
   modelsFromV1Providers,
@@ -49,6 +52,140 @@ describe("OpenCode catalog parsers", () => {
     expect(assistantTextFromMessage(message)).toBe("OPENCODE_SMOKE_OK")
     expect(textFromAssistantMessages([message])).toBe("OPENCODE_SMOKE_OK")
   })
+})
+
+describe("withEphemeralServer", () => {
+  test("starts with a generated password when the parent has OpenCode passwords", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mbot-opencode-serve-"))
+    const binary = join(dir, "opencode")
+    writeFileSync(binary, `#!/usr/bin/env bun
+const inherited = process.env.OPENCODE_PASSWORD || process.env.OPENCODE_SERVER_PASSWORD
+const password = inherited || "generated-for-test"
+const port = Number(process.argv[process.argv.indexOf("--port") + 1])
+Bun.serve({
+  hostname: "127.0.0.1",
+  port,
+  fetch(req) {
+    const expected = "Basic " + Buffer.from("opencode:" + password).toString("base64")
+    return req.headers.get("authorization") === expected
+      ? Response.json({ version: "2.2.5" })
+      : new Response("Unauthorized", { status: 401 })
+  },
+})
+console.log("server listening on http://127.0.0.1:" + port)
+if (!inherited) console.log("server password " + password)
+`)
+    chmodSync(binary, 0o755)
+    try {
+      const proc = Bun.spawn(["bun", "-e", `
+const { withEphemeralServer } = await import(process.env.MBOT_OPENCODE_MODULE)
+const result = await withEphemeralServer(async (ctx) => ({ api: ctx.api, password: ctx.password }))
+console.log(JSON.stringify(result))
+`], {
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH || ""}`,
+          OPENCODE_PASSWORD: "host-password",
+          OPENCODE_SERVER_PASSWORD: "host-server-password",
+          OPENCODE_SERVER_USERNAME: "opencode",
+          MBOT_OPENCODE_MODULE: new URL("./opencode-v2.ts", import.meta.url).href,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const stdout = await new Response(proc.stdout).text()
+      const stderr = await new Response(proc.stderr).text()
+      expect(await proc.exited, stderr).toBe(0)
+      expect(JSON.parse(stdout)).toEqual({ api: "v2", password: "generated-for-test" })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 25000)
+
+  test("waits for an uncooperative server to exit", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mbot-opencode-stop-"))
+    const binary = join(dir, "opencode")
+    const pidFile = join(dir, "server.pid")
+    writeFileSync(binary, `#!/usr/bin/env bun
+import { writeFileSync } from "node:fs"
+writeFileSync(process.env.MBOT_TEST_PID_FILE, String(process.pid))
+process.on("SIGTERM", () => {})
+const port = Number(process.argv[process.argv.indexOf("--port") + 1])
+Bun.serve({ hostname: "127.0.0.1", port, fetch: () => Response.json({ version: "2.2.5" }) })
+console.log("server listening on http://127.0.0.1:" + port)
+`)
+    chmodSync(binary, 0o755)
+    try {
+      const proc = Bun.spawn(["bun", "-e", `
+const { withEphemeralServer } = await import(process.env.MBOT_OPENCODE_MODULE)
+const started = Date.now()
+const result = await withEphemeralServer(async ({ api }) => api)
+console.log(JSON.stringify({ result, elapsed: Date.now() - started }))
+`], {
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH || ""}`,
+          MBOT_TEST_PID_FILE: pidFile,
+          MBOT_OPENCODE_MODULE: new URL("./opencode-v2.ts", import.meta.url).href,
+        },
+        stdout: "pipe", stderr: "pipe",
+      })
+      const stdout = await new Response(proc.stdout).text()
+      const stderr = await new Response(proc.stderr).text()
+      expect(await proc.exited, stderr).toBe(0)
+      const result = JSON.parse(stdout)
+      expect(result.result).toBe("v2")
+      expect(result.elapsed).toBeGreaterThanOrEqual(1800)
+      const pid = Number(readFileSync(pidFile, "utf8"))
+      expect(() => process.kill(pid, 0)).toThrow()
+    } finally {
+      if (existsSync(pidFile)) {
+        try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL") } catch { /* already gone */ }
+      }
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 10000)
+
+  test("retries a startup port collision", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mbot-opencode-port-"))
+    const binary = join(dir, "opencode")
+    const marker = join(dir, "attempts")
+    writeFileSync(binary, `#!/usr/bin/env bun
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+const marker = process.env.MBOT_TEST_MARKER
+const attempt = (existsSync(marker) ? Number(readFileSync(marker, "utf8")) : 0) + 1
+writeFileSync(marker, String(attempt))
+if (attempt === 1) {
+  console.error("EADDRINUSE: address already in use")
+  process.exit(1)
+}
+const port = Number(process.argv[process.argv.indexOf("--port") + 1])
+Bun.serve({ hostname: "127.0.0.1", port, fetch: () => Response.json({ version: "2.2.5" }) })
+console.log("server listening on http://127.0.0.1:" + port)
+`)
+    chmodSync(binary, 0o755)
+    try {
+      const proc = Bun.spawn(["bun", "-e", `
+const { withEphemeralServer } = await import(process.env.MBOT_OPENCODE_MODULE)
+console.log(await withEphemeralServer(async ({ api }) => api, { readinessTimeoutMs: 1500 }))
+`], {
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH || ""}`,
+          MBOT_TEST_MARKER: marker,
+          MBOT_OPENCODE_MODULE: new URL("./opencode-v2.ts", import.meta.url).href,
+        },
+        stdout: "pipe", stderr: "pipe",
+      })
+      const stdout = await new Response(proc.stdout).text()
+      const stderr = await new Response(proc.stderr).text()
+      expect(await proc.exited, stderr).toBe(0)
+      expect(stdout.trim()).toBe("v2")
+      expect(readFileSync(marker, "utf8")).toBe("2")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 10000)
 })
 
 describe("runOpencodeV2", () => {
