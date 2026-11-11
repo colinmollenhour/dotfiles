@@ -9,6 +9,12 @@ allowed-tools: Read, Write, Edit, Glob, Grep
 
 MDC (Markdown Components) extends standard Markdown with Vue component support. Use this guide when authoring `.md` files for Nuxt Content.
 
+## ShipStream screenshot walkthroughs
+
+For new **and updated** ShipStream knowledge-base articles, use `::screenshot-stages` by default when successive UI screenshots help the reader perform a task or distinguish actions and outcomes. Review an affected existing workflow for this opportunity when editing it; do not wait for the user to request the component by name. Keep ordinary prose, lists, tables, and single screenshots when stages would add no useful explanation.
+
+Read [ShipStream screenshot stages](references/shipstream-screenshot-stages.md) before using the component. This is a ShipStream KB component, not a Nuxt Content built-in; confirm it exists in the rendering checkout before adding the tag, and do not assume it is available in other Nuxt sites.
+
 ## Quick Reference
 
 | Syntax | Description |

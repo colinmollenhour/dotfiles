@@ -17,6 +17,14 @@ Good docs come from four choices:
 
 Ask one short question when the page type, audience, or scope is unclear. Do not guess your way into a hybrid page.
 
+## ShipStream knowledge-base UI walkthroughs
+
+When creating **or updating** a ShipStream KB article, check whether the reader needs to recognize successive UI states. Use the existing `::screenshot-stages` component by default for those illustrated workflows: lettered A → B → C cards with an action, screenshot, and visible result. When updating a workflow with separate screenshots or dense descriptions of screen changes, convert that affected sequence to stages when it makes the task easier to follow.
+
+Keep single-screen explanations, reference tables, and short prose-only procedures in their existing form. Use as many stages as the task needs; do not pad a sequence to three or rewrite unrelated sections.
+
+Read the knowledge-base repo's **Screenshot walkthroughs** section in `README.md` and its `app/components/content/ScreenshotStages.vue` before authoring. Load `nuxt-content` for MDC syntax and its `references/shipstream-screenshot-stages.md` guidance on props, examples, captures, and validation. Verify the component is available on the KB branch that will render the article before adding the tag.
+
 ## Rule zero: pick one page type
 
 Every page is exactly one of four types. If a draft tries to answer two reader questions, split it.
@@ -338,6 +346,7 @@ Before declaring documentation done, verify every applicable item.
 - [ ] Code blocks have language hints.
 - [ ] Examples run as-is in a clean environment, or limitations are explicit.
 - [ ] Expected output or verification is shown where it matters.
+- [ ] ShipStream KB workflows use screenshot stages where successive UI states help; new and updated captures match the documented actions and results.
 - [ ] Link text is descriptive and points to the most specific useful target.
 - [ ] Link checker, spell checker, and prose linter pass when available.
 

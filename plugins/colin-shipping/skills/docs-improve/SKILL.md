@@ -96,6 +96,12 @@ Scoring calibration:
 - Avoid suspiciously round scores unless they are genuinely justified.
 - If the file is very short, note that the score has limited confidence.
 
+### ShipStream Screenshot Walkthroughs
+
+For ShipStream KB articles, check whether a reader must recognize successive UI states. Prefer the existing `::screenshot-stages` A → B → C layout for those illustrated workflows, including when updating an existing article with scattered screenshots or dense screen-by-screen prose. Keep single screenshots, reference tables, and simple prose procedures where they already explain the task well.
+
+When a staged sequence would materially improve the article, include a **Media & Tables** suggestion with concrete stage titles, actions, and visible outcomes. Follow this skill's review-and-approval workflow; a component preference alone is not a reason to rewrite unrelated content or invent a finding. For an approved conversion, read **Screenshot walkthroughs** in the KB `README.md`, inspect `app/components/content/ScreenshotStages.vue`, and load `nuxt-content` for its ShipStream screenshot-stages reference. Verify the component exists on the rendering branch and that every capture matches its caption.
+
 ### Accuracy Verification
 
 For Accuracy findings:
