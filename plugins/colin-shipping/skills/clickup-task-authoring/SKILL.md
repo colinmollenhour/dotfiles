@@ -172,6 +172,11 @@ CUFM skeleton — include only sections that apply. Syntax for each component is
 **As a** [role], **I want** [capability], **So that** [benefit].
 ::
 
+# Stakeholder Discussions
+- [Chat thread or support ticket](https://...) — who, date, what it settled
+> [Quoted paragraph from a stakeholder.]
+> — Name, source, date
+
 # Problem
 [Current behavior and why it must change.]
 
@@ -207,6 +212,8 @@ Constraints that must not be weakened.
 # Open Decisions
 [One numbered question per unresolved item — see "Open decisions" below.]
 ```
+
+**Stakeholder Discussions** is optional and sits directly under the user story. It records where the request came from: links to chats or support tickets, and block-quoted paragraphs from stakeholders, each with the speaker, source, and date. A link alone breaks when the chat expires or the reader lacks access, so quote the passage that matters whenever the task depends on it. The section is evidence, not contract: every requirement a quote carries also appears in Requirements or Acceptance Criteria. Move more than a few quotes into a `::toggle{title="Stakeholder Discussions"}`. Omit the section when there is no discussion to cite.
 
 Narrow tasks can drop mermaid/tldraw/toggles when there is no flow, diagram, or secondary material. Prefer a mermaid (or tldraw) over a prose walkthrough of a process. Wrap every table in `::table`. Acceptance criteria are canonical — do not also repeat the same requirement in background prose.
 
