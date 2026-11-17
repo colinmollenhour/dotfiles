@@ -160,6 +160,8 @@ For each bucket × role, prompts = role file + bucket index (assemble-prompts). 
 
 Launch harness slots with `mbot-run launch`. Launch external Agent slots in parallel with Write-to-path + ≤500-char return.
 
+**Native subagents are allowed on a Claude Code host:** the `Agent` tool accepts `model` (`opus`/`sonnet`/`haiku`/`fable`) and `effort`; pass `effort: high` for Claude discovery/validation/integration children. Use them for all Claude slots, and as the fallback when OpenCode fails (`Agent not found colin-mbot-*`). GPT falls back to `codex exec`; Grok cannot run via `Agent`. See many-brain-one-task → *Native Claude subagents*.
+
 ### 7. Integration
 
 Whole-change `roles/integration.md` + candidate index paths (not embedded blobs). Fresh sessions each convergence round.

@@ -65,6 +65,16 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
 - **Claude Code host:** Claude participants use the native `Agent` tool (then `botctl prompt`, then `claude` CLI); everything else goes through `mbot-run`.
 - **OpenCode host: keep everything inside OpenCode.** Every participant — Claude included — is an `mbot-run` slot with a `colin-mbot-*` agent. Do not shell out to `claude` / `botctl` / `grok`, and do not use the OpenCode `task` tool for participant slots. Shell-outs only when the profile pins a CLI or the agent file is missing from `~/.opencode/agents/`. A containerised host may not ship `grok` / `botctl` / `pi` at all — `command -v` before planning a CLI route.
 
+### Native Claude subagents (Claude Code host)
+
+The `Agent` tool takes `model` (`sonnet` | `opus` | `haiku` | `fable`) and `effort` (`low`…`max`); a named agent type (e.g. `Opus worker for MBOT`) can also pin the model. Use it for every Claude participant slot (`harness: "external"`), including as the fallback when OpenCode cannot start a slot.
+
+- **Set `effort` explicitly** (`high` by default per the profile/skill). The harness only honours it when instructions ask for it, and these skills do.
+- **Claude models only.** GPT goes through `codex exec` (or an OpenCode slot), Grok through the `grok` CLI or OpenCode. The `Agent` tool cannot run them.
+- **OpenCode "Agent not found `colin-mbot-*`"** (config defines only `explore`/`general`/`megamind`): do not edit the user's OpenCode config. Rerun the Claude slots as native `Agent` slots and the GPT slots via `codex exec`, and rewrite `results/<slot>.meta.json` (`planned_model` / `actual_model`, `started_at` / `ended_at`) so harvest scores the actual performer. Keep the failed OpenCode metas as `*.failed-opencode.meta.json`.
+- Agent-owned delivery applies: the child **Write**s the full body to `results/<slot>.out` and returns ≤500 chars.
+- Record the substitution under run accounting; it is not the planned slot set.
+
 ## Built-in defaults (when no profile)
 
 - Opus @ high effort (Claude host: native Agent / botctl / claude CLI — OpenCode host: `colin-mbot-opus`)  
