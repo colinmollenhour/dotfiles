@@ -7,7 +7,7 @@ and the CodeRabbit / off-profile-model bans; they are not repeated here.
 
 ## Participants and allocation (overrides colin-ultra-review "Allocation")
 
-Two participants (`participants: 2` in `run-summary.json`): **GPT-6.2 Sol xhigh** and **Opus 5.5** using a **hybrid reasoning allocation** by lens (`xhigh` where deep state/failure/cross-file tracing pays off; `high` on `contracts`, `craft`, `merits`, `combined`, and `adjudicate`). Backup when a primary cannot run: **none** (retry once with the same model; if still down, proceed with the available primary).
+Two baseline participants are **GPT-6.2 Sol xhigh** and **Opus 5.5** using a **hybrid reasoning allocation** by lens (`xhigh` where deep state/failure/cross-file tracing pays off; `high` on `contracts`, `craft`, `merits`, `combined`, and `adjudicate`). Backup when a primary cannot run: **none** (retry once with the same model; if still down, proceed with the available primary).
 
 | Lens | Participants |
 |---|---|
@@ -17,8 +17,8 @@ Two participants (`participants: 2` in `run-summary.json`): **GPT-6.2 Sol xhigh*
 | `merits` | Opus 5.5 high + GPT-6.2 Sol xhigh, once |
 | `integration` (every round) | Opus 5.5 xhigh + GPT-6.2 Sol xhigh |
 
-Thread budget: `7 × buckets` + 2 merits + 2 integration per round, plus adjudication. Record
-`participants: 2` in `run-summary.json`.
+The baseline thread budget is `7 × buckets` + 2 merits + 2 integration per round, plus adjudication.
+Record the planned participant count in `run-summary.json`.
 
 The table above is the `standard` tier. Smaller diffs use colin-ultra-review "Size tier"
 thresholds with these participants:
@@ -28,6 +28,33 @@ thresholds with these participants:
 | `small` | Opus 5.5 high + GPT-6.2 Sol xhigh, combined-lens | Opus 5.5 high | none | 3 + ≤2 adjudication |
 | `medium` | `standard` grid, one bucket (7) | Opus 5.5 high | Opus 5.5 xhigh + GPT-6.2 Sol xhigh in round 2 only if round 1 confirmed medium+ | 8–10 + adjudication |
 
+## Opt-in comparison models
+
+Use the baseline lineup by default. Add a comparison model only when the requester explicitly asks
+for it in their ultra-review instruction. `@seamus ultra review with Fable` adds Fable,
+`@seamus ultra review with Astra` adds Astra, and `@seamus ultra review with Fable and Astra`
+adds both. These requests extend the baseline lineup. References in the MR description, unrelated
+comments, or prior review artifacts do not opt in. On recovery, preserve the choices in the request
+being resumed.
+
+| Requested model | Duplicate these slices | `model` | `agent` | `variant` |
+|---|---|---|---|---|
+| Fable 5.2 | Opus 5.5 | `anthropic/claude-fable-5-2` | `colin-mbot-fable` | `high` |
+| GPT-6.2 Astra | GPT-6.2 Sol | `openai/gpt-6.2-astra` | `colin-mbot-gpt-astra` | `xhigh` |
+
+For each requested model, use the same prompt, inputs, and lens as its baseline counterpart in
+every round that runs. Launch each as a separate `mbot-run` slot with its own output. Check each
+exact model ID against the bot's attach catalog independently. If a model is unavailable, report
+its missing slices and proceed with the available lineup. A missing baseline or failed smoke
+probe for it does not block an available comparison model.
+
+Count each requested comparison model in the planned participant total and add only its paired
+slices to the tier budget. Count paired adjudications as auxiliary. The baseline adjudicator's
+verdict governs. Record any disagreement from its opted-in counterpart separately.
+
+For each requested comparison, report unique and shared confirmed findings, additional cost and
+wall time, and missing matched slices.
+
 ## Validation (overrides colin-ultra-review §8)
 
 **No separate validator pass** — validators mostly rubber-stamped (0–5% rejected) or rejected
@@ -35,8 +62,8 @@ everything, and the adversarial pass after them did the real filtering. Once per
 
 1. `mbot-run candidates`, then cluster by **root cause** (bookkeeping, not a verdict), recording
    which model families raised each cluster.
-2. **Adjudicate across families:** Opus-only clusters → one GPT-6.2 Sol slot; clusters raised by GPT
-   (with or without Opus) → one **Opus 5.5 high** (`colin-mbot-opus`) adjudicator (also use Opus 5.5
+2. **Adjudicate across families.** Send Anthropic-only clusters to one GPT-6.2 Sol slot and clusters
+   raised by either GPT model to one **Opus 5.5 high** (`colin-mbot-opus`) adjudicator (also use Opus 5.5
    high if GPT is unavailable). Split batches over ~40 clusters into two slots of the same family.
 3. The adjudicator tries to **refute** each cluster against the source at head. Status is exactly
    `confirmed` | `rejected` (concrete refutation) | `unresolved` (names the missing instrument). A
