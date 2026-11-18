@@ -34,7 +34,7 @@ Resolve `CLAUDE_SKILL_DIR` to the directory containing this `SKILL.md`, whether 
 | Skill version | `bun …/mbot-run.ts version` |
 | Assemble prompts | `bun …/many-brain-one-task/assemble-prompts.ts --append context/bucket.md --out-dir prompts role.md:slot.full.md …` |
 | Build merits | `bun …/many-brain-one-task/build-merits.ts --run-dir .tmp/ultra-N` (joins roles/merits.md + context without auto issue-form) |
-| OpenCode preflight | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.1-sol` (HTTP/binary probe, no model call; `--deep` for a real round trip. Launch also probes; omit `--attach` when `OPENCODE_SERVER_HOST`/`PORT` are already set) |
+| OpenCode preflight | `bun …/mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.2-sol` (HTTP/binary probe, no model call; `--deep` for a real round trip. Launch also probes; omit `--attach` when `OPENCODE_SERVER_HOST`/`PORT` are already set) |
 | Launch batch | `bun …/mbot-run.ts launch --plan .tmp/ultra-N/plan.json` (Claude Code). **OpenCode host:** add `--detach`, then barrier. Further phase plans (`plan-integration.json`) merge into `plan.json`; they do not replace it. |
 | Fail-closed wait | `bun …/mbot-run.ts barrier --run-dir .tmp/ultra-N` — **never** `sleep N`, **never** `until test -s empty.out` |
 | Harvest | `bun …/mbot-run.ts harvest --run-dir .tmp/ultra-N` |
@@ -42,7 +42,7 @@ Resolve `CLAUDE_SKILL_DIR` to the directory containing this `SKILL.md`, whether 
 | Prepare notes | `bun …/many-brain-one-task/prepare-notes.ts --summary .tmp/ultra-N/prepared-summary.md` (or `--batch`) — safe JSON payloads for glab api |
 | Usage (wall + cost) | `bun …/mbot-run.ts usage --run-dir .tmp/ultra-N` (optional `--title-prefix` / `--include-claude-children` / `--parent-session-id`) |
 
-OpenCode hard rules: use `mbot-run` (it speaks `/api` on OpenCode 2 and `/session` on OpenCode 1). Empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills the child `opencode serve`. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default `variant: high` and `agent: colin-mbot-gpt-sol`. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
+OpenCode hard rules: use `mbot-run` (it speaks `/api` on OpenCode 2 and `/session` on OpenCode 1). Empty `.out` after failed meta is **terminal failure**, not a hang. OpenCode host **must** `launch --detach` — a 120s bash timeout on a blocking launch SIGTERMs the process group and kills the child `opencode serve`. Claude Code: blocking launch + Bash `timeout: 1320000`. GPT slots default to `variant: high` and the agent matching the selected model family. Prompt/out paths may be `prompts/x.md` **or** `.tmp/ultra-N/prompts/x.md`; mbot-run de-duplicates — do not join `run_dir` onto an already-prefixed path yourself.
 
 Load **many-brain-one-task** for plan schema, delivery contracts, profiles. Role templates: `many-brain-one-task/roles/{state,contracts,failure,craft,merits,integration}.md`.
 

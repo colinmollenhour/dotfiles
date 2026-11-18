@@ -18,25 +18,25 @@ describe("OpenCode catalog parsers", () => {
     expect(
       modelsFromV2Catalog({
         data: [
-          { providerID: "openai", modelID: "gpt-6.1-sol" },
-          { providerID: "openrouter", modelID: "openai/gpt-6.1-sol" },
+          { providerID: "openai", modelID: "gpt-6.2-sol" },
+          { providerID: "openrouter", modelID: "openai/gpt-6.2-sol" },
         ],
       }),
-    ).toEqual(["openai/gpt-6.1-sol", "openrouter/openai/gpt-6.1-sol"])
+    ).toEqual(["openai/gpt-6.2-sol", "openrouter/openai/gpt-6.2-sol"])
   })
 
   test("v1 catalog keeps the providers map", () => {
     expect(
       modelsFromV1Providers({
-        providers: [{ id: "openai", models: { "gpt-6.1-sol": {} } }],
+        providers: [{ id: "openai", models: { "gpt-6.2-sol": {} } }],
       }),
-    ).toEqual(["openai/gpt-6.1-sol"])
+    ).toEqual(["openai/gpt-6.2-sol"])
   })
 
   test("provider/model split keeps the first segment as the provider", () => {
-    expect(splitProviderModel("openrouter/openai/gpt-6.1-sol")).toEqual({
+    expect(splitProviderModel("openrouter/openai/gpt-6.2-sol")).toEqual({
       providerID: "openrouter",
-      id: "openai/gpt-6.1-sol",
+      id: "openai/gpt-6.2-sol",
     })
   })
 
@@ -197,7 +197,7 @@ describe("runOpencodeV2", () => {
         const url = new URL(req.url)
         if (req.method === "POST" && url.pathname === "/api/session") {
           const body = await req.json()
-          expect(body.model).toEqual({ id: "gpt-6.1-sol", providerID: "openai", variant: "high" })
+          expect(body.model).toEqual({ id: "gpt-6.2-sol", providerID: "openai", variant: "high" })
           return Response.json({ data: { id: "ses_unit" } })
         }
         if (url.pathname === "/api/session/ses_unit/model" || url.pathname === "/api/session/ses_unit/agent") {
@@ -228,7 +228,7 @@ describe("runOpencodeV2", () => {
     try {
       const result = await runOpencodeV2({
         baseUrl: `http://127.0.0.1:${server.port}`,
-        model: "openai/gpt-6.1-sol",
+        model: "openai/gpt-6.2-sol",
         variant: "high",
         agent: "colin-mbot-gpt-sol",
         prompt: "hello",
@@ -277,7 +277,7 @@ describe("runOpencodeV1", () => {
         if (req.method === "POST" && url.pathname === "/session/ses_v1/prompt_async") {
           prompted = true
           const body = await req.json()
-          expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-6.1-sol" })
+          expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-6.2-sol" })
           expect(body.parts).toEqual([{ type: "text", text: "hello" }])
           expect(body.variant).toBe("high")
           expect(url.searchParams.get("directory")).toBe("/tmp")
@@ -299,7 +299,7 @@ describe("runOpencodeV1", () => {
     try {
       const result = await runOpencodeV1({
         baseUrl: `http://127.0.0.1:${server.port}`,
-        model: "openai/gpt-6.1-sol",
+        model: "openai/gpt-6.2-sol",
         variant: "high",
         prompt: "hello",
         directory: "/tmp",

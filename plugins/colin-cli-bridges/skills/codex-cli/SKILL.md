@@ -44,7 +44,7 @@ Useful flags:
 - `--json`: emit JSONL events when machine-readable execution details are needed.
 - `-c model_reasoning_effort="high"`: set reasoning effort when requested; this has no dedicated flag.
 
-Use `-m <MODEL>`, not `-c model="<MODEL>"`, for ordinary model selection.
+Use `-m gpt-6.2-sol` for GPT 6.2 Sol or `-m gpt-6.2-astra` for GPT 6.2 Astra. Omit `-m` to use the configured default.
 
 `-o` writes only the final assistant text. It does not capture generated artifacts and is not an image output flag.
 
@@ -82,7 +82,7 @@ Continue only when `image_generation` is available. If it is missing, report the
 4. Verify and visually inspect the artifact.
 5. Make one targeted regeneration or edit if the first image has obvious defects.
 
-Canonical GPT-6 Sol invocation:
+Canonical GPT-6.2 Sol invocation:
 
 ```bash
 codex exec \
@@ -91,14 +91,14 @@ codex exec \
   --enable image_generation \
   --sandbox workspace-write \
   -C "/absolute/path/to/project" \
-  -m gpt-6-sol \
+  -m gpt-6.2-sol \
   -c model_reasoning_effort="high" \
   -o ".tmp/codex-image/codex-last-message.txt" \
   "Read .tmp/codex-image/task.md and follow it exactly. Use the built-in image-generation tool. Save or copy the final raster image to /absolute/path/to/project/.tmp/codex-image/result.png. Do not substitute SVG, HTML, Mermaid, Canvas, Graphviz, or drawing code. Inspect the result and iterate once if it has obvious defects." \
   </dev/null
 ```
 
-Use the exact model requested by the user. Use `gpt-6-sol` only when the user requests it or the calling workflow deliberately selects it; otherwise preserve the configured default. Do not invent model IDs.
+Use the exact model requested by the user. Use `gpt-6.2-sol` only when the user requests it or the calling workflow deliberately selects it; otherwise preserve the configured default. Do not invent model IDs.
 
 Codex's selected language model orchestrates the request and invokes a separate built-in OpenAI image generator. Describe the result as generated through Codex's built-in image generator, not as pixels directly emitted by the orchestrating GPT model.
 
@@ -134,7 +134,7 @@ codex exec \
   --enable image_generation \
   --sandbox workspace-write \
   -C "/absolute/path/to/project" \
-  -m gpt-6-sol \
+  -m gpt-6.2-sol \
   -c model_reasoning_effort="high" \
   -i "/absolute/path/to/project/input.png" \
   "Use the attached image as the edit target. Change only <REQUESTED_CHANGE>. Preserve <INVARIANTS>. Use the built-in image-generation tool and save the final result to /absolute/path/to/project/output.png." \

@@ -1,6 +1,6 @@
 Preferred models:
 - Fable for complex decisions, otherwise Opus
-- GPT Sol
+- GPT 6.2 Sol
 - Grok
 
 Backup models:

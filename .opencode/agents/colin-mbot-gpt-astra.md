@@ -1,8 +1,8 @@
 ---
-description: Many brain, one task with GPT 6 Astra - only to be used by the MBOT skill
+description: Many brain, one task with GPT 6.2 Astra - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: openai/gpt-6-astra
+model: openai/gpt-6.2-astra
 reasoningEffort: high
 permission:
   edit: deny

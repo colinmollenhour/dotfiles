@@ -50,13 +50,13 @@ The host harness (you, the one running this skill right now) limits which models
 | Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll an OpenCode client.                                |
 | OpenCode    | Claude (Opus/Sonnet/Fable/Haiku) | `mbot-run` OpenCode slot with the matching `colin-mbot-*` agent. Shell out to `botctl prompt` / `claude` CLI **only** when the profile pins a first-party CLI or no Claude `colin-mbot-*` agent is installed. |
 | OpenCode    | Grok                     | `mbot-run` OpenCode slot, agent `colin-mbot-grok`. `grok` CLI only when the profile pins it (and the CLI is present). See [Grok](#grok). |
-| OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults `--variant high` and `--agent colin-mbot-gpt-sol`). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
+| OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults to `--variant high` and the agent matching the requested model). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
 | Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `mbot-run` for OpenCode, `pi`, `codex`, `gemini`). |
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
-**When OpenCode is the host, keep every participant inside OpenCode.** Launch all of them through `mbot-run` with a `colin-mbot-*` agent — Claude models included — instead of shelling out to `botctl` / `claude` / `grok`. One harness means one attach, one concurrency cap, one harvest path, and uniform cost accounting. `mbot-run` only auto-picks an agent for GPT/OpenAI models (`--agent colin-mbot-gpt-sol`, `--variant high`); every other family must set `"agent"` on the slot:
+**When OpenCode is the host, keep every participant inside OpenCode.** Launch all of them through `mbot-run` with a `colin-mbot-*` agent — Claude models included — instead of shelling out to `botctl` / `claude` / `grok`. One harness means one attach, one concurrency cap, one harvest path, and uniform cost accounting. `mbot-run` only auto-picks an agent for GPT/OpenAI models (Sol uses `colin-mbot-gpt-sol`, Astra uses `colin-mbot-gpt-astra`, both default to `--variant high`); every other family must set `"agent"` on the slot:
 
 | Family | slot `agent` | typical slot `model` |
 |---|---|---|
@@ -95,7 +95,7 @@ Treat a Pi-backed run as successful when the command exits `0` and the output fi
 
 #### Resolving Pi model names
 
-Use `pi --list-models <specific-query>` when a Pi profile names a model but not the exact model id. Keep the query as narrow as the user's wording allows so good matches are not truncated. Examples: use `pi --list-models gpt-5.5` for "GPT 5.5" (not `gpt`), `pi --list-models glm-5.1` for "GLM 5.1", and `pi --list-models sonnet` for "Sonnet". Prefer the exact provider/model id returned by Pi; if several providers match, prefer coding-plan or first-party routes over generic OpenRouter unless the profile explicitly says OpenRouter.
+Use `pi --list-models <specific-query>` when a Pi profile names a model but not the exact model id. Keep the query as narrow as the user's wording allows so good matches are not truncated. Examples: use `pi --list-models gpt-6.2-astra` for "GPT 6.2 Astra" (not `gpt`), `pi --list-models glm-5.1` for "GLM 5.1", and `pi --list-models sonnet` for "Sonnet". Prefer the exact provider/model id returned by Pi; if several providers match, prefer coding-plan or first-party routes over generic OpenRouter unless the profile explicitly says OpenRouter.
 
 ### OpenCode server attach (optional)
 
@@ -112,7 +112,7 @@ Profiles may include an attach directive instructing every OpenCode invocation t
 - Per-agent (overrides any global directive on that line only):
   ```
   - OpenCode with GLM 5.1 via attach 127.0.0.1:4096
-  - OpenCode with GPT-5.4 via attach http://127.0.0.1:4096 (password: hunter2)
+  - OpenCode with GPT-6.2 Sol via attach http://127.0.0.1:4096 (password: hunter2)
   ```
 
 **URL normalization:** prefix `http://` if scheme is missing (`127.0.0.1:4096` → `http://127.0.0.1:4096`). Default OpenCode port is `4096`.

@@ -96,12 +96,12 @@ describe("inferProjectDir", () => {
 
 describe("OpenCode defaults", () => {
   test("GPT Sol models get colin-mbot-gpt-sol", () => {
-    expect(defaultOpencodeAgent("openai/gpt-6.1-sol")).toBe("colin-mbot-gpt-sol")
-    expect(defaultOpencodeAgent("gpt-6.1-sol")).toBe("colin-mbot-gpt-sol")
+    expect(defaultOpencodeAgent("openai/gpt-6.2-sol")).toBe("colin-mbot-gpt-sol")
+    expect(defaultOpencodeAgent("gpt-6.2-sol")).toBe("colin-mbot-gpt-sol")
   })
   test("GPT Astra models get colin-mbot-gpt-astra", () => {
-    expect(defaultOpencodeAgent("openai/gpt-6-astra")).toBe("colin-mbot-gpt-astra")
-    expect(defaultOpencodeAgent("gpt-6-astra")).toBe("colin-mbot-gpt-astra")
+    expect(defaultOpencodeAgent("openai/gpt-6.2-astra")).toBe("colin-mbot-gpt-astra")
+    expect(defaultOpencodeAgent("gpt-6.2-astra")).toBe("colin-mbot-gpt-astra")
   })
   test("GPT Terra models get colin-mbot-gpt-terra", () => {
     expect(defaultOpencodeAgent("openai/gpt-5.6-terra")).toBe("colin-mbot-gpt-terra")
@@ -278,7 +278,7 @@ describe("mbot-run launch path + plan merge (external slots, no models)", () => 
     const plan = writePlan("plan-b.json", [
       {
         slot: "integration-gpt",
-        planned_model: "gpt-6.1-sol",
+        planned_model: "gpt-6.2-sol",
         harness: "external",
         prompt: "prompts/integration.md",
         out: "results/integration-gpt.out",
@@ -347,7 +347,7 @@ describe("barrier failure handling", () => {
   const slot = (name: string) => ({
     slot: name,
     harness: "opencode",
-    planned_model: "openai/gpt-6.1-sol",
+    planned_model: "openai/gpt-6.2-sol",
     prompt: `prompts/${name}.md`,
     out: `results/${name}.out`,
   })
@@ -554,7 +554,7 @@ describe("opencode preflight", () => {
         }
         if (path === "/api/model") {
           return Response.json({
-            data: [{ providerID: "openai", modelID: "gpt-6.1-sol" }],
+            data: [{ providerID: "openai", modelID: "gpt-6.2-sol" }],
           })
         }
         return new Response("nope", { status: 404 })
@@ -563,7 +563,7 @@ describe("opencode preflight", () => {
     try {
       const runDir = join(TMP, "smoke-v2")
       const proc = Bun.spawn(
-        ["bun", SCRIPT, "smoke", "--run-dir", runDir, "--attach", `http://127.0.0.1:${server.port}`, "--model", "gpt-6.1-sol"],
+        ["bun", SCRIPT, "smoke", "--run-dir", runDir, "--attach", `http://127.0.0.1:${server.port}`],
         { stdout: "pipe", stderr: "pipe" },
       )
       const stdout = await new Response(proc.stdout).text()
@@ -573,7 +573,7 @@ describe("opencode preflight", () => {
       expect(pf.mode).toBe("attach")
       expect(pf.api).toBe("v2")
       expect(pf.transport).toBe("opencode-v2")
-      expect(pf.model_resolved).toBe("openai/gpt-6.1-sol")
+      expect(pf.model_resolved).toBe("openai/gpt-6.2-sol")
       expect(stderr).not.toContain("server password")
     } finally {
       server.stop(true)
@@ -589,7 +589,7 @@ describe("opencode preflight", () => {
         const path = url.pathname
         if (path === "/api/info") return Response.json({ version: "2.1.4" })
         if (path === "/api/model") {
-          return Response.json({ data: [{ providerID: "openai", modelID: "gpt-6.1-sol" }] })
+          return Response.json({ data: [{ providerID: "openai", modelID: "gpt-6.2-sol" }] })
         }
         if (req.method === "POST" && path === "/api/session") {
           return Response.json({ data: { id: "ses_test", cost: 0.01, tokens: { input: 3, output: 5 } } })
@@ -628,8 +628,8 @@ describe("opencode preflight", () => {
           {
             slot: "sol",
             harness: "opencode",
-            planned_model: "openai/gpt-6.1-sol",
-            provider_model_id: "openai/gpt-6.1-sol",
+            planned_model: "openai/gpt-6.2-sol",
+            provider_model_id: "openai/gpt-6.2-sol",
             agent: "colin-mbot-gpt-sol",
             prompt: "prompts/slot.md",
             out: "results/sol.out",
@@ -663,7 +663,7 @@ describe("opencode preflight", () => {
         const path = new URL(req.url).pathname
         if (path === "/api/info") return Response.json({ version: "2.2.5" })
         if (path === "/api/model") {
-          return Response.json({ data: [{ providerID: "openai", modelID: "gpt-6.1-sol" }] })
+          return Response.json({ data: [{ providerID: "openai", modelID: "gpt-6.2-sol" }] })
         }
         return new Response("nope", { status: 404 })
       },
@@ -681,7 +681,7 @@ describe("opencode preflight", () => {
           {
             slot: "throws",
             harness: "opencode",
-            planned_model: "openai/gpt-6.1-sol",
+            planned_model: "openai/gpt-6.2-sol",
             agent: "",
             prompt: "prompts/directory-prompt",
             out: "results/throws.out",
@@ -745,7 +745,7 @@ setTimeout(() => {
       opencode_mode: "local",
       opencode_ready_timeout_ms: 1000,
       slots: [{
-        slot: "slow", harness: "opencode", planned_model: "openai/gpt-6.1-sol",
+        slot: "slow", harness: "opencode", planned_model: "openai/gpt-6.2-sol",
         agent: "", prompt: "prompts/slow.md", out: "results/slow.out",
       }],
     }))
@@ -769,13 +769,13 @@ setTimeout(() => {
       port: 0,
       fetch: (req) =>
         new URL(req.url).pathname === "/config/providers"
-          ? Response.json({ providers: [{ id: "openai", models: { "gpt-6.1-sol": {} } }] })
+          ? Response.json({ providers: [{ id: "openai", models: { "gpt-6.2-sol": {} } }] })
           : new Response("nope", { status: 404 }),
     })
     try {
       const runDir = join(TMP, "smoke-attach")
       const proc = Bun.spawn(
-        ["bun", SCRIPT, "smoke", "--run-dir", runDir, "--attach", `http://127.0.0.1:${server.port}`, "--model", "gpt-6.1-sol"],
+        ["bun", SCRIPT, "smoke", "--run-dir", runDir, "--attach", `http://127.0.0.1:${server.port}`, "--model", "gpt-6.2-sol"],
         { stdout: "pipe", stderr: "pipe" },
       )
       const stdout = await new Response(proc.stdout).text()
@@ -785,7 +785,7 @@ setTimeout(() => {
       expect(pf.probe).toBe("http")
       expect(pf.api).toBe("v1")
       expect(pf.transport).toBe("opencode-v1")
-      expect(pf.model_resolved).toBe("openai/gpt-6.1-sol")
+      expect(pf.model_resolved).toBe("openai/gpt-6.2-sol")
     } finally {
       server.stop(true)
     }
@@ -802,7 +802,7 @@ setTimeout(() => {
           return new Response("<!doctype html>", { headers: { "content-type": "text/html" } })
         }
         if (path === "/config/providers") {
-          return Response.json({ providers: [{ id: "openai", models: { "gpt-6.1-sol": {} } }] })
+          return Response.json({ providers: [{ id: "openai", models: { "gpt-6.2-sol": {} } }] })
         }
         if (req.method === "POST" && path === "/session") {
           return Response.json({ id: "ses_v1" })
@@ -810,7 +810,7 @@ setTimeout(() => {
         if (req.method === "POST" && path === "/session/ses_v1/prompt_async") {
           prompted = true
           const body = await req.json()
-          expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-6.1-sol" })
+          expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-6.2-sol" })
           expect(body.parts?.[0]?.text).toContain("Review this.")
           return new Response(null, { status: 204 })
         }
@@ -846,8 +846,8 @@ setTimeout(() => {
           {
             slot: "sol",
             harness: "occtl",
-            planned_model: "openai/gpt-6.1-sol",
-            provider_model_id: "openai/gpt-6.1-sol",
+            planned_model: "openai/gpt-6.2-sol",
+            provider_model_id: "openai/gpt-6.2-sol",
             prompt: "prompts/slot.md",
             out: "results/sol.out",
           },

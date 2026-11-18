@@ -88,8 +88,8 @@ Do not drive OpenCode yourself. `mbot-run` speaks HTTP for OpenCode 1 (`/session
   "slots": [
     {
       "slot": "gpt-tech-bro",
-      "planned_model": "openai/gpt-6.1-sol",
-      "model": "openai/gpt-6.1-sol",
+      "planned_model": "openai/gpt-6.2-sol",
+      "model": "openai/gpt-6.2-sol",
       "agent": "colin-mbot-gpt-sol",
       "variant": "high",
       "harness": "opencode",
@@ -117,7 +117,8 @@ Do not drive OpenCode yourself. `mbot-run` speaks HTTP for OpenCode 1 (`/session
 | Opus | `colin-mbot-opus` | `anthropic/claude-opus-5-5` |
 | Sonnet | `colin-mbot-sonnet` | `anthropic/claude-sonnet-5` |
 | Fable | `colin-mbot-fable` | `anthropic/claude-fable-5-1` |
-| GPT | `colin-mbot-gpt-sol` | `openai/gpt-6.1-sol` |
+| GPT Sol | `colin-mbot-gpt-sol` | `openai/gpt-6.2-sol` |
+| GPT Astra | `colin-mbot-gpt-astra` | `openai/gpt-6.2-astra` |
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
 | GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 

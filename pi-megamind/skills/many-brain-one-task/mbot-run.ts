@@ -17,7 +17,7 @@
  *
  * Commands:
  *   bun mbot-run.ts init --run-dir .tmp/ultra-N
- *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.1-sol [--deep]
+ *   bun mbot-run.ts smoke --run-dir .tmp/ultra-N --attach http://127.0.0.1:4096 --model openai/gpt-6.2-sol [--deep]
  *   bun mbot-run.ts launch --plan .tmp/ultra-N/plan.json [--detach]
  *   bun mbot-run.ts harvest --run-dir .tmp/ultra-N
  *   bun mbot-run.ts candidates --run-dir .tmp/ultra-N
@@ -1575,7 +1575,7 @@ async function cmdSmoke(opts: {
   const pf = await smokeOpencode({
     runDir,
     attach: opts.attach,
-    model: opts.model || "openai/gpt-6.1-sol",
+    model: opts.model || "openai/gpt-6.2-sol",
     password: opts.password,
     timeoutMs: opts.timeoutMs ?? DEFAULT_SMOKE_TIMEOUT_MS,
     readinessTimeoutMs: opts.readinessTimeoutMs,
@@ -1701,7 +1701,7 @@ async function cmdLaunchBody(plan: Plan, runDir: string): Promise<void> {
     preflight = await smokeOpencode({
       runDir,
       attach: plan.attach,
-      model: ocSlot?.provider_model_id || ocSlot?.planned_model || "openai/gpt-6.1-sol",
+      model: ocSlot?.provider_model_id || ocSlot?.planned_model || "openai/gpt-6.2-sol",
       password: plan.password,
       timeoutMs: plan.smoke_timeout_ms ?? DEFAULT_SMOKE_TIMEOUT_MS,
       readinessTimeoutMs: plan.opencode_ready_timeout_ms,

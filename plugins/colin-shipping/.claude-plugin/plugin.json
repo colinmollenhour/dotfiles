@@ -1,6 +1,6 @@
 {
   "name": "colin-shipping",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Review, merge, MBOT/MBOD, platform CLIs, documentation, and shipping workflows",
   "author": {
     "name": "Colin Mollenhour"

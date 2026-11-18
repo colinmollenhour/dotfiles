@@ -20,7 +20,7 @@ codex exec --ephemeral "Your prompt here"
 
 Key flags:
 - `--ephemeral` — run without persisting a session; use for one-shot tasks.
-- `-c model="<name>"` — override the model only when the user explicitly requests one.
+- Use `-m gpt-6.2-sol` for GPT 6.2 Sol or `-m gpt-6.2-astra` for GPT 6.2 Astra. Omit `-m` to use the configured default.
 
 Capture output to a file for aggregation:
 
