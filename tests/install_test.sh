@@ -221,9 +221,22 @@ assert_files_equal "$ROOT_DIR/plugins/colin-shipping/skills/full-send/references
 assert_file_missing "$agents_home/.gemini"
 assert_contains "$output" "Unchanged (same hash and mtime): 2"
 
-mkdir -p "$agents_home/.claude/commands" "$agents_home/.opencode/commands"
-printf 'stale slash command\n' > "$agents_home/.claude/commands/colin-review.md"
-printf 'stale slash command\n' > "$agents_home/.opencode/commands/colin-review.md"
+# Retire only unchanged, tracked copies even when their plugin source still exists.
+manifest="$agents_home/.local/share/colin-dotfiles/manifest"
+old_root="$agents_home/.config/opencode/agents"
+mkdir -p "$agents_home/.claude/commands" "$old_root/nested"
+for stale in "$old_root/nested/old.md" "$old_root/edited.md" "$agents_home/.claude/commands/colin-review.md"; do
+  printf 'original\n' > "$stale"
+  printf '%s\t%s\t%s\n' "$(sha256sum "$stale" | cut -d' ' -f1)" \
+    "plugins/colin-shipping/skills/colin-review/SKILL.md" "$stale" >> "$manifest"
+done
+printf 'personal edit\n' >> "$old_root/edited.md"
+printf 'mine\n' > "$old_root/personal.md"
+ln -s "$old_root" "$agents_home/.config/opencode/command"
+printf '%s\t%s\t%s\n' "$(sha256sum "$old_root/personal.md" | cut -d' ' -f1)" \
+  "removed-source" "$agents_home/.config/opencode/command/personal.md" >> "$manifest"
+output="$(run_install "$agents_home" --agents --no-input --dry-run --quiet)"
+assert_contains "$(<"$old_root/nested/old.md")" "original"
 
 output="$(run_install "$agents_home" --agents --no-input --quiet)"
 assert_not_contains "$output" "$agents_home/.agents/skills/megamind/SKILL.md"
@@ -231,6 +244,10 @@ assert_not_contains "$output" "$agents_home/.claude/settings.json"
 assert_not_contains "$output" "$agents_home/.claude/settings.local.json"
 assert_files_equal "$ROOT_DIR/plugins/megamind/skills/megamind/SKILL.md" \
   "$agents_home/.agents/skills/megamind/SKILL.md"
+assert_file_missing "$old_root/nested"
+assert_contains "$(<"$old_root/personal.md")" "mine"
+assert_contains "$(<"$old_root/edited.md")" "personal edit"
+assert_not_contains "$(<"$manifest")" "$old_root/"
 assert_file_missing "$agents_home/.claude/commands"
 assert_file_missing "$agents_home/.opencode/commands"
 if [[ "$(stat -c '%z' "$agents_home/.claude/settings.json.bak")" != "$backup_ctime" ]]; then

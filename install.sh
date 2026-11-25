@@ -523,11 +523,30 @@ install_dir_files() {
 # another installer (e.g. `cup skill`). Leave it, drop it from the manifest, and
 # do not warn about it on later runs.
 cleanup_deleted() {
-  local dest src_path current_hash n_removed=0 n_released=0
+  local dest src_path current_hash root dir rel n_removed=0 n_released=0
+  local legacy_roots=(.claude/commands .opencode/commands .agents/skills/colin
+    .config/opencode/{agent,agents,command,commands,skill,skills} .config/grok/agents)
   for dest in "${!MANIFEST_HASH[@]}"; do
     [[ -v ACTIVE_DESTS[$dest] ]] && continue
     src_path="${MANIFEST_SRC[$dest]:-}"
-    [[ -n "$src_path" && -e "$SCRIPT_DIR/$src_path" ]] && continue  # source still exists
+    root=""
+    for rel in "${legacy_roots[@]}"; do
+      if [[ "$dest" == "$HOME/$rel/"* ]]; then
+        root="$HOME/$rel"
+        break
+      fi
+    done
+    if [[ -n "$root" ]]; then
+      [[ "$DO_AGENTS" == true ]] || continue
+      [[ "$NO_SKILLS" == true && "$root" == */skill* ]] && continue
+      # A symlink in the old tree can now point into someone else's install.
+      if [[ "$(realpath -m -- "$dest")" != "$(realpath -- "$HOME")/${dest#"$HOME"/}" ]]; then
+        unset 'MANIFEST_HASH[$dest]' 'MANIFEST_SRC[$dest]'
+        continue
+      fi
+    elif [[ -n "$src_path" && -e "$SCRIPT_DIR/$src_path" ]]; then
+      continue
+    fi
     if [[ ! -f "$dest" ]]; then
       unset "MANIFEST_HASH[$dest]" "MANIFEST_SRC[$dest]"
       continue
@@ -538,7 +557,12 @@ cleanup_deleted() {
         dry_run_msg "delete $dest (source removed, file unmodified)"
       else
         rm -f "$dest"
-        log "Deleted $dest (source removed from dotfiles)"
+        log "Deleted obsolete managed file $dest"
+        dir="${dest%/*}"
+        while [[ -n "$root" && ( "$dir" == "$root" || "$dir" == "$root/"* ) ]]; do
+          rmdir -- "$dir" 2>/dev/null || break
+          dir="${dir%/*}"
+        done
         unset "MANIFEST_HASH[$dest]" "MANIFEST_SRC[$dest]"
       fi
       n_removed=$((n_removed + 1))
@@ -876,69 +900,8 @@ install_plugin_skills() {
   done
 }
 
-# .claude/commands is gone. Delete leftover slash-command copies; cleanup_deleted
-# drops them from the manifest once the files are missing.
-cleanup_legacy_command_locations() {
-  local dest dir n=0
-  shopt -s nullglob
-  for dest in "$HOME/.claude/commands"/*.md "$HOME/.opencode/commands"/*.md; do
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "delete leftover command $dest"
-    else
-      rm -f -- "$dest"
-      log "Deleted leftover command $dest"
-    fi
-    n=$((n + 1))
-  done
-  shopt -u nullglob
-  [[ $n -gt 0 ]] && log "Removed $n leftover command file(s)"
-
-  for dir in "$HOME/.claude/commands" "$HOME/.opencode/commands"; do
-    [[ -d "$dir" ]] || continue
-    if [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
-      if [[ "$DRY_RUN" == true ]]; then
-        dry_run_msg "remove empty directory $dir"
-      else
-        rmdir -- "$dir" 2>/dev/null || true
-        log "Removed empty directory $dir"
-      fi
-    fi
-  done
-}
-
-cleanup_legacy_namespaced_agent_dirs() {
-  local legacy_dirs=(
-    "$HOME/.agents/skills/colin"
-    "$HOME/.claude/commands/colin"
-    "$HOME/.opencode/commands/colin"
-  )
-  local existing=() dir
-
-  for dir in "${legacy_dirs[@]}"; do
-    [[ -e "$dir" ]] && existing+=("$dir")
-  done
-
-  [[ ${#existing[@]} -gt 0 ]] || return 0
-
-  if [[ "$DO_ALL" == true && "$FORCE" == true ]]; then
-    :
-  elif ! prompt_yes_no "Remove old namespaced agent/command directories (${existing[*]})"; then
-    warn "Skipping old namespaced agent/command directories. Re-run with --all --force to remove automatically."
-    return 0
-  fi
-
-  if [[ "$DRY_RUN" == true ]]; then
-    for dir in "${existing[@]}"; do
-      dry_run_msg "remove legacy namespaced directory $dir"
-    done
-    return 0
-  fi
-
-  rm -rf -- "${existing[@]}"
-  log "Removed old namespaced agent/command directories"
-}
-
 install_agents() {
+  DO_AGENTS=true
   section "Installing AI agent files"
 
   local claude_settings="$HOME/.claude/settings.json"
@@ -974,28 +937,6 @@ install_agents() {
   # prints the optional cship install command and does not run it.
   copy_claude_home
 
-  local orphaned_dirs=(
-    "$HOME/.config/opencode/agents"
-    "$HOME/.config/opencode/commands"
-    "$HOME/.config/opencode/skills"
-    "$HOME/.config/opencode/agent"
-    "$HOME/.config/opencode/command"
-    "$HOME/.config/opencode/skill"
-    "$HOME/.config/grok/agents"
-  )
-  local orphan
-  for orphan in "${orphaned_dirs[@]}"; do
-    [[ "$NO_SKILLS" == true && "$orphan" == */skill* ]] && continue
-    if [[ -d "$orphan" ]]; then
-      if [[ "$DRY_RUN" == true ]]; then
-        dry_run_msg "remove orphaned directory $orphan"
-      else
-        rm -rf "$orphan"
-        log "Removed orphaned directory: $orphan"
-      fi
-    fi
-  done
-
   if [[ "$DRY_RUN" == true ]]; then
     dry_run_msg "create $HOME/.opencode/agents, $HOME/.grok/agents, and $HOME/.agents/skills"
   else
@@ -1010,8 +951,6 @@ install_agents() {
   else
     log "Skipping skill mirrors; install skills via the Claude marketplace or skills CLI."
   fi
-  cleanup_legacy_command_locations
-  cleanup_legacy_namespaced_agent_dirs
   copy_agent_files ".opencode/agents" "$HOME/.opencode/agents"
   install_file ".opencode/agents/megamind.md" "$SCRIPT_DIR/.opencode/agents/megamind.md" "$HOME/.opencode/agents/megamind.md"
   install_file "plugins/megamind/agents/megamind.md" "$SCRIPT_DIR/plugins/megamind/agents/megamind.md" "$HOME/.grok/agents/megamind.md"
