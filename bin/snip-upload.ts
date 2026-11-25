@@ -6,7 +6,9 @@ import { homedir, tmpdir, userInfo } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 
-const CONFIG_PATH = join(homedir(), '.local', 'colin', 'snips.json')
+const CONFIG_SECRET = 'snips.json'
+const CONFIG_PATH = join(homedir(), '.local', 'colin', CONFIG_SECRET)
+const ENCRYPTED_CONFIG_PATH = `${CONFIG_PATH}.age`
 
 const EXT_TO_MIME = {
   '.webp': 'image/webp',
@@ -73,24 +75,46 @@ function withRandomSuffix(filename: string, len = 8) {
   return `${stem}-${randomBase62(len)}${ext}`
 }
 
-async function loadConfig() {
-  let raw
+async function fileExists(path: string): Promise<boolean> {
   try {
-    raw = await readFile(CONFIG_PATH, 'utf8')
+    await stat(path)
+    return true
   }
   catch (e: any) {
-    if (e?.code !== 'ENOENT') throw e
+    if (e?.code === 'ENOENT') return false
+    throw e
+  }
+}
+
+async function resolveConfigSource(): Promise<{ path: string, encrypted: boolean } | null> {
+  if (await fileExists(CONFIG_PATH)) return { path: CONFIG_PATH, encrypted: false }
+  if (await fileExists(ENCRYPTED_CONFIG_PATH)) return { path: ENCRYPTED_CONFIG_PATH, encrypted: true }
+  return null
+}
+
+async function readConfigText(source: { path: string, encrypted: boolean }): Promise<string> {
+  if (!source.encrypted) return readFile(source.path, 'utf8')
+  const r = spawnSync('secret', ['get', CONFIG_SECRET], { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' })
+  if (r.error) fail(`Could not run secret: ${r.error.message}`)
+  if (r.status !== 0) fail(`Could not decrypt ${source.path}`)
+  return r.stdout
+}
+
+async function loadConfig() {
+  let source = await resolveConfigSource()
+  if (!source) {
     if (!process.stdin.isTTY) fail(`Config not found: ${CONFIG_PATH}\nRun 'snip-upload auth' in a terminal to set up a bucket.`)
     process.stderr.write(`No bucket configured yet (${CONFIG_PATH}).\n`)
     if (!await confirm('Set one up now?', true)) process.exit(1)
     await cmdAuth()
-    raw = await readFile(CONFIG_PATH, 'utf8')
+    source = await resolveConfigSource()
+    if (!source) fail(`Config not found: ${CONFIG_PATH}`)
   }
-  const cfg = JSON.parse(raw)
+  const cfg = JSON.parse(await readConfigText(source))
   for (const key of ['bucket', 'region', 'accessKeyId', 'secretAccessKey', 'publicBaseUrl']) {
-    if (!cfg[key]) fail(`Missing "${key}" in ${CONFIG_PATH}`)
+    if (!cfg[key]) fail(`Missing "${key}" in ${source.path}`)
   }
-  if (typeof cfg.prefix !== 'string') fail(`Missing "prefix" in ${CONFIG_PATH} (use "" for none)`)
+  if (typeof cfg.prefix !== 'string') fail(`Missing "prefix" in ${source.path} (use "" for none)`)
   return cfg
 }
 
@@ -614,9 +638,12 @@ async function askSecret(question: string): Promise<string> {
   return value.trim()
 }
 
-async function readExistingConfig() {
+async function readExistingConfig(): Promise<{ cfg: any, path: string } | null> {
+  const source = await resolveConfigSource()
+  if (!source) return null
+  const text = await readConfigText(source)
   try {
-    return JSON.parse(await readFile(CONFIG_PATH, 'utf8'))
+    return { cfg: JSON.parse(text), path: source.path }
   }
   catch {
     return null
@@ -676,8 +703,8 @@ async function cmdAuth() {
 
   const existing = await readExistingConfig()
   if (existing) {
-    const id = String(existing.accessKeyId || '')
-    process.stderr.write(`Current config (${CONFIG_PATH}):\n  bucket ${existing.bucket}\n  endpoint ${existing.endpoint || '(AWS)'}\n  key ${id.slice(0, 8)}…\n  public ${existing.publicBaseUrl}${existing.prefix}\n`)
+    const id = String(existing.cfg.accessKeyId || '')
+    process.stderr.write(`Current config (${existing.path}):\n  bucket ${existing.cfg.bucket}\n  endpoint ${existing.cfg.endpoint || '(AWS)'}\n  key ${id.slice(0, 8)}…\n  public ${existing.cfg.publicBaseUrl}${existing.cfg.prefix}\n`)
     if (!await confirm('Replace it?', false)) return
   }
 
@@ -725,15 +752,17 @@ These steps set up a Tigris bucket (the free tier is plenty for snips):
 
 // Non-interactive: exit 0 when a usable config exists, 3 when not. --verify also runs a live upload check.
 async function cmdAuthStatus(args) {
-  const cfg = await readExistingConfig()
+  const existing = await readExistingConfig()
+  const cfg = existing?.cfg ?? null
+  const cfgPath = existing?.path ?? CONFIG_PATH
   const missing = cfg ? ['bucket', 'region', 'accessKeyId', 'secretAccessKey', 'publicBaseUrl'].filter(k => !cfg[k]) : []
   if (cfg && typeof cfg.prefix !== 'string') missing.push('prefix')
   if (!cfg || missing.length) {
-    console.log(cfg ? `not configured: ${CONFIG_PATH} is missing ${missing.join(', ')}` : `not configured: ${CONFIG_PATH} not found`)
+    console.log(cfg ? `not configured: ${cfgPath} is missing ${missing.join(', ')}` : `not configured: ${CONFIG_PATH} not found`)
     console.log(`Run 'snip-upload auth' in a terminal to set up a bucket.`)
     process.exit(3)
   }
-  console.log(`configured (${CONFIG_PATH})`)
+  console.log(`configured (${cfgPath})`)
   console.log(`  bucket   ${cfg.bucket}`)
   console.log(`  endpoint ${cfg.endpoint || `AWS S3 (${cfg.region})`}`)
   console.log(`  key      ${String(cfg.accessKeyId).slice(0, 8)}…`)
@@ -786,7 +815,7 @@ Other options:
   --name NAME        Override the basename used in the S3 key
                      (random suffix is still added unless --no-random)
 
-Config: ${CONFIG_PATH} (written by 'snip-upload auth')
+Config: ${CONFIG_PATH} (or ${ENCRYPTED_CONFIG_PATH} via 'secret'; written by 'snip-upload auth')
   Required keys: bucket, region, accessKeyId, secretAccessKey, prefix, publicBaseUrl
   Optional keys: endpoint (for S3-compatible services such as Tigris)
                  pathStyle (default true with an endpoint; false = bucket.endpoint/key)
