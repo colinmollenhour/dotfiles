@@ -65,7 +65,7 @@ Task type `code-review`. Profile: user `--profile X`, else `code-review.md`; Sea
 ### Allocation
 
 - `state` / `contracts` / `failure`: full participants × each bucket  
-- `craft`: one participant (Grok slot; else Claude/Opus slot, else profile backup) per bucket — Grok carries the fewest discovery threads in the default lineup and is fast enough that the extra per-bucket thread does not extend wall-clock. **Grok slots are capped at 8 minutes**; if Grok times out or returns empty output, fail over immediately to Opus 5.5 rather than retrying on Grok or waiting 20 minutes.
+- `craft`: one participant per bucket: the profile's Opus slot, else its first available participant. When a profile that includes Grok gives `craft` to Grok, **cap Grok slots at 8 minutes**. If Grok times out or returns empty output, fail over immediately to Opus rather than retrying on Grok or waiting 20 minutes.
 - `merits`: full participants, **once**, whole-change (no prior review comments in input)  
 - `integration`: full participants, whole-change  
 - Thread budget: `((3 × participants) + 1) × buckets` + merits fan-out + integration fan-out  

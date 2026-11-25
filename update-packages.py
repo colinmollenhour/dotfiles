@@ -57,11 +57,11 @@ class PackageUpdater:
                 upgrade="pnpm upgrade -g @qwen-code/qwen-code",
                 source="pnpm"
             ),
-            "gemini": PackageConfig(
-                command="gemini",
-                install="pnpm add -g @google/gemini-cli",
-                upgrade="pnpm upgrade -g @google/gemini-cli",
-                source="pnpm"
+            "agy": PackageConfig(
+                command="agy",
+                install="echo 'Install the Antigravity CLI (agy) with its official installer, then rerun.' >&2; exit 1",
+                upgrade="agy update",
+                source="shell"
             ),
             "codex": PackageConfig(
                 command="codex",

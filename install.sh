@@ -714,7 +714,7 @@ OPTIONS
       --dotfiles     Install dotfiles into \$HOME
       --bashrc       Update ~/.bashrc to source ~/.bashrc.colin
       --gitconfig    Update ~/.gitconfig to include ~/.gitconfig.colin
-      --agents       Install Claude, OpenCode, Gemini, and OpenAI agent files
+      --agents       Install Claude, OpenCode, Antigravity, and OpenAI agent files
       --bins         Install standalone CLIs (snip-upload) to ~/.local/bin
       --no-bins      Skip the CLIs when using --all
   -i, --interactive  Choose components interactively (default when run in a TTY)
@@ -1080,7 +1080,7 @@ interactive_install() {
     update_gitconfig
   fi
 
-  if prompt_yes_no "Install Claude/OpenCode/Gemini/OpenAI agent files"; then
+  if prompt_yes_no "Install Claude/OpenCode/Antigravity/OpenAI agent files"; then
     install_agents
   fi
 

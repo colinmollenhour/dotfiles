@@ -394,7 +394,7 @@ OPTIONS
       --dotfiles     Uninstall dotfiles from \$HOME
       --bashrc       Remove ~/.bashrc.colin include from ~/.bashrc
       --gitconfig    Remove ~/.gitconfig.colin include from ~/.gitconfig
-      --agents       Uninstall Claude, OpenCode, Gemini, and OpenAI agent files
+      --agents       Uninstall Claude, OpenCode, Antigravity, and OpenAI agent files
       --bins         Uninstall standalone CLIs (snip-upload) from ~/.local/bin
                      (~/.local/colin/snips.json credentials are left in place)
   -i, --interactive  Choose components interactively (default when run in a TTY)
@@ -445,7 +445,7 @@ interactive_uninstall() {
     fi
   fi
 
-  if prompt_yes_no "Uninstall Claude/OpenCode/Gemini/OpenAI agent files"; then
+  if prompt_yes_no "Uninstall Claude/OpenCode/Antigravity/OpenAI agent files"; then
     DO_AGENTS=true
   fi
 

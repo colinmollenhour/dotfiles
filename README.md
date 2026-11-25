@@ -88,7 +88,7 @@ Add tools for the workflows you use:
 | Stack restacking and branch cleanup | `python3` runs both bundled helpers using the standard library. Cleanup can also use Worktrunk (`wt`) and Paseo (`paseo`) when present. |
 | ClickUp task authoring | Install `cup` and verify the account with `cup auth`. |
 | Whiteboards | Node.js 20+ runs the server. To publish, install the Bun-based `snip-upload` with `./install.sh --bins` and configure its bucket with `snip-upload auth`. |
-| Diagrams and generated images | The `tldraw` CLI exports diagrams for educational briefs. The `nano-banana` skill uses Antigravity CLI (`agy`). |
+| Diagrams and generated images | The `tldraw` CLI exports diagrams for educational briefs. Antigravity (`agy`) generates images natively; other agents use the `nano-banana` skill to shell out to `agy`. |
 | Browser tests and editor diagnostics | Configure Playwright MCP and the project's Playwright test runner for `generate-e2e-test`. Configure CCLSP MCP with the project's language servers for `cclsp-fix-diagnostics`. |
 
 If you also install the shell dotfiles with `./install.sh --dotfiles` or `--all`, install `envsubst` from GNU gettext for the installer's template rendering.
@@ -400,7 +400,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 ### Media
 
-- **`nano-banana`** — Generate and edit images through the `agy` (Antigravity) CLI.
+- **`nano-banana`** — Lets agents other than agy generate and edit images by shelling out to the `agy` (Antigravity) CLI. agy itself uses its native image generation.
 
 - **`whiteboard`** — A poor man's [dev.fast](https://dev.fast/) whiteboard. The agent sketches an explanation (Mermaid diagrams, cards, stickies, diffs, code) in a plain HTML file, and your browser tab reloads on every save at the same scroll position. It's driven by the `whiteboard` CLI, a zero-dependency Node server that `--agents` links into `~/.local/bin`:
   - `whiteboard start` / `new <project>/<topic>` / `status` / `stop` manage the server and boards. Boards live in `~/.whiteboard` by default. The live server's index at `/` lists them all, which is fine because only you reach it over Tailscale. Published copies have no index (see `publish` below).

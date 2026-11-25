@@ -52,9 +52,9 @@ The host harness (you, the one running this skill right now) limits which models
 | OpenCode    | Grok                     | `mbot-run` OpenCode slot, agent `colin-mbot-grok`. `grok` CLI only when the profile pins it (and the CLI is present). See [Grok](#grok). |
 | OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults to `--variant high` and the agent matching the requested model). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
-| Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `mbot-run` for OpenCode, `pi`, `codex`, `gemini`). |
+| Grok CLI    | non-Grok                 | Follow the profile's CLI/harness (`claude`, `mbot-run` for OpenCode, `pi`, `codex`, `agy`). |
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
-| Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
+| Antigravity (agy) | Gemini             | Native `define_subagent` / `invoke_subagent`; shell out for everything else.                              |
 
 For OpenCode slots, use `mbot-run` and select the agent matching the requested family. GPT agents default by model. Examples:
 
@@ -454,10 +454,12 @@ codex exec review --ephemeral --base <branch> </dev/null > ./.codex-review.txt 2
 
 Use `--uncommitted` or `--commit <sha>` for a working-tree or single-commit review.
 
-### gemini
+### agy (Antigravity)
+
+Load the `agy-cli` skill for permissions, long prompts and success checks. On a host other than agy, prefer an `mbot-run` OpenCode slot with `colin-mbot-gemini-neon` or `colin-mbot-gemini-argon`; use agy only when the profile pins it.
 
 ```bash
-gemini --model gemini-3.1-flash-lite-preview --prompt "PROMPT_HERE"
+agy --model gemini-4-neon --effort high --mode plan --output-format json --print "PROMPT_HERE" > .tmp/mbot/results/agy.json
 ```
 
 ### CodeRabbit (`cr`)

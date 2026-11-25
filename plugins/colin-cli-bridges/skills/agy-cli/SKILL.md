@@ -9,6 +9,8 @@ allowed-tools: Bash(agy *)
 
 Use the `agy` CLI to send prompts to Gemini models (and the other models agy hosts) from shell-based workflows. Typical callers are MBOT/MBOD participants, megamind planning or fix agents, and one-off second opinions. For image generation and editing, use the `nano-banana` skill instead.
 
+If you are agy yourself, do not use this skill: use native subagents (`define_subagent` / `invoke_subagent`) instead of starting a second agy process.
+
 Behaviour below was verified against agy 1.5.17 with the `gemini-4-argon` family. Check `agy --help` when the installed version differs.
 
 ## Prerequisites

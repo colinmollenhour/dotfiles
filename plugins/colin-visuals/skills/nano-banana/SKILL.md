@@ -1,16 +1,20 @@
 ---
 name: nano-banana
-description: 'Generate or edit images with the agy (Antigravity) CLI: thumbnails, icons, diagrams, graphics, illustrations, photos.'
+description: 'For agents other than agy: generate or edit images by shelling out to the agy (Antigravity) CLI: thumbnails, icons, diagrams, illustrations, photos. Not for use inside agy itself; agy uses its native image-generator subagent.'
 allowed-tools: Bash(agy:*), Bash(file:*), Bash(ls:*), Bash(mkdir:*)
 ---
 
 # Nano Banana Image Generation
 
-Generate and edit images by running `agy` (the Antigravity CLI) in print mode. agy has a built-in `image-generator` subagent whose `generate_image` tool produces the image; the `agy` text model only relays the request.
+This skill lets agents that are **not** agy (Claude Code, Codex, OpenCode, Grok, Pi) generate and edit images by running `agy` (the Antigravity CLI) in print mode. agy has a built-in `image-generator` subagent whose `generate_image` tool produces the image; the agy text model only relays the request.
+
+## If You Are agy (Antigravity)
+
+Do not use this skill, and do not run the `agy` command. You already have native image generation: call `invoke_subagent` with the `image-generator` subagent (or `generate_image` directly when it is in your tool list), then save or copy the result to the path the user asked for. The prompt tips, aspect ratios and checks below still apply.
 
 ## When to Use This Skill
 
-ALWAYS use this skill when the user:
+When you are not agy, ALWAYS use this skill when the user:
 - Asks for any image, graphic, illustration, or visual
 - Wants a thumbnail, featured image, or banner
 - Requests icons, diagrams, or patterns
@@ -23,12 +27,12 @@ Do NOT attempt to generate images through any other method (no SVG/canvas code a
 
 ```bash
 OUT="$PWD/nanobanana-output"; mkdir -p "$OUT"
-agy --model gemini-3.8-flash-medium --add-dir "$OUT" --print \
+agy --model gemini-3.8-flash-medium --add-dir "$OUT" --dangerously-skip-permissions --print \
   "Use your native image generation tool to generate <description>, <aspect ratio>. Save it as $OUT/<name>.png. State which tool produced it. If you have no image generation tool, say so plainly and do not fake it with code or SVG."
 ```
 
 - Always give an **absolute** output path and `--add-dir` its directory.
-- No `--dangerously-skip-permissions` is needed; print mode runs the image subagent unattended. Do not add it.
+- Pass `--dangerously-skip-permissions`. The generator saves a JPEG under `~/.gemini/antigravity-cli/brain/`, and agy then runs a shell command to convert or copy it to your path. If the user's agy `toolPermission` is `request-review`, print mode auto-denies that command: agy exits 0 with an empty reply and writes no file. Keep the prompt limited to the image task.
 - `agy` writes its config, logs and artifacts under `~/.gemini/antigravity-cli/`. Inside a read-only-home sandbox it fails with `read-only file system` and `You are not logged into Antigravity`. Run it where that directory is writable (outside the harness sandbox, with the user's approval if the harness asks).
 - Calls are slow (a generation is a subagent round trip). Use a generous timeout, several minutes.
 
@@ -36,7 +40,7 @@ agy --model gemini-3.8-flash-medium --add-dir "$OUT" --print \
 
 `--model` only picks the agy text model that relays the request. The image model is fixed by the `generate_image` tool and cannot be chosen, so output quality does not depend on `--model`. In side-by-side tests, `gemini-3.8-flash-medium` and `gemini-4-argon-medium` produced images of the same quality and followed the same instructions. Use `gemini-3.8-flash-medium` as the default. Run `agy models` to list others.
 
-agy's text model may call the backend "Imagen 3". The tool does not report a model identifier, so do not quote that to the user as fact.
+agy's text model may call the backend "Imagen 3"; do not repeat that. The tool reports no model on success. Its errors name the image model (`gemini-3.1-flash-image` as of 2026-11-25).
 
 ## Tool Parameters (what you can control)
 
@@ -65,7 +69,7 @@ Ask for the closest aspect ratio, then resize or crop afterwards (ImageMagick `m
 Name the source file(s) in the prompt and say what must stay unchanged:
 
 ```bash
-agy --model gemini-3.8-flash-medium --add-dir "$OUT" --print \
+agy --model gemini-3.8-flash-medium --add-dir "$OUT" --dangerously-skip-permissions --print \
   "Use your native image generation tool to EDIT the existing image $OUT/banana.png: add a red baseball cap, keep everything else the same. Save the result as $OUT/banana-cap.png."
 ```
 
@@ -104,5 +108,7 @@ After each call:
 | `You are not logged into Antigravity` | Run outside the read-only sandbox first; if it persists, the user must log in with `agy` interactively |
 | `read-only file system` for `~/.gemini` | Same: agy needs a writable home config dir |
 | agy says it has no image tool | Update agy (`agy update`); do not substitute code or SVG |
+| Empty reply, no file, stderr says a tool was auto-denied | `--dangerously-skip-permissions` is missing (see Running agy) |
 | File missing or wrong type | Check the reply for the artifact path under `~/.gemini/antigravity-cli/brain/` and convert it |
 | Image refused or empty | Simplify the prompt and remove anything that could trip content policy |
+| `HTTP 503` / `No capacity available for model gemini-3.1-flash-image` | Backend capacity, not your prompt or flags. agy still exits 0 with `status: SUCCESS`, so check for the file. Retry after a few minutes; if it persists, tell the user and offer the `codex-cli` image route |

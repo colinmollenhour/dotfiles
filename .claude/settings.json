@@ -42,9 +42,6 @@
       "Bash(grok)",
       "Bash(grok *)",
       "Bash(grok:*)",
-      "Bash(gemini)",
-      "Bash(gemini *)",
-      "Bash(gemini:*)",
       "Bash(claude)",
       "Bash(claude *)",
       "Bash(claude:*)",
@@ -135,7 +132,6 @@
       "codex",
       "agy",
       "grok",
-      "gemini",
       "claude"
     ],
     "network": {

@@ -133,7 +133,7 @@ bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/mbot-run.ts" harvest \
 
 **OpenCode server selection.** `mbot-run` reads `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`, and already-set env wins over the plan's `"attach"`. Put the matching URL on the plan anyway so it stays in attach mode and never `--spawn`s.
 
-Inside the **Seamus podman container** that env already points at the in-container bot serve, `127.0.0.1:4096`. Do not retarget to the operator's personal server (port `4095`, host `100.110.251.42`, hostname `seamus`) — Seamus rewrites it back and bot work must not land there. The image ships `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, and `opencode` (OpenCode 1, so `mbot-run` uses `/session`). It does **not** ship `grok`, `botctl`, `cr`, `pi`, `gemini`, or the `agentsview` CLI. Use the host routing rules above. `AGENTSVIEW_URL` is injected — run `mbot-run usage` without `--no-agentsview`.
+Inside the **Seamus podman container** that env already points at the in-container bot serve, `127.0.0.1:4096`. Do not retarget to the operator's personal server (port `4095`, host `100.110.251.42`, hostname `seamus`) — Seamus rewrites it back and bot work must not land there. The image ships `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, and `opencode` (OpenCode 1, so `mbot-run` uses `/session`). It does **not** ship `grok`, `botctl`, `cr`, `pi`, `agy`, or the `agentsview` CLI. Use the host routing rules above. `AGENTSVIEW_URL` is injected — run `mbot-run usage` without `--no-agentsview`.
 
 ### Step 3: Assign Personalities
 

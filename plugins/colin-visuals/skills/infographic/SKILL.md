@@ -24,7 +24,7 @@ Trigger on phrases like:
 - "Distill this work into an infographic"
 - Explicit: `/infographic` or `/colin-infographic` (slash commands), or any user mention of "the infographic skill"
 
-Do NOT trigger when the user asks for the actual image (defer to image-generation tools or skills like `nano-banana`).
+Do NOT trigger when the user asks for the actual image (defer to image-generation tools or skills like `nano-banana`; inside agy, use the native image-generator subagent).
 
 ## Outputs
 
@@ -242,7 +242,7 @@ Report to the user, in chat, in 4 lines or less:
 Layout: <chosen layout>
 Slug derived from: <source>
 Pipe to your image tool, e.g.:
-  - nano-banana skill
+  - nano-banana skill (or, inside agy, the native image-generator subagent)
   - notebooklm skill
   - codex-cli skill
 ```
@@ -280,5 +280,5 @@ The Good version is the entire filled-in template above, with every brace resolv
 
 ## Suggested followups (offer once after the file is written)
 
-- "Would you like me to also generate the actual image via the `nano-banana` skill, the `notebooklm` infographic feature, or the `codex-cli` skill?"
+- "Would you like me to also generate the actual image via the `nano-banana` skill, the `notebooklm` infographic feature, or the `codex-cli` skill?" Inside agy, offer your native image generation instead of `nano-banana`.
 - "Want me to embed the resulting image in the MR description with a link below it to the source artifact?" (only relevant if an MR exists)
