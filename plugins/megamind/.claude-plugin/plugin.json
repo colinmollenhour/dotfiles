@@ -1,6 +1,6 @@
 {
   "name": "megamind",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Autonomous delivery agent and skill with multi-model planning and review",
   "author": {
     "name": "Colin Mollenhour"

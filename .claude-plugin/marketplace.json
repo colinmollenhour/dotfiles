@@ -21,7 +21,7 @@
     {
       "name": "colin-cli-bridges",
       "source": "./plugins/colin-cli-bridges",
-      "description": "Route work through the Claude, Codex, and Grok CLIs",
+      "description": "Route work through the Claude, Codex, Grok, and Antigravity (agy) CLIs",
       "category": "development"
     },
     {

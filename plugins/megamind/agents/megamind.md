@@ -182,6 +182,7 @@ Load these skills only when actually shelling out to the relevant CLI; do not lo
 - `claude-cli` — when invoking the `claude` CLI directly (e.g. for a planning or fix agent that does not go through MBOT).
 - `codex-cli` — when invoking the `codex` CLI directly.
 - `grok-cli` — when invoking the `grok` CLI directly (e.g. for a planning or fix agent that does not go through MBOT).
+- `agy-cli` — when invoking the `agy` (Antigravity) CLI directly for Gemini text tasks. Use `nano-banana` for images.
 
 When delegating to MBOT or MBOD, those skills handle CLI routing themselves (including preferring the first-party `grok` CLI over OpenCode `colin-mbot-grok` when available).
 
