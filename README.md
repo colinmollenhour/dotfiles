@@ -13,6 +13,7 @@ Personal dotfiles plus a batteries-included Claude Code config for shipping soft
 ## Contents
 
 - [Quickstart](#quickstart)
+- [Recommended skill dependencies](#recommended-skill-dependencies)
 - [Uninstalling](#uninstalling)
 - [What gets installed](#what-gets-installed)
 - [Shell helpers](#shell-helpers)
@@ -66,6 +67,31 @@ cd ~/.dotfiles
 Subsequent runs are safe without `--force`: the script tracks which files it installed and their hashes, so it only updates files it owns that haven't been manually changed. Copied files retain the repository source's modification time, making a destination with a newer mtime an easy visual indicator that it was subsequently saved by a user; hashes remain the authoritative conflict check.
 
 After installation, run `colin-help` for the cheat sheet of aliases, shortcuts, and tools. The same content lives at the [top of `.bashrc.colin`](https://github.com/colinmollenhour/dotfiles/blob/main/.bashrc.colin#L2).
+
+## Recommended skill dependencies
+
+For everyday code review and shipping, start with an authenticated agent host such as Claude Code, plus **Git, Bun, jq, ripgrep, and the CLI for your Git host**.
+
+| Install | What uses it |
+|---|---|
+| Git (`git`) | Diffs, history, branches, worktrees, and nearly every shipping workflow. |
+| Bun (`bun`) | Runs the bundled TypeScript helpers for PR/MR context, CI failures, and multi-model reviews. |
+| jq (`jq`) | Extracts fields from API responses and review artifacts. The installer also uses it to merge Claude settings. |
+| ripgrep (`rg`) | Fast source and reference searches during reviews and audits. |
+| GitLab CLI (`glab`) or GitHub CLI (`gh`) | Fetches requests, checks CI, and posts reviews. Install both if you work on both platforms. Verify access with `glab auth status` or `gh auth status` for the host in your repo's remote URL. |
+
+Add tools for the workflows you use:
+
+| Workflow | Additional dependencies |
+|---|---|
+| Multi-model reviews and debates (MBOT/MBOD) | Use the harnesses selected by your profile. For example, install `opencode` for a local OpenCode server, or authenticate `codex` or `grok` for their CLI routes. AgentsView is optional for usage reporting. |
+| Stack restacking and branch cleanup | `python3` runs both bundled helpers using the standard library. Cleanup can also use Worktrunk (`wt`) and Paseo (`paseo`) when present. |
+| ClickUp task authoring | Install `cup` and verify the account with `cup auth`. |
+| Whiteboards | Node.js 20+ runs the server. To publish, install the Bun-based `snip-upload` with `./install.sh --bins` and configure its bucket with `snip-upload auth`. |
+| Diagrams and generated images | The `tldraw` CLI exports diagrams for educational briefs. The `nano-banana` skill uses Antigravity CLI (`agy`). |
+| Browser tests and editor diagnostics | Configure Playwright MCP and the project's Playwright test runner for `generate-e2e-test`. Configure CCLSP MCP with the project's language servers for `cclsp-fix-diagnostics`. |
+
+If you also install the shell dotfiles with `./install.sh --dotfiles` or `--all`, install `envsubst` from GNU gettext for the installer's template rendering.
 
 ## Plugin and skills installation
 
@@ -374,7 +400,7 @@ Claude loads these automatically when a task matches, or you can reference them 
 
 ### Media
 
-- **`nano-banana`** — Required for any image generation or editing. Wraps the `agy` (Antigravity) CLI.
+- **`nano-banana`** — Generate and edit images through the `agy` (Antigravity) CLI.
 
 - **`whiteboard`** — A poor man's [dev.fast](https://dev.fast/) whiteboard. The agent sketches an explanation (Mermaid diagrams, cards, stickies, diffs, code) in a plain HTML file, and your browser tab reloads on every save at the same scroll position. It's driven by the `whiteboard` CLI, a zero-dependency Node server that `--agents` links into `~/.local/bin`:
   - `whiteboard start` / `new <project>/<topic>` / `status` / `stop` manage the server and boards. Boards live in `~/.whiteboard` by default. The live server's index at `/` lists them all, which is fine because only you reach it over Tailscale. Published copies have no index (see `publish` below).
@@ -490,27 +516,7 @@ Profiles are prose. MBOT reads them naturally and translates them into the right
 
 The `.opencode/agents/colin-mbot-*.md` files register each model as a callable OpenCode subagent (read-only: `edit` and `task` denied; bash limited to git show/diff/log). They are how OpenCode-hosted MBOT runs dispatch to a specific model. You normally do not invoke them directly, but you reference them by short name in profiles and `[agents]` overrides.
 
-Sorted roughly by capability:
-
-| Agent | Model |
-|---|---|
-| `colin-mbot-opus` | Anthropic Claude Opus 5.5 (high reasoning) |
-| `colin-mbot-opus-xhigh` | Anthropic Claude Opus 5.5 (xhigh reasoning) |
-| `colin-mbot-gpt-astra` | OpenAI GPT 6.2 Astra |
-| `colin-mbot-gpt-sol` | OpenAI GPT 6.2 Sol |
-| `colin-mbot-gpt-terra` | OpenAI GPT 5.6 Terra |
-| `colin-mbot-gpt-terra-zen` | GPT 5.6 Terra through OpenCode Zen |
-| `colin-mbot-grok` | xAI Grok 4.7 (OpenCode fallback; prefer `grok` CLI when available) |
-| `colin-mbot-sonnet` | Anthropic Claude Sonnet 5 |
-| `colin-mbot-glm` | Zhipu GLM 5.2 |
-| `colin-mbot-gemini-flash` | Gemini 3.7 Flash (OpenRouter) |
-| `colin-mbot-gemini-pro` | Gemini 3.1 Pro (OpenRouter) |
-| `colin-mbot-gemini-pro-zen` | Gemini 3.1 Pro through OpenCode Zen |
-| `colin-mbot-qwen` | Alibaba Qwen 3.8 Max |
-| `colin-mbot-kimi` | Moonshot Kimi K3 |
-| `colin-mbot-mimo` | Xiaomi MiMo V2.5 Pro |
-| `colin-mbot-deepseek` | DeepSeek v4 Pro |
-| `colin-mbot-minimax` | MiniMax M3 |
+See the [OpenCode agent definitions](.opencode/agents/) for the exact model IDs, reasoning settings, and permissions.
 
 Add your own by dropping a new `colin-mbot-<NAME>.md` into `.opencode/agents/` with `mode: subagent`, the desired `model:`, and the same `permission:` block as the existing files (`edit`/`task` deny, read-only git bash allowlist). Copy it next to the others; `install.sh` installs them to `~/.opencode/agents/`.
 

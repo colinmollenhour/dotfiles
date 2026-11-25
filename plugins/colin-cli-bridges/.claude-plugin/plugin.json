@@ -1,6 +1,6 @@
 {
   "name": "colin-cli-bridges",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Route work through the Claude, Codex, and Grok CLIs",
   "author": {
     "name": "Colin Mollenhour"
