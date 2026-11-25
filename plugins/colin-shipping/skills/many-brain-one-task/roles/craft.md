@@ -8,5 +8,6 @@ Trace whether the change leaves the codebase honest.
 - Violations of applicable repository instruction files, quoted exactly
 - Missing test coverage for a new invariant guard, a new fallback or demotion branch, or a class reachable only through a queue, cron, or plugin registration
 - Strings that defeat an existing mechanism, such as messages assembled before being passed to translation
+- UI markup the change adds (templates, DOM built in JavaScript, email HTML) that skips the screen's existing components and classes. A bare heading or paragraph inside a styled page renders unstyled. Check every added render branch, especially error, blocked, empty and recovery states that ordinary use rarely shows
 
 Whether the change should have been split, or does more than its stated goal, belongs to `merits` — do not raise it here.
