@@ -1,8 +1,10 @@
 ---
-description: Many brain, one task with Gemini 3.1 Pro - only to be used by the MBOT skill
+description: Many brain, one task with Gemini 4 Neon - only to be used by the MBOT skill
 mode: subagent
 hidden: true
-model: openrouter/google/gemini-3.1-pro-preview
+# Variants: low, medium, high, xhigh. A plan.json slot `variant` overrides reasoningEffort.
+model: openrouter/google/gemini-4-neon
+reasoningEffort: high
 permission:
   edit: deny
   task: deny

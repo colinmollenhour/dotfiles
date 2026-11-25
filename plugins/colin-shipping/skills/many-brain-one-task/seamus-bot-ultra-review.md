@@ -7,17 +7,17 @@ and the CodeRabbit / off-profile-model bans; they are not repeated here.
 
 ## Participants and allocation (overrides colin-ultra-review "Allocation")
 
-Two baseline participants are **GPT-6.2 Sol xhigh** and **Opus 5.5** using a **hybrid reasoning allocation** by lens (`xhigh` where deep state/failure/cross-file tracing pays off; `high` on `contracts`, `craft`, `merits`, `combined`, and `adjudicate`). Backup when a primary cannot run: **none** (retry once with the same model; if still down, proceed with the available primary).
+Three baseline participants are **GPT-6.2 Sol xhigh**, **Opus 5.5** and **Gemini 4 Neon**. Opus and Neon use a **hybrid reasoning allocation** by lens (`xhigh` where deep state/failure/cross-file tracing pays off; `high` on `contracts`, `craft`, `merits`, `combined`, and `adjudicate`). Neon runs every slice GPT-6.2 Sol runs, so each of those slices gets three model families. Backup when a primary cannot run: **none** (retry once with the same model; if still down, proceed with the available primaries).
 
 | Lens | Participants |
 |---|---|
-| `state` / `failure` | Opus 5.5 xhigh + GPT-6.2 Sol xhigh, × each bucket |
-| `contracts` | Opus 5.5 high + GPT-6.2 Sol xhigh, × each bucket |
+| `state` / `failure` | Opus 5.5 xhigh + GPT-6.2 Sol xhigh + Gemini 4 Neon xhigh, × each bucket |
+| `contracts` | Opus 5.5 high + GPT-6.2 Sol xhigh + Gemini 4 Neon high, × each bucket |
 | `craft` | Opus 5.5 high, × each bucket |
-| `merits` | Opus 5.5 high + GPT-6.2 Sol xhigh, once |
-| `integration` (every round) | Opus 5.5 xhigh + GPT-6.2 Sol xhigh |
+| `merits` | Opus 5.5 high + GPT-6.2 Sol xhigh + Gemini 4 Neon high, once |
+| `integration` (every round) | Opus 5.5 xhigh + GPT-6.2 Sol xhigh + Gemini 4 Neon xhigh |
 
-The baseline thread budget is `7 × buckets` + 2 merits + 2 integration per round, plus adjudication.
+The baseline thread budget is `10 × buckets` + 3 merits + 3 integration per round, plus adjudication.
 Record the planned participant count in `run-summary.json`.
 
 The table above is the `standard` tier. Smaller diffs use colin-ultra-review "Size tier"
@@ -25,8 +25,8 @@ thresholds with these participants:
 
 | Tier | Discovery | Merits | Integration | Typical threads |
 |---|---|---|---|---|
-| `small` | Opus 5.5 high + GPT-6.2 Sol xhigh, combined-lens | Opus 5.5 high | none | 3 + ≤2 adjudication |
-| `medium` | `standard` grid, one bucket (7) | Opus 5.5 high | Opus 5.5 xhigh + GPT-6.2 Sol xhigh in round 2 only if round 1 confirmed medium+ | 8–10 + adjudication |
+| `small` | Opus 5.5 high + GPT-6.2 Sol xhigh + Gemini 4 Neon high, combined-lens | Opus 5.5 high | none | 4 + ≤2 adjudication |
+| `medium` | `standard` grid, one bucket (10) | Opus 5.5 high | Opus 5.5 xhigh + GPT-6.2 Sol xhigh + Gemini 4 Neon xhigh in round 2 only if round 1 confirmed medium+ | 11–14 + adjudication |
 
 ## Opt-in comparison models
 
@@ -63,7 +63,7 @@ everything, and the adversarial pass after them did the real filtering. Once per
 1. `mbot-run candidates`, then cluster by **root cause** (bookkeeping, not a verdict), recording
    which model families raised each cluster.
 2. **Adjudicate across families.** Send Anthropic-only clusters to one GPT-6.2 Sol slot and clusters
-   raised by either GPT model to one **Opus 5.5 high** (`colin-mbot-opus`) adjudicator (also use Opus 5.5
+   raised by any GPT or Gemini model to one **Opus 5.5 high** (`colin-mbot-opus`) adjudicator (also use Opus 5.5
    high if GPT is unavailable). Split batches over ~40 clusters into two slots of the same family.
 3. The adjudicator tries to **refute** each cluster against the source at head. Status is exactly
    `confirmed` | `rejected` (concrete refutation) | `unresolved` (names the missing instrument). A
@@ -85,7 +85,7 @@ Check your tool surface — never assume.
 - **OpenCode parent (preferred):** every participant, Opus included, is an `mbot-run` slot with a
   `colin-mbot-*` agent; no `external` slots. The `task` tool skips `--out` harvest and timeout
   salvage, so use it only for orchestration chores (indexing, greps), never for a participant.
-- **Claude parent:** Claude native `Agent` cannot run `xhigh` effort. Route all Opus and GPT slots
+- **Claude parent:** Claude native `Agent` cannot run `xhigh` effort. Route all Opus, GPT and Gemini slots
   as `mbot-run` OpenCode slots (`colin-mbot-opus-xhigh` for `state` / `failure` / `integration`;
   `colin-mbot-opus` for `contracts` / `craft` / `merits` / `combined` / `adjudicate`).
 
@@ -96,10 +96,14 @@ Check your tool surface — never assume.
 | Opus 5.5 xhigh | `state`, `failure`, `integration` | `anthropic/claude-opus-5-5` | `colin-mbot-opus-xhigh` | `xhigh` |
 | Opus 5.5 high | `contracts`, `craft`, `merits`, `combined` (`small`), `adjudicate` | `anthropic/claude-opus-5-5` | `colin-mbot-opus` | `high` |
 | GPT-6.2 Sol xhigh | all GPT slots | `openai/gpt-6.2-sol` | `colin-mbot-gpt-sol` | `xhigh` |
+| Gemini 4 Neon xhigh | `state`, `failure`, `integration` | `openrouter/google/gemini-4-neon` | `colin-mbot-gemini-neon` | `xhigh` |
+| Gemini 4 Neon high | `contracts`, `merits`, `combined` (`small`) | `openrouter/google/gemini-4-neon` | `colin-mbot-gemini-neon` | `high` |
 
 - Always set `model`, `agent`, and `variant`; `mbot-run` auto-picks an agent only for GPT.
   Never `build` / `general`.
-- GPT goes through `openai`, not OpenCode Zen.
+- GPT goes through `openai`, not OpenCode Zen. Gemini goes through `openrouter`, matching the
+  agent's default model; the bot serve also lists `opencode/gemini-4-neon`, but do not mix routes
+  inside one run.
 - `claude-code/opus` is the parent harness model — never a participant.
 - `"concurrency": 3` (4 max): all slots, and an OpenCode parent, share one server. Wall-clock
   20 min per slot (`--timeout-ms 1200000`). Use `xai/grok-4.7` for Grok slots. If Grok returns
