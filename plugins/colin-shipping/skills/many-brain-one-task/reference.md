@@ -44,11 +44,11 @@ The host harness (you, the one running this skill right now) limits which models
 | Host        | Model family             | Mechanism                                                                                                  |
 |-------------|--------------------------|------------------------------------------------------------------------------------------------------------|
 | Pi          | `pi` agent requested      | Prefer the `pi-fast-subagent` package `subagent` tool when it is available; otherwise shell out with `pi --print` using the prepared prompt file. See [Pi](#pi). |
-| Pi          | any other model family    | Follow the profile's requested CLI/harness. If unspecified in the Pi package, use Pi itself as the participant. |
+| Pi          | any other model family    | Follow the profile's requested CLI/harness. |
 | Claude Code | Claude (Opus/Sonnet/Haiku) | Native `Agent` tool (preferred) — falls back to **`botctl prompt`** (via `botctl-prompt` skill) or the `claude` CLI. See [Claude](#claude-opus--sonnet--haiku). |
 | Claude Code | Grok                     | `grok` CLI (preferred). OpenCode `colin-mbot-grok` only if `grok` is missing/unauthenticated or the profile forces OpenCode. See [Grok](#grok). |
 | Claude Code | other non-Claude         | Sibling `mbot-run.ts` (OpenCode slots). Do not hand-roll an OpenCode client.                                |
-| OpenCode    | Claude (Opus/Sonnet/Fable/Haiku) | `mbot-run` OpenCode slot with the matching `colin-mbot-*` agent. Shell out to `botctl prompt` / `claude` CLI **only** when the profile pins a first-party CLI or no Claude `colin-mbot-*` agent is installed. |
+| OpenCode    | Claude | Use the [MBOT Anthropic route](SKILL.md#host-harness-routing) unless a harness is explicitly pinned. |
 | OpenCode    | Grok                     | `mbot-run` OpenCode slot, agent `colin-mbot-grok`. `grok` CLI only when the profile pins it (and the CLI is present). See [Grok](#grok). |
 | OpenCode    | other non-Claude         | `mbot-run` OpenCode slots (GPT defaults to `--variant high` and the agent matching the requested model). Do **not** use the OpenCode `task` tool for MBOT — it skips `--out` harvest and timeout salvage. |
 | Grok CLI    | Grok                     | Native `spawn_subagent` (preferred) — falls back to the `grok` CLI. See [Grok](#grok). |
@@ -56,7 +56,7 @@ The host harness (you, the one running this skill right now) limits which models
 | Codex       | OpenAI                   | `codex` CLI native; shell out for everything else.                                                         |
 | Gemini      | Gemini                   | `gemini` CLI native; shell out for everything else.                                                        |
 
-**When OpenCode is the host, keep every participant inside OpenCode.** Launch all of them through `mbot-run` with a `colin-mbot-*` agent — Claude models included — instead of shelling out to `botctl` / `claude` / `grok`. One harness means one attach, one concurrency cap, one harvest path, and uniform cost accounting. `mbot-run` only auto-picks an agent for GPT/OpenAI models (Sol uses `colin-mbot-gpt-sol`, Astra uses `colin-mbot-gpt-astra`, both default to `--variant high`); every other family must set `"agent"` on the slot:
+For OpenCode slots, use `mbot-run` and select the agent matching the requested family. GPT agents default by model. Examples:
 
 | Family | slot `agent` | typical slot `model` |
 |---|---|---|
@@ -66,16 +66,16 @@ The host harness (you, the one running this skill right now) limits which models
 | Grok | `colin-mbot-grok` | `xai/grok-4.7` (provider id is `xai`, not `x-ai`; the agent pins no model, so an unset slot `model` falls through to GPT) |
 | GLM / Qwen / Kimi / Gemini / DeepSeek / MiMo / MiniMax | `colin-mbot-<family>` | resolve from the attach catalog (`/api/model` on OpenCode 2, `/config/providers` on OpenCode 1) |
 
-Do not hand-pick `build` or `general`. Fall back to a first-party CLI only when the profile pins one or the `colin-mbot-*` agent is not installed (`~/.opencode/agents/<name>.md`). Note that a containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — check `command -v` before planning a CLI route.
+Check the selected model and agent against the project configuration. Set explicit harness pins in the plan.
 
-When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant. In the Pi package, Pi-backed participants are the default unless the user or profile names different agents.
+When the user requests `pi`, `Pi`, `Pi agent`, or a profile line like `Pi with current model`, treat that as a Pi-backed participant.
 
 When the user requests `grok`, `Grok`, `Grok CLI`, `xAI Grok`, or a profile line like `Grok CLI with grok-4.7`, treat that as a Grok-CLI-backed participant (not OpenCode) unless the line explicitly says OpenCode / `colin-mbot-grok` — **or** the host is OpenCode, where `colin-mbot-grok` wins, or the `grok` CLI is not installed or authenticated.
 
 
 ### Pi
 
-Use this route when the user asks for `pi` as a participant, when a profile names Pi, or when running the Pi package default profile.
+Use this route when the user asks for `pi` as a participant, or when a profile names Pi.
 
 Preferred path, when the lightweight `pi-fast-subagent` package is installed in the current Pi session: use its `subagent` tool and launch a focused child agent with the prepared prompt file as the task context. Prefer a role-specific project/user agent when available; otherwise use the bundled `general` agent, or `scout` for read-only exploration. For parallel batches, call `subagent` with `tasks: [...]` when available and save each returned result under `.tmp/<run-id>/results/`.
 
@@ -300,10 +300,7 @@ Guidelines:
 
 ### Claude (Opus / Sonnet / Fable / Haiku)
 
-**OpenCode host:** skip this whole section. Run Claude participants as `mbot-run` OpenCode slots
-with `colin-mbot-opus` / `colin-mbot-sonnet` / `colin-mbot-fable` (slot `model` `anthropic/…`,
-`variant: high`). The shell-out routes below apply to a Claude Code host, or to an OpenCode host
-where the profile pins a first-party CLI or no Claude `colin-mbot-*` agent is installed.
+For the OpenCode host use the [MBOT routing rules](SKILL.md#host-harness-routing).
 
 Prefer the **`botctl-prompt`** skill for advanced agentic Claude shell-outs (observable tmux TUI, YOLO-safe blockers, multi-file packets, isolated `--session-id`). Load it before inventing flags:
 
@@ -334,22 +331,22 @@ For discovery, validation, integration, and summarization Claude children, use r
 
 If the `Agent` tool is unavailable, fall back to **`botctl prompt`** (preferred) or the `claude` CLI.
 
-**OpenCode host** — use `colin-mbot-opus` / `-sonnet` / `-fable` through `mbot-run`, same as every other family. Example slot:
+**OpenCode host** — default Claude slot:
 
 ```json
 {
   "slot": "opus-state",
   "planned_model": "anthropic/claude-opus-5-5",
-  "model": "anthropic/claude-opus-5-5",
+  "provider_model_id": "anthropic/claude-opus-5-5",
   "agent": "colin-mbot-opus",
   "variant": "high",
-  "harness": "opencode",
+  "harness": "anthropic",
   "prompt": "prompts/opus-state.md",
   "out": "results/opus-state.out"
 }
 ```
 
-Shell out to `botctl prompt` / `claude` only when the profile pins a first-party CLI, or when the agent file is missing from `~/.opencode/agents/`. On a containerised OpenCode host `botctl` is usually absent, so `command -v botctl` before planning that route.
+The runner handles Claude CLI fallback for this slot. A caller that requires one harness can pin it in the plan.
 
 #### `botctl prompt` (preferred shell-out)
 
@@ -391,7 +388,7 @@ Rules:
 #### `claude --print` fallback
 
 ```bash
-claude --agent general-purpose --model opus --print --output-format text --name "MBOT: Code review for X" --effort high --append-system-prompt .tmp/ultra-review/prompts/state.full.md -- "PROMPT_HERE"
+claude --agent general-purpose --model opus --print --output-format text --name "MBOT: Code review for X" --effort high --append-system-prompt-file .tmp/ultra-review/prompts/state.full.md -- "PROMPT_HERE"
 ```
 
 Use this only when `botctl` is unavailable or the profile explicitly requires headless `claude --print`.
@@ -451,14 +448,11 @@ When substituting a backup or reassigning a slot to a different model:
 Load the `codex-cli` skill for complete flag reference. Quick reference:
 
 ```bash
-codex exec --ephemeral "PROMPT_HERE"
-codex review --base <branch> > ./.codex-review.txt 2>&1
+codex exec --ephemeral "PROMPT_HERE" </dev/null
+codex exec review --ephemeral --base <branch> </dev/null > ./.codex-review.txt 2>&1
 ```
 
-Caveats:
-- `codex review` does **not** support `--ephemeral`.
-- `codex review` requires `--base <branch>`.
-- When running `codex review` from Claude Code, you must disable the sandbox — Codex writes session files during review runs.
+Use `--uncommitted` or `--commit <sha>` for a working-tree or single-commit review.
 
 ### gemini
 

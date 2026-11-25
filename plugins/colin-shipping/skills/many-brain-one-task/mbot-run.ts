@@ -39,7 +39,7 @@
  *   "slots": [{ "slot", "planned_model", "provider_model_id", "harness", "prompt", "out", ... }]
  * }
  *
- * harness: opencode | occtl (alias of opencode) | grok | external
+ * harness: anthropic (OpenCode then Claude CLI) | claude | opencode | occtl | grok | external
  * stdout: always one JSON object for jq.
  */
 
@@ -169,6 +169,7 @@ interface Meta {
   actual_harness?: string
   attach_mode?: "attach" | "local" | "none"
   /** Set when the attach run could not connect and the slot re-ran locally. */
+  claude_fallback?: string
   attach_fallback?: string
   backup_used: boolean
   prompt: string
@@ -682,14 +683,19 @@ async function recoverSlotBody(opts: {
 function runCmd(
   cmd: string,
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; inputFile?: string } = {},
 ): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; signal?: NodeJS.Signals }> {
   return new Promise((resolvePromise) => {
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env ?? process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    })
+    const input = opts.inputFile ? openSync(opts.inputFile, "r") : undefined
+    let child
+    try {
+      child = spawn(cmd, args, {
+        cwd: opts.cwd, env: opts.env ?? process.env,
+        stdio: [input ?? "ignore", "pipe", "pipe"],
+      })
+    } finally {
+      if (input !== undefined) closeSync(input)
+    }
     let stdout = ""
     let stderr = ""
     let timedOut = false
@@ -1077,9 +1083,10 @@ async function launchSlot(
   slot: Slot,
   preflight: OpencodePreflight | null,
   grokCircuit: GrokCircuit,
+  catalog: Set<string>,
 ): Promise<Meta> {
   try {
-    return await launchSlotInner(plan, slot, preflight, grokCircuit)
+    return await launchSlotInner(plan, slot, preflight, grokCircuit, catalog)
   } catch (error) {
     const runDir = resolve(plan.run_dir)
     const projectDir = inferProjectDir(runDir, plan.project_dir)
@@ -1121,6 +1128,7 @@ async function launchSlotInner(
   slot: Slot,
   preflight: OpencodePreflight | null,
   grokCircuit: GrokCircuit,
+  catalog: Set<string>,
 ): Promise<Meta> {
   const runDir = resolve(plan.run_dir)
   const projectDir = inferProjectDir(runDir, plan.project_dir)
@@ -1279,90 +1287,20 @@ async function launchSlotInner(
   let grokError: string | undefined
   let capturedApi: OpencodeApi | undefined
   let attachFallback: string | undefined
+  function recoverBody() {
+    return recoverSlotBody({
+      outPath, sessionId: capturedSessionId, api: capturedApi,
+      attach: attachMode === "attach" ? resolveAttachUrl(preflight?.attach_url || plan.attach) : undefined,
+      password: plan.password,
+    })
+  }
+  let recovered: Awaited<ReturnType<typeof recoverBody>> | undefined
 
-  if (slot.harness === "grok") {
-    actualHarness = "grok"
-    actualModel = (slot.provider_model_id || DEFAULT_GROK_CLI_MODEL).replace(/^xai\//, "")
-    writeFileSync(errPath, "")
-    const grokSessionId = randomUUID()
-    writeSessionSidecar(outPath, grokSessionId)
-    capturedSessionId = grokSessionId
-    const args = [
-      "--prompt-file",
-      promptPath,
-      "--always-approve",
-      "--output-format",
-      "json",
-      "--session-id",
-      grokSessionId,
-      "--reasoning-effort",
-      slot.variant === "max" || slot.variant === "xhigh" ? "max" : "high",
-      "--disallowed-tools",
-      "Agent",
-      "-m",
-      actualModel,
-    ]
-    const r = await runCmd("grok", args, { cwd: projectDir, timeoutMs })
-    code = r.code
-    stderr = r.stderr
-    capturedGrokProgress = grokProgressFor(grokSessionId, projectDir)
-    if (r.code === 124) {
-      grokError = `Grok timed out after ${timeoutMs}ms (${grokProgressSummary(capturedGrokProgress)})`
-    } else if (r.code === 143) {
-      grokError = `Grok terminated with exit 143 after ${Math.round(wallMs(startedAt, nowIso()) || 0)}ms (${grokProgressSummary(capturedGrokProgress)})`
-    }
-    const grok = parseGrokStdout(r.stdout)
-    if (!isRich(grok.text) && r.code !== 0 && /not authenticated|login required|unauthorized|\b401\b/i.test(`${r.stderr}\n${r.stdout}`)) {
-      grokCircuit.open_reason = "Grok CLI is not authenticated; remaining Grok slots were not launched. Use an OpenCode xai/grok-4.7 slot or restore Grok CLI login"
-    } else if (!isRich(grok.text) && r.code !== 0 && /too_many_requests|rate.?limit|\b429\b/i.test(`${r.stderr}\n${r.stdout}`)) {
-      grokCircuit.open_reason = "Grok CLI returned a rate limit error; remaining Grok slots were not launched"
-    } else if (!isRich(grok.text) && r.code === 143 && (wallMs(startedAt, nowIso()) || 0) < GROK_FAST_FAILURE_MS) {
-      grokCircuit.fast_failures++
-      if (grokCircuit.fast_failures >= GROK_FAST_FAILURE_LIMIT) {
-        grokCircuit.open_reason = `${grokCircuit.fast_failures} Grok CLI runs exited 143 within ${GROK_FAST_FAILURE_MS}ms of starting; remaining Grok slots were not launched`
-      }
-    } else {
-      grokCircuit.fast_failures = 0
-    }
-    writeFileSync(outPath, grok.text)
-    if (stderr) writeFileSync(errPath, stderr)
-    if (grok.parsed) {
-      if (grok.parsed.sessionId) {
-        capturedSessionId = grok.parsed.sessionId
-        writeSessionSidecar(outPath, grok.parsed.sessionId)
-      }
-      if (
-        typeof grok.parsed.total_cost_usd === "number" &&
-        Number.isFinite(grok.parsed.total_cost_usd)
-      ) {
-        capturedCostUsd = grok.parsed.total_cost_usd
-        capturedCostSource = "grok_json"
-      }
-      if (grok.parsed.usage && typeof grok.parsed.usage === "object") {
-        capturedUsage = grok.parsed.usage
-      }
-      writeJson(outPath + ".usage.json", {
-        sessionId: capturedSessionId,
-        total_cost_usd: capturedCostUsd,
-        usage: grok.parsed.usage,
-        modelUsage: grok.parsed.modelUsage,
-        num_turns: grok.parsed.num_turns,
-        requestId: grok.parsed.requestId,
-      })
-    }
-  } else if (slot.harness === "opencode" || slot.harness === "occtl") {
+  async function runOpenCode() {
     // Resolve OpenCode transport from preflight
     const mode = preflight?.mode || "local"
     if (mode === "skip") {
-      return finish({
-        ...baseMeta,
-        status: "failed",
-        error: `opencode unavailable: ${preflight?.smoke_error || "skip"}`,
-        exit: 1,
-        terminal: true,
-        actual_harness: "opencode",
-        attach_mode: "none",
-      })
+      throw new Error(`opencode unavailable: ${preflight?.smoke_error || "skip"}`)
     }
 
     const useAttach =
@@ -1378,7 +1316,7 @@ async function launchSlotInner(
     // single preflight probe, so letting it through here would silently collapse a
     // multi-model plan onto one model.
     if (actualModel) {
-      if (attachUrl) {
+      if (attachUrl && slot.harness !== "anthropic") {
         const avail = await listAttachModels(attachUrl, plan.password, 8000, projectDir)
         actualModel = resolveModelId(actualModel, avail)
       }
@@ -1466,6 +1404,128 @@ async function launchSlotInner(
     code = r.code
     stderr = r.stderr
     if (stderr) writeFileSync(errPath, stderr)
+  }
+
+  if (slot.harness === "grok") {
+    actualHarness = "grok"
+    actualModel = (slot.provider_model_id || DEFAULT_GROK_CLI_MODEL).replace(/^xai\//, "")
+    writeFileSync(errPath, "")
+    const grokSessionId = randomUUID()
+    writeSessionSidecar(outPath, grokSessionId)
+    capturedSessionId = grokSessionId
+    const args = [
+      "--prompt-file",
+      promptPath,
+      "--always-approve",
+      "--output-format",
+      "json",
+      "--session-id",
+      grokSessionId,
+      "--reasoning-effort",
+      slot.variant === "max" || slot.variant === "xhigh" ? "max" : "high",
+      "--disallowed-tools",
+      "Agent",
+      "-m",
+      actualModel,
+    ]
+    const r = await runCmd("grok", args, { cwd: projectDir, timeoutMs })
+    code = r.code
+    stderr = r.stderr
+    capturedGrokProgress = grokProgressFor(grokSessionId, projectDir)
+    if (r.code === 124) {
+      grokError = `Grok timed out after ${timeoutMs}ms (${grokProgressSummary(capturedGrokProgress)})`
+    } else if (r.code === 143) {
+      grokError = `Grok terminated with exit 143 after ${Math.round(wallMs(startedAt, nowIso()) || 0)}ms (${grokProgressSummary(capturedGrokProgress)})`
+    }
+    const grok = parseGrokStdout(r.stdout)
+    if (!isRich(grok.text) && r.code !== 0 && /not authenticated|login required|unauthorized|\b401\b/i.test(`${r.stderr}\n${r.stdout}`)) {
+      grokCircuit.open_reason = "Grok CLI is not authenticated; remaining Grok slots were not launched. Use an OpenCode xai/grok-4.7 slot or restore Grok CLI login"
+    } else if (!isRich(grok.text) && r.code !== 0 && /too_many_requests|rate.?limit|\b429\b/i.test(`${r.stderr}\n${r.stdout}`)) {
+      grokCircuit.open_reason = "Grok CLI returned a rate limit error; remaining Grok slots were not launched"
+    } else if (!isRich(grok.text) && r.code === 143 && (wallMs(startedAt, nowIso()) || 0) < GROK_FAST_FAILURE_MS) {
+      grokCircuit.fast_failures++
+      if (grokCircuit.fast_failures >= GROK_FAST_FAILURE_LIMIT) {
+        grokCircuit.open_reason = `${grokCircuit.fast_failures} Grok CLI runs exited 143 within ${GROK_FAST_FAILURE_MS}ms of starting; remaining Grok slots were not launched`
+      }
+    } else {
+      grokCircuit.fast_failures = 0
+    }
+    writeFileSync(outPath, grok.text)
+    if (stderr) writeFileSync(errPath, stderr)
+    if (grok.parsed) {
+      if (grok.parsed.sessionId) {
+        capturedSessionId = grok.parsed.sessionId
+        writeSessionSidecar(outPath, grok.parsed.sessionId)
+      }
+      if (
+        typeof grok.parsed.total_cost_usd === "number" &&
+        Number.isFinite(grok.parsed.total_cost_usd)
+      ) {
+        capturedCostUsd = grok.parsed.total_cost_usd
+        capturedCostSource = "grok_json"
+      }
+      if (grok.parsed.usage && typeof grok.parsed.usage === "object") {
+        capturedUsage = grok.parsed.usage
+      }
+      writeJson(outPath + ".usage.json", {
+        sessionId: capturedSessionId,
+        total_cost_usd: capturedCostUsd,
+        usage: grok.parsed.usage,
+        modelUsage: grok.parsed.modelUsage,
+        num_turns: grok.parsed.num_turns,
+        requestId: grok.parsed.requestId,
+      })
+    }
+  } else if (slot.harness === "opencode" || slot.harness === "occtl") {
+    await runOpenCode()
+  } else if (slot.harness === "anthropic" || slot.harness === "claude") {
+    const requested = actualModel
+    let useClaude = true
+    if (slot.harness === "anthropic") {
+      if (!requested.startsWith("anthropic/") || requested === "anthropic/") {
+        throw new Error("anthropic routing requires an exact anthropic/<model> ID")
+      }
+      if (catalog.has(requested)) {
+        try {
+          await runOpenCode()
+          recovered = await recoverBody()
+          useClaude = !isRich(recovered.body) || ![0, 124, 130, 143].includes(code)
+          if (useClaude) baseMeta.claude_fallback = stderr.trim().slice(0, 500) || `OpenCode exit ${code} with incomplete output`
+        } catch (error) {
+          baseMeta.claude_fallback = error instanceof Error ? error.message : String(error)
+        }
+      } else {
+        baseMeta.claude_fallback = `opencode models did not list ${requested}`
+      }
+    }
+    if (useClaude) {
+      // Keep failed OpenCode evidence out of the final Claude result and harvest.
+      for (const suffix of ["", ".session", ".err"]) {
+        const path = outPath + suffix
+        if (existsSync(path)) renameSync(path, outPath + ".previous" + suffix)
+      }
+      recovered = undefined
+      actualHarness = "claude"
+      actualModel = requested.replace(/^anthropic\//, "")
+      attachMode = "none"
+      capturedSessionId = null
+      capturedApi = undefined
+      capturedUsage = undefined
+      capturedCostUsd = null
+      capturedCostSource = "unavailable"
+      const effort = defaultOpencodeVariant(slot.variant ?? plan.variant)
+      const args = ["--print", "--output-format", "text", "--model", actualModel,
+        "--permission-mode", "plan", "--tools", "Read,Grep,Glob,Bash",
+        "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+        "--append-system-prompt", HARNESS_FOOTER]
+      if (effort) args.push("--effort", effort)
+      if (slot.title) args.push("--name", slot.title)
+      const cli = await runCmd("claude", args, { cwd: projectDir, inputFile: promptPath, timeoutMs })
+      code = cli.code
+      stderr = cli.stderr
+      writeFileSync(outPath, cli.code === 0 || cli.timedOut ? cli.stdout : "")
+      writeFileSync(errPath, cli.stderr || (cli.code ? cli.stdout : ""))
+    }
   } else {
     return finish({
       ...baseMeta,
@@ -1485,13 +1545,7 @@ async function launchSlotInner(
     }
   }
 
-  const recovered = await recoverSlotBody({
-    outPath,
-    sessionId: capturedSessionId,
-    attach: attachMode === "attach" ? resolveAttachUrl(preflight?.attach_url || plan.attach) : undefined,
-    password: plan.password,
-    api: capturedApi,
-  })
+  recovered ??= await recoverBody()
   const body = recovered.body
   const sessionId = capturedSessionId || recovered.sessionId || readSessionId(outPath)
   const sessionFile = resolveSessionFile(sessionId, actualHarness, projectDir)
@@ -1688,16 +1742,26 @@ async function cmdLaunch(planPath: string): Promise<void> {
 }
 
 async function cmdLaunchBody(plan: Plan, runDir: string): Promise<void> {
-  const hasOpencode = plan.slots.some(
-    (s) => (s.harness === "opencode" || s.harness === "occtl") && !s.skip,
-  )
+  const catalog = new Set<string>()
+  if (plan.slots.some((slot) => slot.harness === "anthropic" && !slot.skip)) {
+    const models = await runCmd("opencode", ["models"], {
+      cwd: inferProjectDir(runDir, plan.project_dir), timeoutMs: 30_000,
+    })
+    if (models.code === 0) {
+      for (const id of models.stdout.split(/\r?\n/)) catalog.add(id.trim())
+    }
+  }
+  const ocSlot = plan.slots.find((slot) => !slot.skip && (
+    slot.harness === "opencode" || slot.harness === "occtl" ||
+    (slot.harness === "anthropic" && catalog.has(slot.provider_model_id || slot.planned_model))
+  ))
+  const hasOpencode = Boolean(ocSlot)
   const hasGrok = plan.slots.some((s) => s.harness === "grok" && !s.skip)
 
   // Preflight OpenCode on every launch. The default probe costs milliseconds,
   // so re-checking beats trusting a preflight from an earlier launch.
   let preflight = loadPreflight(runDir)
   if (hasOpencode) {
-    const ocSlot = plan.slots.find((s) => s.harness === "opencode" || s.harness === "occtl")
     preflight = await smokeOpencode({
       runDir,
       attach: plan.attach,
@@ -1725,7 +1789,7 @@ async function cmdLaunchBody(plan: Plan, runDir: string): Promise<void> {
 
   const grokCircuit: GrokCircuit = { fast_failures: 0 }
   const metas = await mapPool(plan.slots, concurrency, (slot) =>
-    launchSlot(plan, slot, preflight, grokCircuit),
+    launchSlot(plan, slot, preflight, grokCircuit, catalog),
   )
 
   for (const m of metas) {
@@ -2036,12 +2100,15 @@ function cmdStatus(runDir: string): void {
 function defaultBarrierTimeoutMs(plan: Plan): number {
   const runnable = plan.slots.filter((slot) => !slot.skip && slot.harness !== "external")
   if (!runnable.length) return DEFAULT_SLOT_TIMEOUT_MS
-  const hasOpencode = runnable.some((slot) => slot.harness === "opencode" || slot.harness === "occtl")
+  const hasOpencode = runnable.some((slot) => ["opencode", "occtl", "anthropic"].includes(slot.harness))
   const hasGrok = runnable.some((slot) => slot.harness === "grok")
   const concurrency = Math.max(1, plan.concurrency ?? (hasOpencode ? DEFAULT_OPENCODE_CONCURRENCY : hasGrok ? DEFAULT_GROK_CONCURRENCY : 8))
-  const longestSlotMs = Math.max(...runnable.map((slot) => slot.timeout_ms ?? (
-    isGrokSlot(slot) ? plan.grok_timeout_ms ?? DEFAULT_GROK_TIMEOUT_MS : plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS
-  )))
+  const longestSlotMs = Math.max(...runnable.map((slot) => {
+    const timeout = slot.timeout_ms ?? (isGrokSlot(slot)
+      ? plan.grok_timeout_ms ?? DEFAULT_GROK_TIMEOUT_MS
+      : plan.timeout_ms ?? DEFAULT_SLOT_TIMEOUT_MS)
+    return slot.harness === "anthropic" ? timeout * 2 : timeout
+  }))
   return Math.max(DEFAULT_SLOT_TIMEOUT_MS, Math.ceil(runnable.length / concurrency) * longestSlotMs + 120_000)
 }
 

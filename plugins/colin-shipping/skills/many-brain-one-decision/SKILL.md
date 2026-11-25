@@ -51,21 +51,21 @@ Exact CLI flags live in sibling MBOT [reference.md](../many-brain-one-task/refer
 
 - Opus / Sonnet / Haiku / Fable → `claude`
 - `grok` / `Grok CLI` / `xAI Grok` → `grok`, unless the line says OpenCode / `colin-mbot-grok`
-- `pi` / `Pi agent` → `pi`. The Pi package defaults every unnamed debater to `pi`
+- `pi` / `Pi agent` → `pi`. Use Pi for explicitly requested participants.
 - GPT, GLM, Qwen, Gemini, and the rest → `other`
 
 **Route** — depends on the *host harness*, then first working mechanism. A profile may pin a specific CLI. Both Claude Code and OpenCode are valid hosts; establish which one you are before planning. Tell them apart by your own tool surface: the Claude parent has the native `Agent` tool, the OpenCode parent has the OpenCode `task` tool and no `Agent`.
 
 | Family | Claude Code host | OpenCode host |
 |---|---|---|
-| `claude` | Native Agent (`run_in_background: true`) → **botctl prompt** → `claude` CLI | `mbot-run` slot + `colin-mbot-opus` / `-sonnet` / `-fable` |
+| `claude` | Native Agent (`run_in_background: true`) → **botctl prompt** → `claude` CLI | `anthropic` slot (OpenCode with Claude CLI fallback) |
 | `grok` | `grok` CLI (`grok version` once per run) → `colin-mbot-grok` | `mbot-run` slot + `colin-mbot-grok` |
 | `pi` | `pi --print < prompt.md` | `pi --print < prompt.md` (only if `pi` is installed) |
 | `other` | Sibling `mbot-run.ts` | `mbot-run` slot + `colin-mbot-<family>` |
 
 Grok CLI host: native `spawn_subagent`. Pi host with `pi-fast-subagent`: its `subagent` tool.
 
-**On an OpenCode host, keep every debater inside OpenCode.** Run all of them through `mbot-run` with a `colin-mbot-*` agent — Claude models included — rather than shelling out to `claude` / `botctl` / `grok`. One harness means one attach, one concurrency cap, one harvest path, and uniform cost accounting. Do **not** use the OpenCode `task` tool for debater slots: it skips `--out` harvest and timeout salvage. Shell out only when the profile pins a CLI, or the `colin-mbot-*` agent file is missing from `~/.opencode/agents/`. A containerised OpenCode host may not ship `grok` / `botctl` / `pi` at all — `command -v` before planning a CLI route.
+Use the sibling [MBOT host routing rules](../many-brain-one-task/SKILL.md#host-harness-routing) when building the debate plan. Keep debaters in the runner so barrier and harvest track their output.
 
 Do not drive OpenCode yourself. `mbot-run` speaks HTTP for OpenCode 1 (`/session`) and OpenCode 2 (`/api`).
 
@@ -89,7 +89,7 @@ Do not drive OpenCode yourself. `mbot-run` speaks HTTP for OpenCode 1 (`/session
     {
       "slot": "gpt-tech-bro",
       "planned_model": "openai/gpt-6.2-sol",
-      "model": "openai/gpt-6.2-sol",
+      "provider_model_id": "openai/gpt-6.2-sol",
       "agent": "colin-mbot-gpt-sol",
       "variant": "high",
       "harness": "opencode",
@@ -99,10 +99,10 @@ Do not drive OpenCode yourself. `mbot-run` speaks HTTP for OpenCode 1 (`/session
     {
       "slot": "opus-bean-counter",
       "planned_model": "anthropic/claude-opus-5-5",
-      "model": "anthropic/claude-opus-5-5",
+      "provider_model_id": "anthropic/claude-opus-5-5",
       "agent": "colin-mbot-opus",
       "variant": "high",
-      "harness": "opencode",
+      "harness": "anthropic",
       "prompt": "opus-bean-counter.md",
       "out": "results/opus-bean-counter.out"
     }
@@ -110,7 +110,7 @@ Do not drive OpenCode yourself. `mbot-run` speaks HTTP for OpenCode 1 (`/session
 }
 ```
 
-`mbot-run` auto-picks an agent only for GPT/OpenAI models. Every other family must set `"agent"` and `"model"` on the slot:
+`mbot-run` auto-picks an agent only for GPT/OpenAI models. Every other family must set `"agent"` and `"provider_model_id"` on the slot:
 
 | Family | slot `agent` | typical slot `model` |
 |---|---|---|
@@ -133,7 +133,7 @@ bun "${CLAUDE_SKILL_DIR}/../many-brain-one-task/mbot-run.ts" harvest \
 
 **OpenCode server selection.** `mbot-run` reads `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD`, and already-set env wins over the plan's `"attach"`. Put the matching URL on the plan anyway so it stays in attach mode and never `--spawn`s.
 
-Inside the **Seamus podman container** that env already points at the in-container bot serve, `127.0.0.1:4096`. Do not retarget to the operator's personal server (port `4095`, host `100.110.251.42`, hostname `seamus`) — Seamus rewrites it back and bot work must not land there. The image ships `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, and `opencode` (OpenCode 1, so `mbot-run` uses `/session`). It does **not** ship `grok`, `botctl`, `cr`, `pi`, `gemini`, or the `agentsview` CLI, so every debater there is an OpenCode slot. `AGENTSVIEW_URL` is injected — run `mbot-run usage` without `--no-agentsview`.
+Inside the **Seamus podman container** that env already points at the in-container bot serve, `127.0.0.1:4096`. Do not retarget to the operator's personal server (port `4095`, host `100.110.251.42`, hostname `seamus`) — Seamus rewrites it back and bot work must not land there. The image ships `bun`, `claude`, `codex`, `cup`, `glab`, `jq`, and `opencode` (OpenCode 1, so `mbot-run` uses `/session`). It does **not** ship `grok`, `botctl`, `cr`, `pi`, `gemini`, or the `agentsview` CLI. Use the host routing rules above. `AGENTSVIEW_URL` is injected — run `mbot-run usage` without `--no-agentsview`.
 
 ### Step 3: Assign Personalities
 

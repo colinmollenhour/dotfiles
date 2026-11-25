@@ -580,7 +580,8 @@ describe("opencode preflight", () => {
     }
   })
 
-  test("launch drives an OpenCode 2 session over /api/session", async () => {
+  test.each(["opencode", "anthropic"])("launch drives a %s slot through OpenCode 2", async (harness) => {
+    const model = harness === "anthropic" ? "anthropic/claude-test" : "openai/gpt-6.2-sol"
     const review = `${"word ".repeat(80)}\nVERDICT: no issues\n`
     const server = Bun.serve({
       port: 0,
@@ -589,7 +590,7 @@ describe("opencode preflight", () => {
         const path = url.pathname
         if (path === "/api/info") return Response.json({ version: "2.1.4" })
         if (path === "/api/model") {
-          return Response.json({ data: [{ providerID: "openai", modelID: "gpt-6.2-sol" }] })
+          return Response.json({ data: [{ providerID: model.split("/")[0], modelID: model.split("/")[1] }] })
         }
         if (req.method === "POST" && path === "/api/session") {
           return Response.json({ data: { id: "ses_test", cost: 0.01, tokens: { input: 3, output: 5 } } })
@@ -617,7 +618,7 @@ describe("opencode preflight", () => {
       },
     })
     try {
-      const runDir = join(TMP, "launch-v2")
+      const runDir = join(TMP, "launch-v2-" + harness)
       mkdirSync(join(runDir, "prompts"), { recursive: true })
       writeFileSync(join(runDir, "prompts", "slot.md"), "Review this.\n")
       const plan = {
@@ -627,9 +628,9 @@ describe("opencode preflight", () => {
         slots: [
           {
             slot: "sol",
-            harness: "opencode",
-            planned_model: "openai/gpt-6.2-sol",
-            provider_model_id: "openai/gpt-6.2-sol",
+            harness,
+            planned_model: model,
+            provider_model_id: model,
             agent: "colin-mbot-gpt-sol",
             prompt: "prompts/slot.md",
             out: "results/sol.out",
@@ -638,7 +639,11 @@ describe("opencode preflight", () => {
       }
       const planPath = join(runDir, "plan.json")
       writeFileSync(planPath, JSON.stringify(plan))
+      const binary = join(runDir, "opencode")
+      writeFileSync(binary, `#!/bin/sh\n[ "$1" = models ] && echo "${model}"\n`, { mode: 0o755 })
+      writeFileSync(join(runDir, "claude"), "#!/bin/sh\nexit 1\n", { mode: 0o755 })
       const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", planPath], {
+        env: { ...process.env, PATH: `${runDir}:${process.env.PATH}`, OPENCODE_SERVER_HOST: "" },
         stdout: "pipe",
         stderr: "pipe",
       })
@@ -653,6 +658,54 @@ describe("opencode preflight", () => {
       expect(readFileSync(join(runDir, "results", "sol.out"), "utf8")).toContain("VERDICT:")
     } finally {
       server.stop(true)
+    }
+  })
+
+  test.each(["absent", "unavailable", "failed", "pinned-cli"])("Claude CLI receives the original task (%s)", async (scenario) => {
+    const dir = join(TMP, "claude-" + scenario)
+    mkdirSync(dir)
+    const id = "anthropic/claude-test"
+    // A different provider and a longer ID must never count as exact matches.
+    const listing = scenario === "failed" ? id : "other/claude-test\nanthropic/claude-test-other"
+    writeFileSync(join(dir, "opencode"), `#!/bin/sh
+echo "$1" >> "${dir}/probes"
+[ "$1" = models ] || exit 1
+printf '%s\\n' '${listing}'
+exit ${scenario === "unavailable" ? 1 : 0}
+`, { mode: 0o755 })
+    writeFileSync(join(dir, "claude"), `#!/bin/sh
+printf '%s\\n' "$@" > args
+cat
+`, { mode: 0o755 })
+    const prompt = "<<<ISSUE>>>\nReview this exact task.\n"
+    writeFileSync(join(dir, "prompt.md"), prompt)
+    const plan = join(dir, "plan.json")
+    writeFileSync(plan, JSON.stringify({
+      run_dir: dir, project_dir: dir, opencode_mode: "local",
+      slots: [{ slot: "review", harness: scenario === "pinned-cli" ? "claude" : "anthropic",
+        planned_model: id, variant: "high", prompt: "prompt.md", out: "results/review.out",
+        opencode_ready_timeout_ms: 200 }],
+    }))
+    const proc = Bun.spawn(["bun", SCRIPT, "launch", "--plan", plan], {
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, OPENCODE_SERVER_HOST: "" },
+      stdout: "pipe", stderr: "pipe",
+    })
+    const summary = await new Response(proc.stdout).text()
+    const stderr = await new Response(proc.stderr).text()
+    expect(await proc.exited, stderr || summary).toBe(0)
+    const meta = JSON.parse(readFileSync(join(dir, "results/review.meta.json"), "utf8"))
+    expect(meta.actual_harness).toBe("claude")
+    expect(meta.actual_model).toBe("claude-test")
+    expect(meta.status).toBe("ok")
+    expect(readFileSync(join(dir, "results/review.out"), "utf8")).toBe(prompt)
+    expect(readFileSync(join(dir, "args"), "utf8")).toContain("--effort\nhigh")
+    if (scenario === "pinned-cli") {
+      expect(await Bun.file(join(dir, "probes")).exists()).toBe(false)
+    } else {
+      const probes = readFileSync(join(dir, "probes"), "utf8").trim().split("\n")
+      expect(probes[0]).toBe("models")
+      expect(probes.includes("--version")).toBe(scenario === "failed")
+      expect(meta.claude_fallback).toBeTruthy()
     }
   })
 

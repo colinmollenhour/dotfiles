@@ -437,7 +437,7 @@ Use many-brain-one-decision to propose a solution to this scaling problem: [fact
 
 ### Routing and profiles
 
-Harness routing follows MBOT's rules with one cost-sensitive exception: Claude-backed debaters use native Claude agents or the `claude` CLI first so usage stays on the Claude Max plan. Use `colin-mbot-opus` or `colin-mbot-sonnet` only when the CLI does not work or the user explicitly requests OpenCode-routed Claude. Claude-hosted runs drive OpenCode-backed debaters through sibling `mbot-run.ts`.
+MBOD follows the [MBOT host routing rules](plugins/colin-shipping/skills/many-brain-one-task/SKILL.md#host-harness-routing).
 
 Profiles live beside the installed `many-brain-one-decision/SKILL.md` and use the same plain-prose style as MBOT profiles. If an MBOD profile is missing, the skill falls back to the sibling MBOT profile for agent selection. Profile lines may also pin personalities:
 
@@ -465,35 +465,16 @@ Profile names are exact: `--profile foo` loads `foo.md` and nothing else. The re
 
 Before launch, MBOT records the resolved profile path plus every participant's display name, exact model/provider ID, harness, reasoning effort, and backup in `.tmp/<run-id>/participants.json`. Every raw result and metadata record is persisted under `.tmp/<run-id>/results/`, including native subagent output.
 
-### Shipped `defaults.md`
+### Shipped profiles
 
-```markdown
-Preferred models:
-- Opus 5.5 (high)
-- GPT 6.2 Sol (high)
-- Grok 4.7 (xhigh)
-
-Backup model (never more than one and ONLY these):
-- Qwen3.8 Max (xhigh)
-- GLM 5.3 (xhigh)
-
-Do not use OpenCode Zen or OpenRouter providers except for the backup models.
-```
-
-### Shipped `code-review.md`
-
-The review profile uses the same model families, requires fresh independent sessions with read-only repository tools, and persists every final result. Kimi is the configured backup when a primary cannot run.
+The [default profile](plugins/colin-shipping/skills/many-brain-one-task/defaults.md) selects the primary models and permitted backups. The [code review profile](plugins/colin-shipping/skills/many-brain-one-task/code-review.md) also specifies reviewer access and how to collect results.
 
 ### Writing your own profile
 
-Copy one of the examples above and edit to taste. You can specify:
+Copy one of the shipped profiles and edit to taste. You can specify:
 
 - **Which models** (e.g. Opus 5.5, GPT 6.2 Sol, Grok 4.7, Kimi K3, MiniMax M3).
-- **Which harness** drives each model (`claude` CLI, `grok` CLI, `codex`, `gemini`, `opencode`). Constraints:
-  - Claude Code can only run Claude models natively. Non-Claude models go through another harness (prefer `grok` CLI for Grok; otherwise typically OpenCode).
-  - OpenCode **must** call `claude` for Claude models, and should prefer the first-party `grok` CLI for Grok when installed; other non-Claude models run as OpenCode subagents.
-  - Grok CLI can run Grok models natively (or via headless `grok --prompt-file`); shell out for everything else.
-  - Codex drives only OpenAI models natively. Same story for the Gemini CLI.
+- **Which harness** drives each model. See [MBOT host routing](plugins/colin-shipping/skills/many-brain-one-task/SKILL.md#host-harness-routing).
 - **Which provider or route** (e.g. `via OpenCode Zen`, `via Z.ai Coding Plan`, `via OpenRouter`). Prefer coding-plan routes over generic `openrouter/` or `opencode/` when you have entitlements — they are cheaper or uncapped.
 - **Model-specific knobs** (e.g. `"max" thinking`, `"xhigh" variant`).
 - **Backups** — list fallbacks so a failed primary swaps automatically.

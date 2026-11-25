@@ -1,6 +1,6 @@
 Use the following:
 
-- Claude CLI with the latest available Opus model at **high** reasoning effort (not max/xhigh unless the user asks)
+- The latest available Opus model via the host default route at **high** reasoning effort (not max/xhigh unless the user asks)
 - OpenCode with OpenAI/GPT-6.2 Sol at high reasoning effort (agent `colin-mbot-gpt-sol`)
 - Grok CLI with Grok 4.7 at high reasoning effort; fall back to OpenCode agent `colin-mbot-grok` when the first-party CLI is unavailable
 

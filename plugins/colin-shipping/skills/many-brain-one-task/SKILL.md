@@ -28,7 +28,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    ```
    Repeated `--append` is cumulative. Discovery outputs also get [roles/issue-form.md](roles/issue-form.md) automatically (skipped for merits).
    Role templates for ultra: [roles/](roles/).
-4. **Write `plan.json`** with one entry per harness-owned slot (`opencode` / `grok`; `occtl` is a legacy alias of `opencode`). Native Claude `Agent` slots use `harness: "external"` — launch those via the Agent tool yourself; still list them so harvest scores their `.out`. **On an OpenCode host there are no `external` slots**: every participant, Claude models included, is an `opencode` slot with a `colin-mbot-*` agent.
+4. **Write `plan.json`** with one slot per participant. Use the host routing below. Native Claude Agent slots use `harness: "external"` so harvest can score their output.
 5. **OpenCode preflight + launch + harvest.** `mbot-run` speaks HTTP for both generations: OpenCode 2 on `/api`, OpenCode 1 on `/session` and `/config/providers`. Do not drive OpenCode from this skill.
    ```bash
    # Optional explicit preflight (launch probes automatically when slots use opencode).
@@ -45,7 +45,7 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
    bun "${CLAUDE_SKILL_DIR}/mbot-run.ts" usage --run-dir .tmp/<run-id>
    ```
    Use `launch --detach` then `barrier` for multi-slot or long-running plans on every host. A shell timeout can interrupt a blocking launch before server cleanup. A blocking single-wave launch needs a host Bash timeout longer than its slot budget. `barrier` exits nonzero when any slot failed or the launcher died.
-   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). Already-set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` win over that attach URL. GPT OpenCode slots default to `--variant high` and select the agent by model family (Sol uses `colin-mbot-gpt-sol`, Astra uses `colin-mbot-gpt-astra`); **every other family must set `"agent"` and `"model"` on the slot** (`colin-mbot-opus` + `anthropic/claude-opus-5-5`, `colin-mbot-grok` + `xai/grok-4.7`, …). Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
+   Plan knobs: `"concurrency": 3` (default when OpenCode attach is used), `"opencode_mode": "auto"|"attach"|"local"|"skip"`, `"attach": "http://127.0.0.1:4096"` (keeps attach mode). Already-set `OPENCODE_SERVER_HOST` / `OPENCODE_SERVER_PORT` / `OPENCODE_SERVER_PASSWORD` win over that attach URL. GPT OpenCode slots default to `--variant high` and select the agent by model family (Sol uses `colin-mbot-gpt-sol`, Astra uses `colin-mbot-gpt-astra`); **every other OpenCode family must set `"agent"` and `"provider_model_id"` on the slot** (`colin-mbot-opus` + `anthropic/claude-opus-5-5`, `colin-mbot-grok` + `xai/grok-4.7`, …). Prompt/out may be `prompts/x.md` or `.tmp/<id>/prompts/x.md` — do not double-prefix. Further launches **merge** into `plan.json` (they do not clobber prior slots).
    Local OpenCode server readiness defaults to 30 seconds; set `"opencode_ready_timeout_ms"` on the plan or a slot when cold starts need longer.
    Direct Grok CLI slots pin `grok-4.7`, allow 20 minutes each by default, and use concurrency 2 when no other harness sets the default. Use `"grok_timeout_ms"` on the plan or `"timeout_ms"` on a slot to override. Omit `barrier --timeout-ms` to let it budget all concurrency waves. If the Grok CLI is unauthenticated, use an OpenCode slot with `xai/grok-4.7` until CLI login is restored.
    Meta records `actual_harness` (`opencode-v1` or `opencode-v2`, never the `occtl` alias), `attach_mode`, `actual_model`, `started_at`, `ended_at`, `wall_ms`, `session_id`, `session_file`, and `cost_usd` (Grok JSON, or the OpenCode session cost). Harvest salvages a timed-out session from its latest assistant message and **must not** overwrite per-slot `ended_at`.
@@ -60,10 +60,11 @@ Full harness matrices, retry policy, sandbox gotchas, and delivery contracts: [r
 5. **Pin model ids** from the attach catalog (`/api/model` on v2, `/config/providers` on v1) when available (`openai/gpt-6.2-sol` preferred when listed).
 6. **OpenCode host `launch --detach`** (new process group). Wrapping a blocking launch in the default 120s bash tool kills the batch. Claude Code keeps blocking launch.
 
-## Host harness routing (hard)
+## Host harness routing
 
 - **Claude Code host:** Claude participants use the native `Agent` tool (then `botctl prompt`, then `claude` CLI); everything else goes through `mbot-run`.
-- **OpenCode host: keep everything inside OpenCode.** Every participant — Claude included — is an `mbot-run` slot with a `colin-mbot-*` agent. Do not shell out to `claude` / `botctl` / `grok`, and do not use the OpenCode `task` tool for participant slots. Shell-outs only when the profile pins a CLI or the agent file is missing from `~/.opencode/agents/`. A containerised host may not ship `grok` / `botctl` / `pi` at all — `command -v` before planning a CLI route.
+- **OpenCode host:** For a Claude participant, default to `harness: "anthropic"` and set `provider_model_id` to the exact `anthropic/<model>`. At launch, MBOT reads `opencode models` once in the project directory. It tries OpenCode on an exact match. If the listing fails, the ID is absent, or OpenCode fails to deliver a usable result after recovery, MBOT runs the same prompt once through `claude --print` with the same model and effort. The result metadata records the actual harness and any fallback reason.
+- Honor system instructions, the user's request, and explicit profile pins. Use `harness: "opencode"` to require OpenCode or `harness: "claude"` to require the headless Claude CLI. Other model families keep their existing routes.
 
 ### Native Claude subagents (Claude Code host)
 
@@ -86,7 +87,7 @@ The `Agent` tool takes `model` (`sonnet` | `opus` | `haiku` | `fable`) and `effo
 
 | Owner | Mechanisms | Body |
 |---|---|---|
-| **Harness-owned** | `mbot-run` (OpenCode + Grok) | Full review = final assistant message / stdout. Harness writes `--out`. |
+| **Harness-owned** | `mbot-run` (OpenCode, Claude CLI, Grok) | Full review = final assistant message / stdout. Harness writes `--out`. |
 | **Agent-owned** | Native Claude `Agent` only | Child **Write**s full body to slot path; returns ≤500-char status |
 
 Never tell OpenCode/Grok to Write the harness `--out` path.
