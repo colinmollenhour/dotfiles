@@ -15,6 +15,7 @@ DOTFILES=(
   ".config/tmux/tmux-onedark-theme.tmux"
   ".config/starship.toml"
   ".config/docker-fzf.bash"
+  ".config/complete-alias-legacy.bash"
   ".config/delta/themes.gitconfig"
   ".config/tmux-powerline/config.sh"
   ".config/tmux-powerline/themes/colin.sh"
