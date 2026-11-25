@@ -96,7 +96,7 @@ npx skills add colinmollenhour/dotfiles --list
 npx skills add colinmollenhour/dotfiles -g --skill whiteboard
 npx skills add colinmollenhour/dotfiles -g --all
 
-# Optional: settings, native agents, and Pi/OMP integration, without skill mirrors
+# Optional: settings and native agents, without skill mirrors
 ./install.sh --agents --no-skills
 ```
 
@@ -251,11 +251,10 @@ Use `megamind` for long-running work where the desired output is not just code, 
 
 ### Multi-Harness Integration & Platform Support
 
-Megamind supports native integration across 5 AI development platforms:
+Megamind supports native integration across these AI development platforms:
 
 - **Claude Code**: Native agent at `plugins/megamind/agents/megamind.md` and skill at `plugins/megamind/skills/megamind/SKILL.md` (`disable-model-invocation: true`). Invoke via `/megamind <task>` or `/agent megamind`.
-- **OpenCode Pi**: Native agent at `.opencode/agents/megamind.md` (installed to `~/.opencode/agents/megamind.md`) configured with `mode: primary` and tool declarations. Invoke via `/megamind <task>` or agent selection in OpenCode TUI.
-- **Oh My Pi (omp) & Pi**: Installable npm package at `pi-megamind/`. Supports `omp install ./pi-megamind` and `pi install ./pi-megamind` with slash command `/megamind <task>` and `mode: main` execution.
+- **OpenCode**: Native agent at `.opencode/agents/megamind.md` (installed to `~/.opencode/agents/megamind.md`) configured with `mode: primary` and tool declarations. Invoke via `/megamind <task>` or agent selection in OpenCode TUI.
 - **Grok CLI**: Installed to `~/.grok/agents/megamind.md`. Supports headless batch fan-out via `grok --prompt-file` with `--always-approve` and `--disallowed-tools Agent`.
 - **Antigravity (AGY)**: Native skill loaded via `~/.gemini/antigravity-cli/skills/megamind/SKILL.md` (when `~/.gemini/antigravity-cli` is present) or `~/.agents/skills/megamind/SKILL.md`. Leverages native `define_subagent` and `invoke_subagent` for parallel MBOT/MBOD worker orchestration.
 
@@ -264,8 +263,6 @@ Install all targets automatically via:
 ```bash
 ./install.sh
 ```
-
-The OMP route defaults MBOT/MBOD delegation to native `task` batches. The Pi route defaults to Pi-backed participants and prefers the lightweight `pi-fast-subagent` extension when available.
 
 ## Slash commands
 

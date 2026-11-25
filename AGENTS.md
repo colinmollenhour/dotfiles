@@ -14,12 +14,10 @@ conflict on the next install.
 | `plugins/*/skills/` | `~/.claude/skills/`, `~/.agents/skills/`, `~/.gemini/antigravity-cli/skills/` |
 | `plugins/megamind/agents/`, `.claude/agents/` | `~/.claude/agents/` |
 | `.opencode/agents/` | `~/.opencode/agents/` |
-| `pi-megamind/skills/` | Pi/OMP package copy of the Claude skills |
 
 Edit the source path, then `./install.sh --agents` (or `--all`) so the
 installed copies update. Use `--no-skills` only for a host that gets skills through the
-marketplace or skills CLI; it skips the personal skill mirrors. Keep
-`pi-megamind/skills/` in sync when you change a skill that exists in both trees.
+marketplace or skills CLI; it skips the personal skill mirrors.
 
 `~/Seamus/skills-available/many-brain-one-task` should point into
 `plugins/colin-shipping/skills/many-brain-one-task/` here — still this repo, not a second

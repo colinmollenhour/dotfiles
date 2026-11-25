@@ -1006,26 +1006,10 @@ install_agents() {
     fi
   fi
 
-  if command -v omp >/dev/null 2>&1; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "omp install $SCRIPT_DIR/pi-megamind"
-    else
-      omp install "$SCRIPT_DIR/pi-megamind" >/dev/null 2>&1 || log "OMP package installation linked"
-    fi
-  fi
-
-  if command -v pi >/dev/null 2>&1; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "pi install $SCRIPT_DIR/pi-megamind"
-    else
-      pi install "$SCRIPT_DIR/pi-megamind" >/dev/null 2>&1 || log "Pi package installation linked"
-    fi
-  fi
-
   if [[ "$DRY_RUN" == true ]]; then
-    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, ~/.grok, and OMP/Pi"
+    log "Would install agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.grok"
   else
-    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, ~/.grok, and OMP/Pi"
+    log "Installed agents and skills to ~/.agents, ~/.claude, ~/.opencode, and ~/.grok"
   fi
 
   suggest_statusline_if_missing

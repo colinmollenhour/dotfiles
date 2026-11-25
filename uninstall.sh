@@ -315,22 +315,6 @@ uninstall_agents_extras() {
       log "Restored ~/.claude/settings.json from backup"
     fi
   fi
-
-  if command -v omp >/dev/null 2>&1; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "omp uninstall pi-megamind"
-    else
-      omp uninstall pi-megamind >/dev/null 2>&1 || true
-    fi
-  fi
-
-  if command -v pi >/dev/null 2>&1; then
-    if [[ "$DRY_RUN" == true ]]; then
-      dry_run_msg "pi uninstall pi-megamind"
-    else
-      pi uninstall pi-megamind >/dev/null 2>&1 || true
-    fi
-  fi
 }
 
 cleanup_empty_dirs() {

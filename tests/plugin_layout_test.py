@@ -45,7 +45,7 @@ class PluginLayoutTest(unittest.TestCase):
         self.assertIn('megamind', names)
 
     def test_invocation_guards_ship_with_workflows(self):
-        for skill in list((ROOT / 'plugins').glob('*/skills/*/SKILL.md')) + list((ROOT / 'pi-megamind/skills').glob('*/SKILL.md')):
+        for skill in (ROOT / 'plugins').glob('*/skills/*/SKILL.md'):
             fm = skill.read_text().split('---', 2)[1]
             if re.search(r'^disable-model-invocation:\s*true\s*$', fm, re.MULTILINE):
                 with self.subTest(skill=skill):
@@ -69,20 +69,14 @@ class PluginLayoutTest(unittest.TestCase):
         self.assertTrue((skills / 'many-brain-one-decision/../many-brain-one-task/mbot-run.ts').is_file())
         self.assertTrue((skills / 'many-brain-one-task/reference.md').is_file())
 
-    def test_delivery_workflows_ship_complete_and_match_pi(self):
+    def test_delivery_workflows_ship_complete(self):
         skills = self.plugins['colin-shipping'] / 'skills'
         for name in ('full-send', 'full-stop', 'modernize'):
             source = skills / name
-            mirror = ROOT / 'pi-megamind/skills' / name
             with self.subTest(skill=name):
                 source_files = {p.relative_to(source) for p in source.rglob('*') if p.is_file()}
-                mirror_files = {p.relative_to(mirror) for p in mirror.rglob('*') if p.is_file()}
-                self.assertEqual(source_files, mirror_files)
                 self.assertIn(Path('LICENSE'), source_files)
                 self.assertIn(Path('agents/openai.yaml'), source_files)
-                for relative in source_files:
-                    self.assertEqual((source / relative).read_bytes(),
-                                     (mirror / relative).read_bytes())
                 for document in source.rglob('*.md'):
                     for link in re.findall(r'\]\(([^)]+)\)', document.read_text()):
                         if '://' not in link and not link.startswith('#'):

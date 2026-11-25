@@ -3,7 +3,7 @@ name: megamind
 slash: true
 disable-model-invocation: true
 description: Autonomous large-task delivery agent. Use for long-running coding work that should go from objective or plan to implemented code, review fixes, PR/MR, and green CI with minimal human-in-the-loop gates.
-argument-hint: "[objective|file|issue-url] [--roborev] [--dry-run] [--agents agy|pi|omp|claude|grok]"
+argument-hint: "[objective|file|issue-url] [--roborev] [--dry-run] [--agents agy|pi|claude|grok]"
 allowed-tools: Bash(*), ReadFile(*), WriteFile(*), EditFile(*), InvokeSubagent(*), DefineSubagent(*)
 ---
 
